@@ -1,0 +1,95 @@
+# ==========================================
+# SECURITY & SECRETS (STRICT ENFORCEMENT)
+# ==========================================
+# Never commit actual environment files or secrets
+.env
+.env.*
+!.env.example
+*.env
+
+# API Keys, Tokens and Credentials
+*token*.json
+*credentials*.json
+*secret*.json
+service-account*.json
+service_account*.json
+client_secret*.json
+google-services.json
+
+# Private keys, certificates and keystores
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets/
+private/
+
+# ==========================================
+# PYTHON BACKEND
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# ANDROID STUDIO & GRADLE
+# ==========================================
+.gradle/
+build/
+*/build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+*.apk
+*.aab
+*.ap_
+
+# ==========================================
+# WEB ADMIN & NODE
+# ==========================================
+node_modules/
+.next/
+out/
+.npm
+.yarn/
+*.log
+
+# ==========================================
+# IDE & SYSTEM
+# ==========================================
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db
