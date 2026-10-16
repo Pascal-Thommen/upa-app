@@ -1,5 +1,6 @@
+
 from pydantic_settings import BaseSettings
-from typing import List
+
 
 class Settings(BaseSettings):
     APP_ENV: str = "development"
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./upa_app.db"
 
     @property
-    def cors_origins_list(self) -> List[str]:
+    def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     class Config:
