@@ -1,56 +1,56 @@
 # UPA App
 
-Zentrale Campus-Plattform fuer Studierende und Dozenten der Universidad Paraguayo Alemana (UPA).
+Plataforma universitaria central para estudiantes y docentes de la Universidad Paraguayo Alemana (UPA).
 
-## Projektstruktur
+## Estructura del Proyecto
 
 ```text
 upa-app/
-├── android/          # Native Android Applikation (Android Studio / Kotlin)
-├── backend/          # REST API Service (Python, FastAPI, Pydantic, SQLAlchemy)
-├── web-admin/        # Webportal fuer Marketing und Verwaltung (Desktop)
-├── docs/             # Spezifikationen, Datenmodelle und Dozenten-Briefing
-├── .github/          # CI/CD Workflows und Sicherheitschecks
-├── AGENTS.md         # Arbeitsanweisungen fuer autonome Coding-Agenten
+├── android/          # Aplicacion nativa Android (Android Studio / Kotlin)
+├── backend/          # Servicio REST API (Python, FastAPI, Pydantic, SQLAlchemy)
+├── web-admin/        # Portal web para administracion y marketing (Escritorio)
+├── docs/             # Especificaciones, modelos de datos y briefing docente
+├── .github/          # Flujos de CI/CD y verificaciones de seguridad
+├── AGENTS.md         # Instrucciones de trabajo para agentes autonomos de IA
 └── README.md
 ```
 
-## Kernmodule & Funktionen
+## Modulos y Funcionalidades Principales
 
-1. **Inicio (Campus-Feed):**
-   * Dringlichkeits-Eilmeldungen als Banner (z.B. Unterrichtsausfall bei Unwetter).
-   * Campus-Events und Fachvortraege (Charlas) mit 1-Klick An- und Abmeldung.
-   * Social Media Aggregation der offiziellen Universitaetskanaele via SociableKIT / Instagram API.
+1. **Inicio (Feed del Campus):**
+   * Avisos de emergencia como banner superior (ej. suspension de clases por tormenta).
+   * Eventos del campus y conferencias (Charlas) con registro e inscripcion en 1 clic.
+   * Agregacion automatica de redes sociales oficiales via SociableKIT / Instagram API.
 
-2. **Agenda (Termine & Fristen):**
-   * Kombinierte Ansicht: Chronologische Agenda oben, Monatskalender mit Terminpunkten unten.
-   * Synchronisation akademischer Abgabefristen via Google Classroom.
+2. **Agenda (Calendario y Entregas):**
+   * Vista combinada: Lista cronologica arriba y calendario mensual con puntos de actividad abajo.
+   * Sincronizacion automatica de plazos y tareas academicas via Google Classroom.
 
-3. **Profil & Einstellungen:**
-   * Google OAuth Pflicht-Login mit Zwang zu `@upa.edu.py`.
-   * Lokale Nutzerpraeferenzen (Dark/Light Mode, Benachrichtigungen, Studiengangsfilter).
+3. **Perfil y Configuracion:**
+   * Inicio de sesion obligatorio via Google OAuth restringido a cuentas `@upa.edu.py`.
+   * Preferencias locales del usuario (modo oscuro/claro, notificaciones, filtro de carrera).
 
-4. **Web-Administration (Desktop Portal):**
-   * Zentrales Redaktionssystem fuer das Marketing-Team.
-   * Single Source of Truth: Ein Inhaltsobjekt kann Beitrag, Kalenderevent oder beides sein.
-   * Zielgruppen-Aussteuerung basierend auf Google Groups via Google Workspace Admin API.
+4. **Administracion Web (Portal de Escritorio):**
+   * Sistema de gestion de contenidos para el equipo de marketing.
+   * Fuente unica de verdad (Single Source of Truth): una publicacion puede ser post, evento de agenda o ambos.
+   * Segmentacion de destinatarios basada en Google Groups mediante Google Workspace Admin API.
 
-## Sicherheit & Open-Source-Richtlinie
+## Politica de Seguridad y Codigo Abierto
 
-Dieses Repository ist oeffentlich. Ausnahmslos alle Entwickler und KI-Agenten befolgen folgende Sicherheitsregeln:
-* Keine echten API-Schluessel, Secrets oder personenbezogene Daten in Commits.
-* Alle Konfigurationsparameter werden ueber `.env` Dateien verwaltet, die via `.gitignore` geschuetzt sind.
-* Vorlagen fuer Konfigurationsvariablen sind in `.env.example` hinterlegt.
+Este repositorio es publico. Todos los desarrolladores y agentes de IA deben cumplir estrictamente:
+* Prohibido incluir claves API reales, secretos o datos personales en los commits.
+* Todas las configuraciones se gestionan mediante archivos `.env` protegidos por `.gitignore`.
+* Las variables requeridas se documentan con valores de ejemplo en `.env.example`.
 
-## Schnellstart Backend
+## Inicio Rapido del Backend
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # Unter Windows: .venv\Scripts\activate
+source .venv/bin/activate  # En Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn src.main:app --reload --port 8000
 ```
 
-Interaktive API-Dokumentation oeffnen unter: `http://localhost:8000/docs`
+Documentacion interactiva de la API disponible en: `http://localhost:8000/docs`

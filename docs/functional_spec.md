@@ -1,25 +1,25 @@
-# UPA App: Funktionsspezifikation
+# UPA App: Especificacion Funcional
 
-## 1. Technologiestack & Begruendung Python (FastAPI)
-* 60 Prozent weniger Boilerplate als Java, Fokus liegt auf Termintreue und MVP-Fertigstellung.
-* Schlanke Anbindung von Google Workspace Admin SDK, Classroom API und Social Media Feeds.
-* Automatisch generierte Swagger-Dokumentation (/docs) fuer das Android Studio Team.
+## 1. Stack Tecnologico y Justificacion de Python (FastAPI)
+* 60 por ciento menos codigo repetitivo frente a Java, priorizando cumplimiento de plazos y entrega del MVP.
+* Integracion limpia y ligera con Google Workspace Admin SDK, Classroom API y feeds de redes sociales.
+* Documentacion interactiva Swagger generada automaticamente (/docs) para el equipo de Android Studio.
 
-## 2. Strukturierte Kernfunktionen
+## 2. Modulos y Funcionalidades Principales
 
-### Modul Inicio (Campus-Feed)
-* Dringlichkeits-Eilmeldungen als Banner bei kurzfristigen Ereignissen (z.B. Hagel, Unwetter).
-* Campus-Events und Fachvortraege (Charlas) mit nativer Ein-Klick-An- und Abmeldung.
-* Social Media Aggregation der offiziellen Universitaetskanaele via SociableKIT / Instagram API.
+### Modulo Inicio (Feed del Campus)
+* Avisos de emergencia en formato banner superior ante situaciones imprevistas (ej. suspension por tormentas o granizo).
+* Publicacion de conferencias (Charlas) y eventos con registro de inscripcion y cancelacion en 1 clic.
+* Agregacion automatica de publicaciones oficiales de redes sociales mediante SociableKIT / Instagram API.
 
-### Modul Agenda (Termine & Fristen)
-* Chronologische Liste anstehender Termine oben, synchronisierter Monatskalender mit Terminpunkten unten.
-* Automatische Uebernahme akademischer Fristen via Google Classroom.
+### Modulo Agenda (Calendario y Plazos)
+* Lista cronologica de actividades en la parte superior y calendario mensual sincronizado con puntos indicadores abajo.
+* Importacion automatica de fechas limite y entregas academicas desde Google Classroom.
 
-### Modul Profil & Personalisierung
-* Google OAuth Zwangsanmeldung fuer @upa.edu.py Adressen.
-* Verwaltung von Dark/Light Mode, Benachrichtigungseinstellungen und Studiengangsfilter.
+### Modulo Perfil y Personalizacion
+* Acceso exclusivo obligatorio con Google OAuth para cuentas @upa.edu.py.
+* Configuracion de modo oscuro/claro, preferencias de notificaciones y filtro por carrera.
 
-### Modul Web-Administration (Marketing Desktop)
-* Single Source of Truth: Einheitliches Datenmodell fuer News und Kalenderereignisse.
-* Zielgruppen-Filterung basierend auf Google Workspace Gruppen.
+### Modulo Administracion Web (Marketing Escritorio)
+* Fuente unica de verdad (Single Source of Truth): modelo de datos unificado para noticias y eventos de calendario.
+* Segmentacion de destinatarios basada en grupos de Google Workspace sincronizados via Admin API.

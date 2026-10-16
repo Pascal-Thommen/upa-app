@@ -1,18 +1,18 @@
-# Android Applikation (Android Studio)
+# Aplicacion Android (Android Studio)
 
-Natives Android-Frontend fuer Studierende und Dozenten der UPA.
+Frontend movil nativo para estudiantes y docentes de la UPA.
 
-## Technische Basis
-* Sprache: Kotlin / Java
-* Mindest-SDK: Android 8.0 (API Level 26)
-* Ziel-SDK: Android 14+ (API Level 34)
-* Architektur: MVVM (Model-View-ViewModel) mit Jetpack Compose oder XML Layouts.
+## Base Tecnica
+* Lenguaje: Kotlin / Java
+* SDK Minimo: Android 8.0 (API Level 26)
+* SDK Objetivo: Android 14+ (API Level 34)
+* Arquitectura: MVVM (Model-View-ViewModel) con Jetpack Compose o XML Layouts.
 
-## Menue-Struktur
-1. `Inicio`: Campus-Feed, Eilmeldungs-Banner, Instagram-News, Charlas mit Anmeldebutton.
-2. `Agenda`: Chronologische Terminliste oben, synchronisierter Monatskalender mit Punkten unten.
-3. `Perfil`: Dark/Light Mode Umschalter, Filterkriterien, Nutzerinformationen.
+## Estructura de Navegacion (3 Menus)
+1. `Inicio`: Feed del campus, banner de avisos de emergencia, publicaciones de Instagram, charlas con boton de inscripcion.
+2. `Agenda`: Lista cronologica superior y calendario mensual sincronizado con puntos de actividad inferior.
+3. `Perfil`: Selector de modo oscuro/claro, preferencias de usuario e informacion de perfil.
 
-## Kommunikation mit dem Backend
-Das Android-Team greift auf die REST-API unter `http://<SERVER_IP>:8000/api/v1` zu.
-Die interaktive Spezifikation der Endpunkte ist unter `/docs` einsehbar.
+## Comunicacion con el Backend
+El equipo de Android se conecta a la API REST en `http://<SERVER_IP>:8000/api/v1`.
+La especificacion interactiva de los endpoints se encuentra disponible en `/docs`.

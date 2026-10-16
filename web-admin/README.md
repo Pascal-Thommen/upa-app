@@ -1,13 +1,13 @@
-# Web-Admin & Marketing-Portal (Desktop)
+# Portal de Administracion Web y Marketing (Escritorio)
 
-Redaktionssystem zur Content-Pflege fuer das UPA-Marketing-Team.
+Sistema de gestion de contenidos para el equipo de marketing de la UPA.
 
-## Aufgaben & Funktionen
-* Erstellung und Bearbeitung von Beitraegen (News, Charlas, Eilmeldungen).
-* Zuweisung von Inhalten an den Kalender (Single Source of Truth Prinzip).
-* Zielgruppen-Zuordnung ueber Google Workspace Gruppen.
-* Vorschau und Freigabe von Meldungen vor der Ausspielung an mobile Endgeraete.
+## Responsabilidades y Funciones
+* Creacion y edicion de publicaciones (noticias, charlas, avisos urgentes).
+* Asignacion de contenidos al calendario bajo el principio de fuente unica de verdad (Single Source of Truth).
+* Segmentacion de destinatarios mediante grupos de Google Workspace.
+* Vista previa y publicacion inmediata hacia los dispositivos moviles.
 
-## Technologie
-* Leichtgewichtiges Web-Frontend (Next.js oder HTML5/Tailwind Admin-Maske).
-* Direkte Anbindung an die Backend REST-API.
+## Tecnologia
+* Frontend web ligero (Next.js o interfaz administrativa HTML5/Tailwind).
+* Comunicacion directa con la API REST del backend.
