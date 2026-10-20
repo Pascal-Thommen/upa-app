@@ -47,8 +47,9 @@ async def verify_google_id_token(id_token: str) -> dict[str, Any]:
             )
         data = response.json()
         
-        # Validierung des Google Client ID Audienctargets falls konfiguriert
-        if settings.GOOGLE_CLIENT_ID and data.get("aud") != settings.GOOGLE_CLIENT_ID:
+        # Validierung des Google Client ID Audience-Targets falls konfiguriert
+        allowed_client_ids = settings.allowed_google_client_ids_list
+        if allowed_client_ids and data.get("aud") not in allowed_client_ids:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Google Client ID stimmt nicht überein"
