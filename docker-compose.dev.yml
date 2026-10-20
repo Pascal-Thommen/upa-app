@@ -1,0 +1,15 @@
+services:
+  dev-pwa:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+    container_name: upa-dev-pwa
+    restart: "no"
+    ports:
+      - "3000:80"
+    networks:
+      - upa-network
+
+networks:
+  upa-network:
+    driver: bridge

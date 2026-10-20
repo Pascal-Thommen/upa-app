@@ -30,6 +30,16 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     user: UserResponse
 
+def _filter_user_groups_for_privacy(email: str, groups: list[str] | None) -> list[str]:
+    """
+    Erzwingt die Datenschutz- und Berechtigungs-Vorgabe:
+    Normale Studenten duerfen ihre Mailgruppen nicht direkt sehen.
+    Die Gruppenanzeige ist strikt auf das Konto pascal.thommen@upa.edu.py beschraenkt.
+    """
+    if email.lower() == "pascal.thommen@upa.edu.py":
+        return groups or ["ALL"]
+    return []
+
 @router.post("/google", response_model=AuthResponse)
 async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
     """
@@ -81,7 +91,7 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
             email=user.email,
             full_name=user.full_name,
             role=user.role,
-            groups=user.groups or ["ALL"],
+            groups=_filter_user_groups_for_privacy(user.email, user.groups),
             has_classroom_token=bool(user.classroom_token),
         )
     )
@@ -94,7 +104,7 @@ def get_me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         full_name=current_user.full_name,
         role=current_user.role,
-        groups=current_user.groups or ["ALL"],
+        groups=_filter_user_groups_for_privacy(current_user.email, current_user.groups),
         has_classroom_token=bool(current_user.classroom_token),
     )
 
@@ -116,6 +126,6 @@ def update_classroom_token(
         email=current_user.email,
         full_name=current_user.full_name,
         role=current_user.role,
-        groups=current_user.groups or ["ALL"],
+        groups=_filter_user_groups_for_privacy(current_user.email, current_user.groups),
         has_classroom_token=bool(current_user.classroom_token),
     )

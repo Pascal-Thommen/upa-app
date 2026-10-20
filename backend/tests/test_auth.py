@@ -49,8 +49,17 @@ def setup_auth_database():
         role="admin",
         groups=["ALL"]
     )
+    # Pascal Thommen (darf Mailgruppen einsehen)
+    pascal = User(
+        id=30,
+        email="pascal.thommen@upa.edu.py",
+        full_name="Pascal Thommen",
+        role="admin",
+        groups=["ALL", "TIE", "TI"]
+    )
     db.add(student)
     db.add(admin)
+    db.add(pascal)
     db.commit()
     yield
     Base.metadata.drop_all(bind=engine)
@@ -73,6 +82,18 @@ def test_get_me_authorized_with_token():
     data = response.json()
     assert data["email"] == "student@upa.edu.py"
     assert data["role"] == "user"
+    # Normaler Student darf Gruppen nicht direkt sehen
+    assert data["groups"] == []
+
+
+def test_get_me_shows_mailgroups_exclusively_for_pascal():
+    token = create_access_token(data={"sub": "30", "email": "pascal.thommen@upa.edu.py", "role": "admin"})
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get("/api/auth/me", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == "pascal.thommen@upa.edu.py"
+    assert data["groups"] == ["ALL", "TIE", "TI"]
 
 def test_create_news_forbidden_for_normal_student():
     token = create_access_token(data={"sub": "10", "email": "student@upa.edu.py", "role": "user"})
