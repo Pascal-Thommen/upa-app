@@ -4,7 +4,9 @@ Documentación completa de endpoints para el equipo de desarrollo de clientes m�
 Estándar Zero-Mock: Todos los endpoints están productivamente implementados, tipados y conectados a PostgreSQL 16.
 
 ## URL Base
-* Red local / NetBird Mesh: `http://acersrv.netbird.cloud:8000` o `http://100.110.128.107:8000`
+* Servicio Público NetBird (HTTPS con SSL): `https://upa-2vgh.eu1.netbird.services`
+* Swagger UI público: `https://upa-2vgh.eu1.netbird.services/docs`
+* Red interna NetBird Mesh: `http://acersrv.netbird.cloud:8000` o `http://100.110.128.107:8000`
 * Desarrollo local: `http://localhost:8000`
 * Interfaz interactiva Swagger UI: `http://localhost:8000/docs`
 * Especificación OpenAPI: `http://localhost:8000/openapi.json`
