@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
-from ..auth import require_admin
+from ..auth import get_current_user_optional, require_admin
 from ..database import get_db
 from ..models import Post, User
 from ..schemas.feed import FeedItemResponse, FeedResponse
@@ -18,36 +18,47 @@ def get_feed(
     group: str | None = Query(None, description="Filter nach Zielgruppe oder Studiengang (z.B. TIE)"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional)
 ):
     """
     Liefert den aggregierten Campus-Feed:
-    - urgent_banners: Aktive Eilmeldungen (EMERGENCY_BANNER), solange nicht abgelaufen.
-    - posts: Reguläre News, Campus-Events und synchronisierte Instagram-Beiträge (@upalemana).
+    - Ohne Authentifizierung: Ausschließlich öffentliche Instagram-Beiträge (@upalemana).
+    - Mit Authentifizierung (UPA-Login): Eilmeldungen, interne Campus-News, Events und Instagram-Beiträge.
     Unterstützt Zielgruppenfilterung (z.B. ?group=TIE) und Pagination.
     """
     now = datetime.now(UTC)
 
-    # 1. Urgent banners (Avisos de Emergencia)
-    banners_query = db.query(Post).filter(
-        Post.post_type == "EMERGENCY_BANNER",
-        Post.is_news.is_(True),
-        or_(Post.expires_at.is_(None), Post.expires_at > now)
-    ).order_by(desc(Post.is_pinned), desc(Post.created_at))
-
-    raw_banners = banners_query.all()
+    # 1. Urgent banners (Avisos de Emergencia) - nur für angemeldete Universitätsmitglieder
     banners = []
-    for b in raw_banners:
-        groups = b.target_groups or ["ALL"]
-        if not group or "ALL" in groups or group in groups:
-            banners.append(FeedItemResponse.from_orm_post(b))
+    if user is not None:
+        banners_query = db.query(Post).filter(
+            Post.post_type == "EMERGENCY_BANNER",
+            Post.is_news.is_(True),
+            or_(Post.expires_at.is_(None), Post.expires_at > now)
+        ).order_by(desc(Post.is_pinned), desc(Post.created_at))
+
+        raw_banners = banners_query.all()
+        for b in raw_banners:
+            groups = b.target_groups or ["ALL"]
+            if not group or "ALL" in groups or group in groups:
+                banners.append(FeedItemResponse.from_orm_post(b))
 
     # 2. Campus Posts (News, Instagram, Events)
+    # Nicht angemeldete Nutzer erhalten strikt nur öffentliche Instagram-Posts
     posts_query = db.query(Post).filter(
         Post.post_type != "EMERGENCY_BANNER",
-        or_(Post.is_news.is_(True), Post.is_event.is_(True)),
         or_(Post.expires_at.is_(None), Post.expires_at > now)
-    ).order_by(desc(Post.is_pinned), desc(Post.created_at))
+    )
+
+    if user is None:
+        posts_query = posts_query.filter(Post.post_type == "INSTAGRAM")
+    else:
+        posts_query = posts_query.filter(
+            or_(Post.is_news.is_(True), Post.is_event.is_(True))
+        )
+
+    posts_query = posts_query.order_by(desc(Post.is_pinned), desc(Post.created_at))
 
     raw_posts = posts_query.all()
     filtered_posts = []

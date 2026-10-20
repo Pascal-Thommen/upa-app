@@ -56,6 +56,21 @@ async def verify_google_id_token(id_token: str) -> dict[str, Any]:
             
         return data
 
+def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: Session = Depends(get_db)
+) -> User | None:
+    """Extrahiert den aktuellen Benutzer aus dem Authorization Header, falls vorhanden."""
+    if not credentials:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if not payload or "sub" not in payload:
+        return None
+    user_id = payload.get("sub")
+    if str(user_id).isdigit():
+        return db.query(User).filter(User.id == int(user_id)).first()
+    return db.query(User).filter(User.email == str(user_id)).first()
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: Session = Depends(get_db)

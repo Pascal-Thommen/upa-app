@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
-from ..auth import require_admin
+from ..auth import get_current_user, require_admin
 from ..database import get_db
 from ..models import Post, User
 from ..schemas.post import NewsResponse, PostCreate
@@ -18,10 +18,12 @@ def get_news(
     group: str | None = Query(None, description="Filter nach Zielgruppe oder Studiengang (z.B. TIE)"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Liefert alle aktiven News-Beiträge und Ankündigungen.
+    Geschützt: Nur authentifizierte Benutzer mit aktiver Session.
     Abgelaufene Eilmeldungen (expires_at) werden automatisch gefiltert.
     Angepinnte Beiträge (is_pinned) stehen ganz oben.
     """

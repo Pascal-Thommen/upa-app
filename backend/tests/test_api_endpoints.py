@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from src.auth import create_access_token
 from src.database import Base, get_db
 from src.main import app
 from src.models import Post, User
@@ -76,26 +77,39 @@ def setup_database():
     Base.metadata.drop_all(bind=engine)
     app.dependency_overrides.pop(get_db, None)
 
-def test_get_news_endpoint():
+def test_get_news_endpoint_requires_auth():
+    # Ohne Authentifizierung -> 401
     response = client.get("/api/news")
-    assert response.status_code == 200
-    data = response.json()
+    assert response.status_code == 401
+
+    # Mit gültigem Token -> 200
+    token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
+    response_auth = client.get("/api/news", headers={"Authorization": f"Bearer {token}"})
+    assert response_auth.status_code == 200
+    data = response_auth.json()
     assert len(data) == 2  # Beide sind is_news = True
     assert data[0]["is_pinned"] is True
     assert data[0]["title"] == "¿Qué significa seguir siendo humanos en la era de la IA?"
     assert data[1]["title"] == "Búsqueda Laboral: Recepcionista"
 
-def test_get_events_endpoint():
+def test_get_events_endpoint_requires_auth():
+    # Ohne Authentifizierung -> 401
     response = client.get("/api/events")
-    assert response.status_code == 200
-    data = response.json()
+    assert response.status_code == 401
+
+    # Mit gültigem Token -> 200
+    token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
+    response_auth = client.get("/api/events", headers={"Authorization": f"Bearer {token}"})
+    assert response_auth.status_code == 200
+    data = response_auth.json()
     assert len(data) == 1  # Nur der Event
     assert data[0]["title"] == "¿Qué significa seguir siendo humanos en la era de la IA?"
     assert data[0]["location"] == "Auditorio Edificio 1"
     assert data[0]["has_registration"] is True
 
 def test_filter_by_group():
-    response = client.get("/api/news?group=TIE")
+    token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
+    response = client.get("/api/news?group=TIE", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2

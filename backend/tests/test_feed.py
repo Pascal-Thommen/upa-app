@@ -139,8 +139,20 @@ def test_feed_response_structure():
     assert isinstance(data["posts"], list)
 
 
-def test_feed_urgent_banners_filtering():
+def test_feed_unauthenticated_returns_only_instagram():
+    # Ohne Login dürfen absolut keine internen Eilmeldungen oder Events ausgeliefert werden
     response = client.get("/api/v1/feed")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["urgent_banners"]) == 0
+    assert len(data["posts"]) == 1
+    assert data["posts"][0]["post_type"] == "INSTAGRAM"
+    assert data["posts"][0]["title"] == "Búsqueda Laboral: Recepcionista"
+
+
+def test_feed_urgent_banners_filtering():
+    token = create_access_token({"sub": "2", "email": "student@upa.edu.py", "role": "user"})
+    response = client.get("/api/v1/feed", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     data = response.json()
 
@@ -152,7 +164,8 @@ def test_feed_urgent_banners_filtering():
 
 
 def test_feed_posts_contains_instagram_and_events():
-    response = client.get("/api/v1/feed")
+    token = create_access_token({"sub": "2", "email": "student@upa.edu.py", "role": "user"})
+    response = client.get("/api/v1/feed", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     data = response.json()
 
@@ -175,14 +188,15 @@ def test_feed_posts_contains_instagram_and_events():
 
 
 def test_feed_group_filtering():
+    token = create_access_token({"sub": "2", "email": "student@upa.edu.py", "role": "user"})
     # Filter nach TIE: Muss Charla (TIE) und Instagram (ALL) liefern
-    response = client.get("/api/v1/feed?group=TIE")
+    response = client.get("/api/v1/feed?group=TIE", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     posts = response.json()["posts"]
     assert len(posts) == 2
 
     # Filter nach nicht existierender Gruppe MECHATRONIK: Muss nur ALL (Instagram) liefern
-    response_other = client.get("/api/v1/feed?group=MECHATRONIK")
+    response_other = client.get("/api/v1/feed?group=MECHATRONIK", headers={"Authorization": f"Bearer {token}"})
     assert response_other.status_code == 200
     posts_other = response_other.json()["posts"]
     assert len(posts_other) == 1
@@ -190,13 +204,14 @@ def test_feed_group_filtering():
 
 
 def test_feed_pagination():
-    response = client.get("/api/v1/feed?limit=1&offset=0")
+    token = create_access_token({"sub": "2", "email": "student@upa.edu.py", "role": "user"})
+    response = client.get("/api/v1/feed?limit=1&offset=0", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     data = response.json()
     assert len(data["posts"]) == 1
     assert data["posts"][0]["title"] == "Charla IA: Daniel Romero"
 
-    response_page2 = client.get("/api/v1/feed?limit=1&offset=1")
+    response_page2 = client.get("/api/v1/feed?limit=1&offset=1", headers={"Authorization": f"Bearer {token}"})
     assert response_page2.status_code == 200
     data_page2 = response_page2.json()
     assert len(data_page2["posts"]) == 1

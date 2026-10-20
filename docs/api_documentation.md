@@ -78,8 +78,11 @@ Retorna el perfil del usuario autenticado actualmente.
 ## 3. Feed del Campus y Noticias
 
 ### `GET /api/v1/feed`
-Retorna el feed institucional consolidado (avisos de emergencia en formato banner superior y publicaciones cronológicas, incluyendo Instagram @upalemana).
+Retorna el feed institucional consolidado:
+* **Modo Público (Sin Autenticación):** Si no se envía token de autorización, entrega exclusivamente los posts públicos de Instagram (@upalemana). Seguro para mostrar en pantallas previas al login.
+* **Modo Autenticado:** Si se envía `Authorization: Bearer <access_token>`, entrega el feed completo incluyendo avisos de emergencia (banners superiores), noticias internas y eventos de la comunidad UPA.
 
+* **Encabezado (Opcional):** `Authorization: Bearer <access_token>`
 * **Parámetros de Consulta (Query):**
   * `group` (opcional): Filtro por carrera o grupo (ej. `TIE`)
   * `limit` (opcional, por defecto: 20): Cantidad de elementos
@@ -126,8 +129,9 @@ Retorna el feed institucional consolidado (avisos de emergencia en formato banne
 ```
 
 ### `GET /api/news`
-Retorna la lista de todas las noticias institucionales.
-
+Retorna la lista de todas las noticias y avisos institucionales.
+* **Seguridad:** Requiere autenticación institucional obligatoria.
+* **Encabezado:** `Authorization: Bearer <access_token>`
 * **Parámetros de Consulta:** `group`, `limit`, `offset`
 
 ---
@@ -136,10 +140,13 @@ Retorna la lista de todas las noticias institucionales.
 
 ### `GET /api/events`
 Retorna todos los eventos y conferencias académicas ordenados cronológicamente.
-
+* **Seguridad:** Requiere autenticación institucional obligatoria.
+* **Encabezado:** `Authorization: Bearer <access_token>`
 * **Parámetros de Consulta:**
   * `group` (opcional): Filtro por carrera (ej. `TIE`)
-  * `from_date` (opcional): Fecha inicial (ISO 8601)
+  * `upcoming_only` (opcional, por defecto: `true`): Filtrar solo eventos futuros
+  * `limit` (opcional, por defecto: 20)
+  * `offset` (opcional, por defecto: 0)
 
 **Respuesta (200 OK):**
 ```json

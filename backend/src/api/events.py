@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 
+from ..auth import get_current_user
 from ..database import get_db
-from ..models import Post
+from ..models import Post, User
 from ..schemas.event import EventResponse
 
 router = APIRouter(prefix="/api/events", tags=["Events"])
@@ -16,10 +17,12 @@ def get_events(
     upcoming_only: bool = Query(True, description="Nur zukünftige Termine anzeigen"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Liefert alle Kalendereinträge und Veranstaltungen.
+    Geschützt: Nur authentifizierte Benutzer mit gültigem Session Token.
     Sortiert chronologisch nach Veranstaltungsbeginn (event_start).
     """
     query = db.query(Post).filter(Post.is_event.is_(True))
