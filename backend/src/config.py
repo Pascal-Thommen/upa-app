@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     
+    SOCIABLEKIT_EMBED_ID: str = ""
+    SOCIABLEKIT_API_URL: str = "https://data.sociablekit.com/api/v1/posts"
+    
     DATABASE_URL: str = "postgresql://upa_user:upa_password@postgres:5432/upa_app"
 
     @property

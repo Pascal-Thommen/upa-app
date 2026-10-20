@@ -39,6 +39,7 @@ class NewsResponse(BaseModel):
     post_type: str
     is_pinned: bool
     target_groups: List[str]
+    instagram_id: Optional[str] = None
     image_url: Optional[str] = None
     permalink: Optional[str] = None
     created_at: datetime
@@ -57,6 +58,7 @@ class NewsResponse(BaseModel):
             post_type=post.post_type,
             is_pinned=post.is_pinned,
             target_groups=post.target_groups or ["ALL"],
+            instagram_id=post.instagram_id,
             image_url=img,
             permalink=post.permalink,
             created_at=post.created_at,
