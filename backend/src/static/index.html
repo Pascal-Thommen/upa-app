@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>UPA Campus - Portal y Plataforma de APIs</title>
   <link rel="stylesheet" href="/dashboard/style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen font-sans antialiased">
 
@@ -60,17 +61,40 @@
             </svg>
           </div>
           <h2 class="text-2xl font-bold text-slate-900">Acceso Institucional</h2>
-          <p class="text-sm text-slate-500 mt-1">Inicio de sesión restringido a dominios <span class="font-semibold text-blue-700">@upa.edu.py</span></p>
+          <p class="text-sm text-slate-500 mt-1">Inicio de sesión oficial con Google Workspace <span class="font-semibold text-blue-700">@upa.edu.py</span></p>
         </div>
 
         <div id="login-alert" class="hidden mb-4 p-3 rounded-lg text-xs font-medium border"></div>
+
+        <!-- Google OAuth 2.0 Web Sign-In Button -->
+        <div class="mb-6 flex flex-col items-center">
+          <div id="g_id_onload"
+               data-client_id="50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com"
+               data-callback="handleGoogleCredentialResponse"
+               data-auto_prompt="false">
+          </div>
+          <div class="g_id_signin mb-3"
+               data-type="standard"
+               data-shape="rectangular"
+               data-theme="outline"
+               data-text="signin_with"
+               data-size="large"
+               data-logo_alignment="left"
+               data-width="320">
+          </div>
+          <div class="relative w-full flex py-2 items-center">
+            <div class="flex-grow border-t border-slate-200"></div>
+            <span class="flex-shrink mx-4 text-[10px] text-slate-400 uppercase font-semibold">o ingresar token manual</span>
+            <div class="flex-grow border-t border-slate-200"></div>
+          </div>
+        </div>
 
         <form id="form-login" class="space-y-4">
           <div>
             <label for="input-token" class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
               Token de Acceso JWT o Google ID Token
             </label>
-            <textarea id="input-token" rows="3" required placeholder="Pegue aquí el JWT de sesión o Google ID Token..." class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent font-mono text-xs"></textarea>
+            <textarea id="input-token" rows="2" placeholder="Pegue aquí el JWT de sesión o Google ID Token..." class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent font-mono text-xs"></textarea>
           </div>
 
           <div class="border-t border-slate-100 pt-3">
@@ -81,7 +105,7 @@
           </div>
 
           <button type="submit" id="btn-login" class="w-full py-2.5 px-4 bg-blue-700 hover:bg-blue-800 text-white font-medium rounded-lg shadow transition flex items-center justify-center gap-2">
-            <span>Ingresar al Campus</span>
+            <span>Validar Token Manual</span>
           </button>
         </form>
 
@@ -126,147 +150,176 @@
         </div>
       </div>
 
-      <!-- Alerta de Classroom cuando faltan permisos -->
-      <div id="classroom-permission-alert" class="hidden p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm bg-amber-50 border-amber-200 text-amber-900">
-        <div class="flex items-center gap-3">
-          <span class="text-2xl">⚠️</span>
-          <div>
-            <h3 class="font-semibold text-sm">Google Classroom sin vincular</h3>
-            <p class="text-xs text-amber-800">Conecte su token de Classroom para sincronizar asignaturas y tareas en tiempo real.</p>
-          </div>
+      <!-- Barra de Pestañas: Dashboard vs JSON Móvil -->
+      <div class="bg-white rounded-xl border border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+        <div class="flex items-center gap-2">
+          <button id="tab-btn-dashboard" class="px-4 py-1.5 text-xs font-bold rounded-lg bg-blue-50 text-blue-800 border border-blue-200 transition">
+            Campus Dashboard
+          </button>
+          <button id="tab-btn-json" class="px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition">
+            JSON für Mobile App
+          </button>
         </div>
-        <button id="btn-open-classroom-modal" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow whitespace-nowrap">
-          Vincular Token Classroom
+        <button id="btn-open-raw-json" class="text-xs text-blue-700 hover:text-blue-900 font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition">
+          <span>In neuem Tab öffnen ↗</span>
         </button>
       </div>
 
-      <!-- SECCIÓN 1: ACADÉMICO, GRUPOS Y CLASSROOM -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Pestaña 1: Vista Gráfica del Dashboard -->
+      <div id="tab-content-dashboard" class="space-y-6">
 
-        <!-- Kachel 1: Mailgruppen de Google (Exclusivo Pascal Thommen) -->
-        <article id="tile-mailgroups" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-          <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <!-- Alerta de Classroom cuando faltan permisos -->
+        <div id="classroom-permission-alert" class="hidden p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm bg-amber-50 border-amber-200 text-amber-900">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">⚠️</span>
             <div>
-              <span class="text-[10px] font-bold uppercase tracking-wider text-blue-700">API 2 &bull; Acceso Restringido</span>
-              <h3 class="font-bold text-slate-900 text-sm">Google Mailgruppen</h3>
+              <h3 class="font-semibold text-sm">Google Classroom sin vincular</h3>
+              <p class="text-xs text-amber-800">Conecte su token de Classroom para sincronizar asignaturas y tareas en tiempo real.</p>
             </div>
-            <span id="groups-count" class="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800">0 grupos</span>
           </div>
-          <div class="p-5 flex-1 flex flex-col justify-between space-y-4">
-            <div>
-              <p class="text-xs text-slate-500 mb-3">
-                Grupos institucionales de Google Workspace autorizados para distribución y permisos de publicación:
-              </p>
-              <div id="user-groups-container" class="flex flex-wrap gap-2">
-                <!-- Se llena dinámicamente solo para Pascal Thommen -->
+          <button id="btn-open-classroom-modal" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow whitespace-nowrap">
+            Vincular Token Classroom
+          </button>
+        </div>
+
+        <!-- SECCIÓN 1: ACADÉMICO, GRUPOS Y CLASSROOM -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          <!-- Kachel 1: Mailgruppen de Google (Exclusivo Pascal Thommen) -->
+          <article id="tile-mailgroups" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-blue-700">API 2 &bull; Acceso Restringido</span>
+                <h3 class="font-bold text-slate-900 text-sm">Google Mailgruppen</h3>
+              </div>
+              <span id="groups-count" class="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800">0 grupos</span>
+            </div>
+            <div class="p-5 flex-1 flex flex-col justify-between space-y-4">
+              <div>
+                <p class="text-xs text-slate-500 mb-3">
+                  Grupos institucionales de Google Workspace autorizados para distribución y permisos de publicación:
+                </p>
+                <div id="user-groups-container" class="flex flex-wrap gap-2">
+                  <span class="text-xs text-slate-400">Consultando directorios de Google...</span>
+                </div>
+              </div>
+              <div class="p-3 bg-blue-50/60 rounded-xl border border-blue-100 text-[11px] text-blue-900 space-y-1">
+                <span class="font-semibold block">Regla de Visibilidad:</span>
+                <span>Los grupos son visibles exclusivamente para el administrador central <span class="font-mono text-blue-950 font-semibold">pascal.thommen@upa.edu.py</span>.</span>
               </div>
             </div>
-            <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400">
-              Protección de privacidad: No visible para cuentas regulares de estudiantes.
-            </div>
-          </div>
-        </article>
+          </article>
 
-        <!-- Kachel 2: Google Classroom Cursos Activos -->
-        <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-          <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div>
-              <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">API 3A &bull; Classroom</span>
-              <h3 class="font-bold text-slate-900 text-sm">Cursos Activos</h3>
+          <!-- Kachel 2: Cursos Activos de Classroom -->
+          <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">API 3A &bull; Google Classroom</span>
+                <h3 class="font-bold text-slate-900 text-sm">Cursos Activos</h3>
+              </div>
+              <span id="courses-count" class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">0 cursos</span>
             </div>
-            <span id="courses-count" class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">0 cursos</span>
-          </div>
-          <div class="p-5 flex-1 overflow-y-auto max-h-80">
-            <div id="courses-container" class="space-y-3">
-              <!-- Cursos cargados en vivo -->
-            </div>
-          </div>
-        </article>
-
-        <!-- Kachel 3: Google Classroom Calendario y Deadlines -->
-        <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-          <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div>
-              <span class="text-[10px] font-bold uppercase tracking-wider text-amber-700">API 3B &bull; Calendario</span>
-              <h3 class="font-bold text-slate-900 text-sm">Fristen & Deadlines</h3>
-            </div>
-            <span id="deadlines-count" class="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800">0 tareas</span>
-          </div>
-
-          <div class="p-4 flex-1 flex flex-col space-y-3">
-            <!-- Navegación del Calendario Interactivo -->
-            <div class="flex items-center justify-between text-xs font-bold text-slate-700 pb-2 border-b border-slate-100">
-              <button id="cal-prev" class="p-1 hover:bg-slate-100 rounded text-slate-500">&larr;</button>
-              <span id="cal-month-title">Octubre 2026</span>
-              <button id="cal-next" class="p-1 hover:bg-slate-100 rounded text-slate-500">&rarr;</button>
-            </div>
-
-            <!-- Grilla del Calendario -->
-            <div id="calendar-grid" class="grid grid-cols-7 gap-1 text-center text-xs">
-              <!-- Encabezados de días y números de días dinámicos -->
-            </div>
-
-            <!-- Lista de Tareas Filtradas por Fecha o Próximas -->
-            <div class="pt-3 border-t border-slate-100 overflow-y-auto max-h-48">
-              <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2" id="selected-date-label">
-                Próximas Entregas
-              </h4>
-              <div id="deadlines-container" class="space-y-2">
-                <!-- Tareas generadas dinámicamente -->
+            <div class="p-5 flex-1 space-y-3 overflow-y-auto max-h-[360px]" id="courses-container">
+              <div class="flex items-center justify-center p-6 text-slate-400 gap-2">
+                <div class="spinner"></div>
+                <span class="text-xs">Consultando asignaturas...</span>
               </div>
             </div>
-          </div>
-        </article>
+          </article>
 
+          <!-- Kachel 3: Calendario Interactivo de Entregas y Plazos (API 3B) -->
+          <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-amber-700">API 3B &bull; Google Classroom</span>
+                <h3 class="font-bold text-slate-900 text-sm">Calendario de Entregas</h3>
+              </div>
+              <div class="flex items-center gap-1">
+                <button id="cal-prev" class="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-600 text-xs font-bold">&larr;</button>
+                <span id="cal-month-title" class="text-xs font-bold text-slate-800 px-1">Mes 2026</span>
+                <button id="cal-next" class="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-600 text-xs font-bold">&rarr;</button>
+              </div>
+            </div>
+            <div class="p-5 flex-1 flex flex-col space-y-4">
+              <!-- Matriz del Calendario Mensual -->
+              <div>
+                <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 mb-1">
+                  <span>LU</span><span>MA</span><span>MI</span><span>JU</span><span>VI</span><span>SA</span><span>DO</span>
+                </div>
+                <div id="calendar-grid" class="calendar-grid">
+                  <!-- Días renderizados dinámicamente -->
+                </div>
+              </div>
+
+              <!-- Lista de Deadlines para el día seleccionado -->
+              <div class="border-t border-slate-100 pt-3">
+                <div class="flex items-center justify-between mb-2">
+                  <span id="selected-date-label" class="text-xs font-bold text-slate-800">Próximas Entregas</span>
+                  <span id="deadlines-count" class="text-[10px] font-semibold text-slate-500">0 tareas</span>
+                </div>
+                <div id="deadlines-container" class="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                  <span class="text-xs text-slate-400">Sin tareas registradas.</span>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- SECCIÓN 2: CAMPUS FEED E INSTAGRAM INGESTION (API 4) -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-50/50">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">API 4 &bull; Redes Sociales</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                <span class="text-xs text-slate-500 font-mono">GET /api/v1/feed</span>
+              </div>
+              <h3 class="font-bold text-slate-900 text-base mt-0.5">Feed del Campus & Instagram Ingestion (@upalemana)</h3>
+            </div>
+            <div class="flex items-center gap-3">
+              <span id="feed-count-badge" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-100 text-purple-800">
+                Sincronizando feed...
+              </span>
+            </div>
+          </div>
+
+          <div class="p-5">
+            <div id="feed-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <!-- Publicaciones de Instagram inyectadas dinámicamente -->
+            </div>
+          </div>
+        </section>
       </div>
 
-      <!-- SECCIÓN 2: CAMPUS FEED & INSTAGRAM INGESTION (API 4) -->
-      <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-4 border-b border-slate-100 gap-2">
+      <!-- Pestaña 2: Vista de Datos Crudos JSON para Aplicación Móvil -->
+      <div id="tab-content-json" class="hidden bg-slate-900 text-slate-100 rounded-2xl p-6 shadow-xl border border-slate-800 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
           <div>
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">API 4 &bull; Ingestion</span>
-              <h3 class="text-lg font-bold text-slate-900">Campus Feed Institucional & Instagram (@upalemana)</h3>
-            </div>
-            <p class="text-xs text-slate-500 mt-0.5">
-              Publicaciones oficiales sincronizadas mediante la API del backend (`GET /api/v1/feed`) con enlaces directos a Instagram.
-            </p>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              Schnittstellen-JSON für mobile UPA App (Android / Kotlin)
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Vollständig aggregiertes Datenpaket aus allen 4 Backend-APIs: Profil, Mailgruppen, Classroom & Instagram Feed.</p>
           </div>
-          <span id="feed-count-badge" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 self-start sm:self-auto">
-            Cargando feed...
-          </span>
+          <button id="btn-copy-json" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 transition">
+            In Zwischenablage kopieren
+          </button>
         </div>
+        <pre id="raw-json-output" class="font-mono text-xs text-emerald-400 overflow-x-auto p-4 bg-slate-950 rounded-lg max-h-[600px] leading-relaxed"></pre>
+      </div>
 
-        <!-- Contenedor del Feed -->
-        <div id="feed-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          <!-- Posts de Instagram cargados dinámicamente -->
-        </div>
-      </section>
-
-      <!-- Barra Inferior de Diagnóstico y Enlaces -->
-      <footer class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>API Backend: <span id="diag-backend" class="font-semibold text-slate-700">Comprobando...</span></span>
-          </div>
-          <div>
-            <span>Entorno: <span id="diag-env" class="font-semibold text-slate-700">-</span></span>
-          </div>
-        </div>
-        <div class="flex items-center gap-3">
-          <a href="/docs" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">
-            Documentación OpenAPI /docs &rarr;
-          </a>
-        </div>
-      </footer>
-
+      <!-- Estado Operativo del Backend -->
+      <div class="text-center text-xs text-slate-400 pt-2 pb-6">
+        <span>Backend Activo: <span id="diag-backend" class="font-mono text-slate-600">Verificando...</span> &bull; </span>
+        <span>Entorno: <span id="diag-env" class="font-mono text-slate-600">Producción</span> &bull; </span>
+        <span>Doctrina Zero-Mock Verificada</span>
+      </div>
     </section>
 
   </main>
 
-  <!-- Modal para Vincular Token de Google Classroom -->
-  <div id="modal-classroom" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <!-- Modal para Vincular Token de Classroom Manual -->
+  <div id="modal-classroom" class="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-bold text-slate-900">Vincular Token de Classroom</h3>

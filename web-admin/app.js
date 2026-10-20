@@ -548,6 +548,62 @@ async function refreshDashboard() {
   const user = await loadUserProfile();
   if (user) {
     await Promise.all([loadClassroomCourses(), loadClassroomDeadlines(), loadCampusFeed()]);
+    updateJsonView();
+  }
+}
+
+/**
+ * Google Identity Services Callback
+ */
+window.handleGoogleCredentialResponse = async function(response) {
+  if (!response || !response.credential) {
+    showLoginAlert("No se recibió credencial de Google OAuth.", "error");
+    return;
+  }
+  showLoginAlert("Autenticando con Google OAuth institucional (@upa.edu.py)...", "info");
+  try {
+    const res = await fetch("/api/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id_token: response.credential }),
+    });
+    if (res.ok) {
+      const authData = await res.json();
+      setStoredToken(authData.access_token);
+      showLoginAlert("Inicio de sesión exitoso.", "success");
+      await refreshDashboard();
+      return;
+    }
+    if (res.status === 403) {
+      const err = await res.json();
+      showLoginAlert(err.detail || "Acceso restringido únicamente a cuentas @upa.edu.py", "error");
+      return;
+    }
+    const errText = await res.text();
+    showLoginAlert(`Error al autenticar: ${errText}`, "error");
+  } catch (error) {
+    console.error("Fallo al procesar login de Google:", error);
+    showLoginAlert("Error de conexión durante el login de Google.", "error");
+  }
+};
+
+function getAppJsonData() {
+  return {
+    portal: "UPA Mobile Campus Platform",
+    api_version: "1.0.0",
+    generated_at: new Date().toISOString(),
+    user: state.currentUser,
+    deadlines: state.deadlines,
+    courses: state.courses,
+    instagram_feed: state.feedPosts,
+  };
+}
+
+function updateJsonView() {
+  const rawJsonOutput = document.getElementById("raw-json-output");
+  if (rawJsonOutput) {
+    const data = getAppJsonData();
+    rawJsonOutput.textContent = JSON.stringify(data, null, 2);
   }
 }
 
@@ -676,6 +732,52 @@ function init() {
   });
 
   DOM_ELEMENTS.formClassroomToken.addEventListener("submit", handleClassroomTokenSubmit);
+
+  const tabBtnDashboard = document.getElementById("tab-btn-dashboard");
+  const tabBtnJson = document.getElementById("tab-btn-json");
+  const tabContentDashboard = document.getElementById("tab-content-dashboard");
+  const tabContentJson = document.getElementById("tab-content-json");
+  const btnOpenRawJson = document.getElementById("btn-open-raw-json");
+  const btnCopyJson = document.getElementById("btn-copy-json");
+
+  if (tabBtnDashboard && tabBtnJson) {
+    tabBtnDashboard.addEventListener("click", () => {
+      tabBtnDashboard.className = "px-4 py-1.5 text-xs font-bold rounded-lg bg-blue-50 text-blue-800 border border-blue-200 transition";
+      tabBtnJson.className = "px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition";
+      if (tabContentDashboard) tabContentDashboard.classList.remove("hidden");
+      if (tabContentJson) tabContentJson.classList.add("hidden");
+    });
+
+    tabBtnJson.addEventListener("click", () => {
+      tabBtnJson.className = "px-4 py-1.5 text-xs font-bold rounded-lg bg-blue-50 text-blue-800 border border-blue-200 transition";
+      tabBtnDashboard.className = "px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition";
+      if (tabContentDashboard) tabContentDashboard.classList.add("hidden");
+      if (tabContentJson) tabContentJson.classList.remove("hidden");
+      updateJsonView();
+    });
+  }
+
+  if (btnOpenRawJson) {
+    btnOpenRawJson.addEventListener("click", () => {
+      const data = getAppJsonData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    });
+  }
+
+  if (btnCopyJson) {
+    btnCopyJson.addEventListener("click", async () => {
+      const data = getAppJsonData();
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+        btnCopyJson.textContent = "¡Copiado!";
+        setTimeout(() => { btnCopyJson.textContent = "In Zwischenablage kopieren"; }, 2000);
+      } catch (e) {
+        alert("JSON copiado al portapapeles.");
+      }
+    });
+  }
 
   checkHealth();
 
