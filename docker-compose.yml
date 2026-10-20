@@ -39,6 +39,8 @@ services:
       ALLOWED_EMAIL_DOMAIN: upa.edu.py
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend/secrets:/app/secrets:ro
     networks:
       - upa-network
 

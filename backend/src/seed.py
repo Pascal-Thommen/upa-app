@@ -42,7 +42,7 @@ def seed_database():
                 instagram_id="insta_recepcionista_2026",
                 media_type="IMAGE",
                 media_url="https://upa.edu.py/static/images/recepcionista_post.png",
-                permalink="https://www.instagram.com/upalemana",
+                permalink="https://www.instagram.com/p/DerQoIzjtYf/",
                 author_id=admin.id,
                 created_at=datetime.now(UTC) - timedelta(days=1)
             )

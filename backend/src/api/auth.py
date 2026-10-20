@@ -40,11 +40,11 @@ class AuthResponse(BaseModel):
 def _filter_user_groups_for_privacy(email: str, groups: list[str] | None) -> list[str]:
     """
     Erzwingt die Datenschutz- und Berechtigungs-Vorgabe:
-    Normale Studenten duerfen ihre Mailgruppen nicht direkt sehen.
-    Die Gruppenanzeige ist strikt auf das Konto pascal.thommen@upa.edu.py beschraenkt.
+    Normale Studenten duerfen ihre internen Mailverteiler nicht direkt einsehen.
+    Die vollstaendige Gruppenanzeige ist fuer das Administratoren-Konto pascal.thommen@upa.edu.py freigeschaltet.
     """
     if email.lower() == "pascal.thommen@upa.edu.py":
-        return groups or ["ALL"]
+        return groups or []
     return []
 
 def _filter_google_groups_for_privacy(email: str, google_groups: list[dict] | None) -> list[GoogleGroupDetail]:
