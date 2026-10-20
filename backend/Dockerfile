@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 # Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
 
@@ -18,8 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Create a non-privileged user to run the application
 RUN addgroup --system appgroup && adduser --system --group appuser
 
-# Copy application source code
+# Copy application source code and tests
 COPY src/ ./src
+COPY tests/ ./tests
 
 # Change ownership to the non-root user
 RUN chown -R appuser:appgroup /app
