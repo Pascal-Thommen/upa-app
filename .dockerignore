@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+venv
+android/
+web-admin/
+docs/
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+.env
+.env.*

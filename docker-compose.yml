@@ -1,0 +1,98 @@
+# =============================================================================
+# UPA App - Containerized Server Infrastructure
+# Modular Docker Compose Stack for Campus Platform Backend & Future Services
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Database Service: PostgreSQL 16 Relational Storage
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: upa-app-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-upa_db}
+      POSTGRES_USER: ${POSTGRES_USER:-upa_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-upa_secure_pass_2026}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-upa_user} -d ${POSTGRES_DB:-upa_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - upa-network
+
+  # ---------------------------------------------------------------------------
+  # API Backend Service: Python FastAPI REST API
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: upa-app-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      PORT: 8000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-upa_user}:${POSTGRES_PASSWORD:-upa_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-upa_db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
+    ports:
+      - "${PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - upa-network
+
+  # ---------------------------------------------------------------------------
+  # Modular Extension: Web Admin & Marketing Portal (Desktop Frontend)
+  # Activate with: docker compose --profile admin up
+  # ---------------------------------------------------------------------------
+  web-admin:
+    profiles:
+      - admin
+      - full
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+    container_name: upa-app-web-admin
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8000
+      PORT: 3000
+    ports:
+      - "${WEB_ADMIN_PORT:-3000}:3000"
+    networks:
+      - upa-network
+
+# -----------------------------------------------------------------------------
+# Persistent Volumes (ACID Compliance & Durability)
+# -----------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: upa_app_postgres_data
+
+# -----------------------------------------------------------------------------
+# Isolated Bridge Network
+# -----------------------------------------------------------------------------
+networks:
+  upa-network:
+    name: upa_app_network
+    driver: bridge
