@@ -1,16 +1,16 @@
 """Tests for Instagram and Social Feed ingestion service."""
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone, timedelta
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
-
-from src.main import app
-from src.database import Base, get_db
-from src.models import Post, User
 from src.auth import create_access_token
+from src.database import Base, get_db
+from src.main import app
+from src.models import Post, User
 from src.services.instagram import InstagramSyncService, NormalizedSocialPost
 
 # In-Memory SQLite Engine für isolierte Tests
@@ -120,7 +120,7 @@ def test_sync_posts_persistence_and_idempotence():
         media_type="IMAGE",
         media_url="https://upa.edu.py/static/heidelberg.jpg",
         permalink="https://instagram.com/p/fresh42/",
-        timestamp=datetime.now(timezone.utc)
+        timestamp=datetime.now(UTC)
     )
 
     # 1. Erster Sync: Erstellt den Post
@@ -146,7 +146,7 @@ def test_sync_posts_persistence_and_idempotence():
         media_type="CAROUSEL_ALBUM",
         media_url="https://upa.edu.py/static/heidelberg_v2.jpg",
         permalink="https://instagram.com/p/fresh42_v2/",
-        timestamp=datetime.now(timezone.utc)
+        timestamp=datetime.now(UTC)
     )
 
     res2 = service.sync_posts(db, [updated_item], author_id=1)

@@ -1,7 +1,8 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from datetime import UTC, datetime
+from typing import Any
+
 import httpx
 from sqlalchemy.orm import Session
 
@@ -18,7 +19,7 @@ class NormalizedSocialPost:
     media_type: str  # IMAGE, VIDEO, CAROUSEL_ALBUM
     media_url: str
     permalink: str
-    timestamp: Optional[datetime] = None
+    timestamp: datetime | None = None
 
 
 class InstagramSyncService:
@@ -47,7 +48,7 @@ class InstagramSyncService:
             return first_line[:197].rsplit(" ", 1)[0] + "..."
         return first_line
 
-    def parse_graph_api_item(self, item: Dict[str, Any]) -> NormalizedSocialPost:
+    def parse_graph_api_item(self, item: dict[str, Any]) -> NormalizedSocialPost:
         """Parst ein einzelnes Element aus der Instagram Graph API."""
         media_id = str(item.get("id", ""))
         caption = item.get("caption") or ""
@@ -62,7 +63,7 @@ class InstagramSyncService:
                 # ISO Format parsen: '2026-10-20T12:00:00+0000' oder '2026-10-20T12:00:00Z'
                 timestamp = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
             except Exception:
-                timestamp = datetime.now(timezone.utc)
+                timestamp = datetime.now(UTC)
 
         return NormalizedSocialPost(
             instagram_id=media_id,
@@ -73,7 +74,7 @@ class InstagramSyncService:
             timestamp=timestamp,
         )
 
-    def parse_sociablekit_item(self, item: Dict[str, Any]) -> NormalizedSocialPost:
+    def parse_sociablekit_item(self, item: dict[str, Any]) -> NormalizedSocialPost:
         """Parst ein Element aus dem SociableKIT Widget JSON Feed."""
         media_id = str(item.get("post_id") or item.get("id") or "")
         caption = item.get("content") or item.get("caption") or item.get("message") or ""
@@ -87,7 +88,7 @@ class InstagramSyncService:
             try:
                 timestamp = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
             except Exception:
-                timestamp = datetime.now(timezone.utc)
+                timestamp = datetime.now(UTC)
 
         return NormalizedSocialPost(
             instagram_id=media_id,
@@ -98,7 +99,7 @@ class InstagramSyncService:
             timestamp=timestamp,
         )
 
-    async def fetch_from_graph_api(self, token: str, account_id: str = "") -> List[NormalizedSocialPost]:
+    async def fetch_from_graph_api(self, token: str, account_id: str = "") -> list[NormalizedSocialPost]:
         """
         Ruft neue Beiträge über die offizielle Instagram Graph API ab.
         Expliziter Timeout (10s) und Fehlerbehandlung für Statuscodes.
@@ -141,7 +142,7 @@ class InstagramSyncService:
             logger.error(f"[Instagram API Fehler] {exc}")
             return []
 
-    async def fetch_from_sociablekit(self, embed_id: str) -> List[NormalizedSocialPost]:
+    async def fetch_from_sociablekit(self, embed_id: str) -> list[NormalizedSocialPost]:
         """
         Ruft Beiträge über die SociableKIT Widget JSON API ab.
         Expliziter Timeout (10s) und Netzwerkresilienz.
@@ -173,9 +174,9 @@ class InstagramSyncService:
     def sync_posts(
         self,
         db: Session,
-        posts_data: List[NormalizedSocialPost],
-        author_id: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        posts_data: list[NormalizedSocialPost],
+        author_id: int | None = None,
+    ) -> dict[str, Any]:
         """
         Speichert oder aktualisiert die normalisierten Instagram-Posts in der Tabelle `posts`.
         Idempotent (Upsert anhand von `instagram_id`) und atomar (ACID).
@@ -204,7 +205,7 @@ class InstagramSyncService:
                     existing.media_type = item.media_type
                     existing.media_url = item.media_url
                     existing.permalink = item.permalink
-                    existing.updated_at = datetime.now(timezone.utc)
+                    existing.updated_at = datetime.now(UTC)
                     updated_count += 1
                 else:
                     title = self.extract_title_from_caption(item.caption)
@@ -222,7 +223,7 @@ class InstagramSyncService:
                         media_url=item.media_url,
                         permalink=item.permalink,
                         author_id=author_id,
-                        created_at=item.timestamp or datetime.now(timezone.utc),
+                        created_at=item.timestamp or datetime.now(UTC),
                     )
                     db.add(new_post)
                     created_count += 1
@@ -239,7 +240,7 @@ class InstagramSyncService:
             logger.error(f"[Instagram DB Sync Fehler] Rollback ausgeführt: {e}")
             raise e
 
-    async def sync_instagram(self, db: Session, author_id: Optional[int] = None) -> Dict[str, Any]:
+    async def sync_instagram(self, db: Session, author_id: int | None = None) -> dict[str, Any]:
         """
         Führt den gesamten Synchronisationsprozess für UPA-Instagram aus.
         Wählt die konfigurierte Strategie (Graph API oder SociableKIT).

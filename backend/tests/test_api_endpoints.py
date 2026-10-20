@@ -1,13 +1,13 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from datetime import datetime, timezone, timedelta
-
-from src.main import app
 from src.database import Base, get_db
-from src.models import User, Post
+from src.main import app
+from src.models import Post, User
 
 # SQLite In-Memory Engine mit StaticPool für gemeinsamen Speicher aller Connections
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -55,7 +55,7 @@ def setup_database():
     db.add(news)
     
     # 1 Event Post (Charla IA)
-    tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
+    tomorrow = datetime.now(UTC) + timedelta(days=1)
     event = Post(
         title="¿Qué significa seguir siendo humanos en la era de la IA?",
         content="Charla magistral en auditorio...",

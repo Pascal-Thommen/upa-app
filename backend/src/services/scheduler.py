@@ -1,13 +1,13 @@
 import asyncio
 import logging
-from typing import Optional
+
+from ..config import settings
 from ..database import SessionLocal
 from .instagram import instagram_service
-from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-_scheduler_task: Optional[asyncio.Task] = None
+_scheduler_task: asyncio.Task | None = None
 
 
 async def _feed_sync_loop():
@@ -38,7 +38,7 @@ async def _feed_sync_loop():
             break
 
 
-def start_feed_sync_scheduler() -> Optional[asyncio.Task]:
+def start_feed_sync_scheduler() -> asyncio.Task | None:
     """Startet den periodischen Feed-Synchronisations-Task."""
     global _scheduler_task
     if settings.FEED_SYNC_ENABLED and _scheduler_task is None:

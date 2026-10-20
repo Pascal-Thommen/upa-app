@@ -1,15 +1,14 @@
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Dict, Any
-from sqlalchemy.orm import Session
+from typing import Any
 
-from ..database import get_db
-from ..models import User
+import httpx
+from fastapi import APIRouter, Depends
+
 from ..auth import get_current_user
+from ..models import User
 
 router = APIRouter(prefix="/api/classroom", tags=["Classroom"])
 
-@router.get("/deadlines", response_model=List[Dict[str, Any]])
+@router.get("/deadlines", response_model=list[dict[str, Any]])
 async def get_classroom_deadlines(
     current_user: User = Depends(get_current_user)
 ):

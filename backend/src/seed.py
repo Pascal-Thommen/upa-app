@@ -1,7 +1,10 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy.orm import Session
-from .database import SessionLocal, engine, Base
-from .models import User, Post
+
+from .database import Base, SessionLocal, engine
+from .models import Post, User
+
 
 def seed_database():
     """Idempotentes Seeding mit echten Campus-Daten aus Instagram und internen Vorlesungen."""
@@ -41,7 +44,7 @@ def seed_database():
                 media_url="https://upa.edu.py/static/images/recepcionista_post.png",
                 permalink="https://www.instagram.com/upalemana",
                 author_id=admin.id,
-                created_at=datetime.now(timezone.utc) - timedelta(days=1)
+                created_at=datetime.now(UTC) - timedelta(days=1)
             )
             db.add(insta_post)
             print("[Seed] Instagram Post eingepflegt: Búsqueda Laboral: Recepcionista")
@@ -50,7 +53,7 @@ def seed_database():
         event_post = db.query(Post).filter(Post.title == "¿Qué significa seguir siendo humanos en la era de la IA?").first()
         if not event_post:
             # Termin morgen um 11:00 Uhr
-            tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
+            tomorrow = datetime.now(UTC) + timedelta(days=1)
             event_start = tomorrow.replace(hour=11, minute=0, second=0, microsecond=0)
             event_end = tomorrow.replace(hour=12, minute=0, second=0, microsecond=0)
             
@@ -70,7 +73,7 @@ def seed_database():
                 send_push_notification=True,
                 reminder_minutes_before=30,
                 author_id=admin.id,
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.now(UTC)
             )
             db.add(event_post)
             print("[Seed] Event eingepflegt: Charla IA Daniel Romero")

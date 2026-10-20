@@ -1,16 +1,16 @@
 """Tests for backend campus feed endpoint."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from datetime import datetime, timezone, timedelta
-
-from src.main import app
-from src.database import Base, get_db
-from src.models import User, Post
 from src.auth import create_access_token
+from src.database import Base, get_db
+from src.main import app
+from src.models import Post, User
 
 # In-Memory SQLite Engine für isolierte Feed-Tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -62,11 +62,11 @@ def setup_feed_database():
         media_url="https://upa.edu.py/static/images/recepcionista.png",
         permalink="https://www.instagram.com/p/test123/",
         author_id=admin.id,
-        created_at=datetime.now(timezone.utc) - timedelta(hours=2)
+        created_at=datetime.now(UTC) - timedelta(hours=2)
     )
 
     # 2. Campus Event
-    tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
+    tomorrow = datetime.now(UTC) + timedelta(days=1)
     event = Post(
         id=11,
         title="Charla IA: Daniel Romero",
@@ -81,7 +81,7 @@ def setup_feed_database():
         has_registration=True,
         target_groups=["TIE"],
         author_id=admin.id,
-        created_at=datetime.now(timezone.utc) - timedelta(hours=1)
+        created_at=datetime.now(UTC) - timedelta(hours=1)
     )
 
     # 3. Emergency Banner (aktiv)
@@ -94,10 +94,10 @@ def setup_feed_database():
         is_news=True,
         is_event=False,
         is_pinned=True,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=5),
+        expires_at=datetime.now(UTC) + timedelta(hours=5),
         target_groups=["ALL"],
         author_id=admin.id,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC)
     )
 
     # 4. Emergency Banner (abgelaufen)
@@ -109,10 +109,10 @@ def setup_feed_database():
         is_news=True,
         is_event=False,
         is_pinned=False,
-        expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        expires_at=datetime.now(UTC) - timedelta(hours=1),
         target_groups=["ALL"],
         author_id=admin.id,
-        created_at=datetime.now(timezone.utc) - timedelta(days=1)
+        created_at=datetime.now(UTC) - timedelta(days=1)
     )
 
     db.add_all([insta, event, banner_active, banner_expired])

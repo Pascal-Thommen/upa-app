@@ -1,6 +1,6 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
 from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
 
 
 class FeedItemResponse(BaseModel):
@@ -8,24 +8,24 @@ class FeedItemResponse(BaseModel):
 
     id: int
     title: str
-    caption: Optional[str] = None
-    content: Optional[str] = None
-    summary: Optional[str] = None
+    caption: str | None = None
+    content: str | None = None
+    summary: str | None = None
     post_type: str
     is_news: bool
     is_event: bool
     is_pinned: bool
-    expires_at: Optional[datetime] = None
-    event_start: Optional[datetime] = None
-    event_end: Optional[datetime] = None
-    location: Optional[str] = None
+    expires_at: datetime | None = None
+    event_start: datetime | None = None
+    event_end: datetime | None = None
+    location: str | None = None
     has_registration: bool = False
-    target_groups: List[str] = ["ALL"]
-    instagram_id: Optional[str] = None
-    media_type: Optional[str] = None
-    media_url: Optional[str] = None
-    image_url: Optional[str] = None
-    permalink: Optional[str] = None
+    target_groups: list[str] = ["ALL"]
+    instagram_id: str | None = None
+    media_type: str | None = None
+    media_url: str | None = None
+    image_url: str | None = None
+    permalink: str | None = None
     created_at: datetime
     published_at: datetime
 
@@ -68,5 +68,5 @@ class FeedItemResponse(BaseModel):
 
 
 class FeedResponse(BaseModel):
-    urgent_banners: List[FeedItemResponse]
-    posts: List[FeedItemResponse]
+    urgent_banners: list[FeedItemResponse]
+    posts: list[FeedItemResponse]

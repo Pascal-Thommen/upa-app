@@ -1,15 +1,16 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import asyncio
 
-from .config import settings
-from .database import engine, Base
-from .api.news import router as news_router
-from .api.events import router as events_router
 from .api.auth import router as auth_router
 from .api.classroom import router as classroom_router
+from .api.events import router as events_router
 from .api.feed import router as feed_router
+from .api.news import router as news_router
+from .config import settings
+from .database import Base, engine
 from .seed import seed_database
 from .services.scheduler import start_feed_sync_scheduler, stop_feed_sync_scheduler
 

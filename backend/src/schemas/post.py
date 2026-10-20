@@ -1,30 +1,31 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
 
 class PostBase(BaseModel):
     title: str
-    caption: Optional[str] = None
-    content: Optional[str] = None
+    caption: str | None = None
+    content: str | None = None
     post_type: str = "MANUAL"
     is_news: bool = True
     is_event: bool = False
     is_pinned: bool = False
-    expires_at: Optional[datetime] = None
-    target_groups: List[str] = ["ALL"]
+    expires_at: datetime | None = None
+    target_groups: list[str] = ["ALL"]
     
     # Event fields
-    event_start: Optional[datetime] = None
-    event_end: Optional[datetime] = None
-    location: Optional[str] = None
+    event_start: datetime | None = None
+    event_end: datetime | None = None
+    location: str | None = None
     has_registration: bool = False
-    reminder_minutes_before: Optional[int] = 30
+    reminder_minutes_before: int | None = 30
     
     # Instagram fields
-    instagram_id: Optional[str] = None
-    media_type: Optional[str] = None
-    media_url: Optional[str] = None
-    permalink: Optional[str] = None
+    instagram_id: str | None = None
+    media_type: str | None = None
+    media_url: str | None = None
+    permalink: str | None = None
 
 class PostCreate(PostBase):
     pass
@@ -34,16 +35,16 @@ class NewsResponse(BaseModel):
 
     id: int
     title: str
-    summary: Optional[str] = None
-    content: Optional[str] = None
+    summary: str | None = None
+    content: str | None = None
     post_type: str
     is_pinned: bool
-    target_groups: List[str]
-    instagram_id: Optional[str] = None
-    image_url: Optional[str] = None
-    media_url: Optional[str] = None
-    media_type: Optional[str] = None
-    permalink: Optional[str] = None
+    target_groups: list[str]
+    instagram_id: str | None = None
+    image_url: str | None = None
+    media_url: str | None = None
+    media_type: str | None = None
+    permalink: str | None = None
     created_at: datetime
     published_at: datetime
 

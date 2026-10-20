@@ -1,5 +1,6 @@
 from src.database import Base
-from src.models import User, Post, EventRegistration, PostView, AdminAuditLog
+from src.models import AdminAuditLog, EventRegistration, Post, User
+
 
 def test_models_metadata_registered():
     """Verify that all tables are properly registered in SQLAlchemy metadata."""
