@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
 from ..database import get_db
 from ..models import Post, User
 from ..schemas.post import NewsResponse, PostCreate
 from ..auth import require_admin
+from ..services.instagram import instagram_service
 
 router = APIRouter(prefix="/api/news", tags=["News"])
 
@@ -79,3 +80,15 @@ def create_news(
     db.commit()
     db.refresh(new_post)
     return NewsResponse.from_orm_post(new_post)
+
+@router.post("/sync-instagram", status_code=status.HTTP_200_OK)
+async def sync_instagram_posts(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    Manuelle Synchronisation der Instagram-Beiträge (@upalemana).
+    Geschützt: Nur autorisierte Administratoren dürfen die Synchronisation auslösen.
+    """
+    result = await instagram_service.sync_instagram(db, author_id=admin.id)
+    return result

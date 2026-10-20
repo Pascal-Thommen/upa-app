@@ -41,6 +41,8 @@ class NewsResponse(BaseModel):
     target_groups: List[str]
     instagram_id: Optional[str] = None
     image_url: Optional[str] = None
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
     permalink: Optional[str] = None
     created_at: datetime
     published_at: datetime
@@ -60,6 +62,8 @@ class NewsResponse(BaseModel):
             target_groups=post.target_groups or ["ALL"],
             instagram_id=post.instagram_id,
             image_url=img,
+            media_url=img,
+            media_type=post.media_type,
             permalink=post.permalink,
             created_at=post.created_at,
             published_at=pub_date

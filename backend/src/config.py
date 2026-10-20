@@ -1,8 +1,9 @@
-
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     APP_ENV: str = "development"
     PORT: int = 8000
     HOST: str = "0.0.0.0"
@@ -21,12 +22,16 @@ class Settings(BaseSettings):
     
     DATABASE_URL: str = "postgresql://upa_user:upa_password@postgres:5432/upa_app"
 
+    # Social Media & Instagram Sync (@upalemana)
+    INSTAGRAM_ACCESS_TOKEN: str = ""
+    INSTAGRAM_ACCOUNT_ID: str = ""
+    SOCIABLEKIT_EMBED_ID: str = ""
+    FEED_SYNC_INTERVAL_MINUTES: int = 60
+    FEED_SYNC_ENABLED: bool = True
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
 
 settings = Settings()
