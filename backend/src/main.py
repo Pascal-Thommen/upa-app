@@ -1,21 +1,22 @@
-from fastapi import FastAPI, Depends, Query
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from typing import Optional
-from datetime import datetime, timezone
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from datetime import UTC, datetime
 
-from .config import settings
-from .database import engine, Base, get_db
-from .models import Post
-from .schemas.post import NewsResponse
-from .api.news import router as news_router
-from .api.events import router as events_router
+from fastapi import Depends, FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import desc, or_
+from sqlalchemy.orm import Session
+
 from .api.auth import router as auth_router
 from .api.classroom import router as classroom_router
+from .api.events import router as events_router
+from .api.news import router as news_router
 from .api.social import router as social_router
+from .config import settings
+from .database import Base, engine, get_db
+from .models import Post
+from .schemas.post import NewsResponse
 from .seed import seed_database
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -59,20 +60,20 @@ def health_check():
 
 @app.get("/api/v1/feed", tags=["Feed"])
 def get_feed(
-    group: Optional[str] = Query(None, description="Zielgruppe z.B. TIE"),
+    group: str | None = Query(None, description="Zielgruppe z.B. TIE"),
     db: Session = Depends(get_db)
 ):
     """Liefert Campus-News, Eilmeldungen und Posts basierend auf den Zielgruppen des Nutzers."""
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         banners = db.query(Post).filter(
-            Post.is_pinned == True,
-            or_(Post.expires_at == None, Post.expires_at > now)
+            Post.is_pinned.is_(True),
+            or_(Post.expires_at.is_(None), Post.expires_at > now)
         ).order_by(desc(Post.created_at)).all()
 
         all_posts = db.query(Post).filter(
-            Post.is_news == True,
-            or_(Post.expires_at == None, Post.expires_at > now)
+            Post.is_news.is_(True),
+            or_(Post.expires_at.is_(None), Post.expires_at > now)
         ).order_by(desc(Post.is_pinned), desc(Post.created_at)).limit(50).all()
 
         def matches_group(post_groups):

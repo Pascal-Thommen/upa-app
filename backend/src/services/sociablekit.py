@@ -1,21 +1,22 @@
 import logging
+from datetime import UTC, datetime
+from typing import Any
+
 import httpx
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
 
-from ..models import Post
 from ..config import settings
+from ..models import Post
 
 logger = logging.getLogger(__name__)
 
 
 class SociableKitService:
-    def __init__(self, embed_id: Optional[str] = None, api_url: Optional[str] = None):
+    def __init__(self, embed_id: str | None = None, api_url: str | None = None):
         self.embed_id = embed_id or settings.SOCIABLEKIT_EMBED_ID
         self.api_url = api_url or settings.SOCIABLEKIT_API_URL
 
-    def fetch_posts_from_api(self) -> List[Dict[str, Any]]:
+    def fetch_posts_from_api(self) -> list[dict[str, Any]]:
         """
         Ruft Posts von der SociableKIT JSON-API ab.
         Resilienz: 10s Timeout, Fehlerabfang bei Netzwerk- oder Dienstausfällen.
@@ -41,7 +42,7 @@ class SociableKitService:
             logger.error(f"[SociableKit] Verbindungsfehler: {e}")
             return []
 
-    def sync_posts(self, db: Session, raw_posts: Optional[List[Dict[str, Any]]] = None) -> int:
+    def sync_posts(self, db: Session, raw_posts: list[dict[str, Any]] | None = None) -> int:
         """
         Synchronisiert Posts mit der relationalen PostgreSQL-Datenbank.
         - Deduplizierung anhand der instagram_id.
@@ -66,7 +67,7 @@ class SociableKitService:
             # Titel aus erster Zeile der Caption generieren
             title = ""
             if caption:
-                lines = [l.strip() for l in caption.split("\n") if l.strip()]
+                lines = [line.strip() for line in caption.split("\n") if line.strip()]
                 if lines:
                     title = lines[0][:100]
             if not title:
@@ -79,7 +80,7 @@ class SociableKitService:
                 existing.media_url = media_url
                 existing.permalink = permalink
                 existing.media_type = media_type
-                existing.updated_at = datetime.now(timezone.utc)
+                existing.updated_at = datetime.now(UTC)
             else:
                 new_post = Post(
                     title=title,

@@ -2,15 +2,15 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Füge das Hauptverzeichnis zum Pfad hinzu
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.database import Base
+import src.models  # noqa: F401  # Stellt sicher, dass alle Tabellen im Metadaten-Objekt registriert sind
 from src.config import settings
-import src.models  # Stellt sicher, dass alle Tabellen im Metadaten-Objekt registriert sind
+from src.database import Base
 
 config = context.config
 

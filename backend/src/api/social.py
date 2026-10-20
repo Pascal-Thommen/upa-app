@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
+from ..auth import require_admin
+from ..config import settings
 from ..database import get_db
 from ..models import Post, User
-from ..auth import require_admin
 from ..services.sociablekit import SociableKitService
-from ..config import settings
 
 router = APIRouter(prefix="/api/social", tags=["Social Media"])
 

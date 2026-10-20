@@ -1,8 +1,8 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import asc
-from typing import List, Optional
-from datetime import datetime, timezone
+from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Post
@@ -10,9 +10,9 @@ from ..schemas.event import EventResponse
 
 router = APIRouter(prefix="/api/events", tags=["Events"])
 
-@router.get("", response_model=List[EventResponse])
+@router.get("", response_model=list[EventResponse])
 def get_events(
-    group: Optional[str] = Query(None, description="Filter nach Zielgruppe oder Studiengang (z.B. TIE)"),
+    group: str | None = Query(None, description="Filter nach Zielgruppe oder Studiengang (z.B. TIE)"),
     upcoming_only: bool = Query(True, description="Nur zukünftige Termine anzeigen"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -22,10 +22,10 @@ def get_events(
     Liefert alle Kalendereinträge und Veranstaltungen.
     Sortiert chronologisch nach Veranstaltungsbeginn (event_start).
     """
-    query = db.query(Post).filter(Post.is_event == True)
+    query = db.query(Post).filter(Post.is_event.is_(True))
     
     if upcoming_only:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Termine, die noch nicht begonnen haben oder in der Zukunft liegen
         query = query.filter(Post.event_start >= now)
         

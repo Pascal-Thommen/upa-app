@@ -1,21 +1,22 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
 from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
 
 class EventResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     title: str
-    description: Optional[str] = None
-    event_start: Optional[datetime] = None
-    event_end: Optional[datetime] = None
-    location: Optional[str] = None
+    description: str | None = None
+    event_start: datetime | None = None
+    event_end: datetime | None = None
+    location: str | None = None
     has_registration: bool
     is_pinned: bool
-    target_groups: List[str]
-    image_url: Optional[str] = None
-    permalink: Optional[str] = None
+    target_groups: list[str]
+    image_url: str | None = None
+    permalink: str | None = None
     created_at: datetime
 
     @classmethod

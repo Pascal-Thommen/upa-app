@@ -1,19 +1,19 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
-from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import desc, or_
+from sqlalchemy.orm import Session
+
+from ..auth import require_admin
 from ..database import get_db
 from ..models import Post, User
 from ..schemas.post import NewsResponse, PostCreate
-from ..auth import require_admin
 
 router = APIRouter(prefix="/api/news", tags=["News"])
 
-@router.get("", response_model=List[NewsResponse])
+@router.get("", response_model=list[NewsResponse])
 def get_news(
-    group: Optional[str] = Query(None, description="Filter nach Zielgruppe oder Studiengang (z.B. TIE)"),
+    group: str | None = Query(None, description="Filter nach Zielgruppe oder Studiengang (z.B. TIE)"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
@@ -23,11 +23,11 @@ def get_news(
     Abgelaufene Eilmeldungen (expires_at) werden automatisch gefiltert.
     Angepinnte Beiträge (is_pinned) stehen ganz oben.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     
     query = db.query(Post).filter(
-        Post.is_news == True,
-        or_(Post.expires_at == None, Post.expires_at > now)
+        Post.is_news.is_(True),
+        or_(Post.expires_at.is_(None), Post.expires_at > now)
     )
     
     query = query.order_by(desc(Post.is_pinned), desc(Post.created_at))

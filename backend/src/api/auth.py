@@ -1,25 +1,25 @@
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..auth import create_access_token, get_current_user, verify_google_id_token
+from ..config import settings
 from ..database import get_db
 from ..models import User
-from ..config import settings
-from ..auth import verify_google_id_token, create_access_token, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 class GoogleLoginRequest(BaseModel):
     id_token: str
-    classroom_token: Optional[str] = None
+    classroom_token: str | None = None
 
 class UserResponse(BaseModel):
     id: int
     email: str
     full_name: str
     role: str
-    groups: List[str]
+    groups: list[str]
 
 class AuthResponse(BaseModel):
     access_token: str

@@ -3,11 +3,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from src.main import app
-from src.database import Base, get_db
-from src.models import User, Post
 from src.auth import create_access_token
+from src.database import Base, get_db
+from src.main import app
+from src.models import Post, User
 from src.services.sociablekit import SociableKitService
 
 # In-Memory SQLite Engine für isolierte Tests

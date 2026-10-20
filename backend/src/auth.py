@@ -1,9 +1,10 @@
-import jwt
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 import httpx
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any
+import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -12,18 +13,18 @@ from .models import User
 
 security = HTTPBearer(auto_error=False)
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Erzeugt einen signierten JWT-Token für die App-Session."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 
-def decode_access_token(token: str) -> Optional[dict]:
+def decode_access_token(token: str) -> dict | None:
     """Dekodiert und validiert den JWT-Token."""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
@@ -31,7 +32,7 @@ def decode_access_token(token: str) -> Optional[dict]:
     except jwt.PyJWTError:
         return None
 
-async def verify_google_id_token(id_token: str) -> Dict[str, Any]:
+async def verify_google_id_token(id_token: str) -> dict[str, Any]:
     """
     Verifiziert den Google ID Token über den offiziellen Google TokenInfo Endpunkt.
     Garantiert kryptografische Echtheit ohne externe native C-Abhängigkeiten.
@@ -56,7 +57,7 @@ async def verify_google_id_token(id_token: str) -> Dict[str, Any]:
         return data
 
 def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
     """Extrahiert den aktuellen Benutzer aus dem Authorization Header."""
