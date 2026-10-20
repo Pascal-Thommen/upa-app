@@ -19,9 +19,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Create a non-privileged user to run the application
 RUN addgroup --system appgroup && adduser --system --group appuser
 
-# Copy application source code and tests
+# Copy application source code, migrations and tests
 COPY src/ ./src
 COPY tests/ ./tests
+COPY alembic/ ./alembic
+COPY alembic.ini .
 
 # Change ownership to the non-root user
 RUN chown -R appuser:appgroup /app
