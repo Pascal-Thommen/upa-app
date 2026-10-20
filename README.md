@@ -54,3 +54,5 @@ uvicorn src.main:app --reload --port 8000
 ```
 
 Documentacion interactiva de la API disponible en: `http://localhost:8000/docs`
+
+Guia completa de endpoints para desarrollo movil: [API Documentation](docs/api_documentation.md)
