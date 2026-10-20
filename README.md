@@ -8,9 +8,12 @@ Plataforma universitaria central para estudiantes y docentes de la Universidad P
 upa-app/
 ├── android/          # Aplicacion nativa Android (Android Studio / Kotlin)
 ├── backend/          # Servicio REST API (Python, FastAPI, Pydantic, SQLAlchemy)
+│   ├── Dockerfile    # Contenedor de produccion para FastAPI
+│   └── src/          # Codigo fuente modular y conectividad de base de datos
 ├── web-admin/        # Portal web para administracion y marketing (Escritorio)
 ├── docs/             # Especificaciones, modelos de datos y briefing docente
-├── .github/          # Flujos de CI/CD y verificaciones de seguridad
+├── .github/          # Flujos de CI/CD (Gatekeeper, Docker Build & GHCR Deploy)
+├── docker-compose.yml# Orquestacion modular de servicios (PostgreSQL 16 + FastAPI)
 ├── AGENTS.md         # Instrucciones de trabajo para agentes autonomos de IA
 └── README.md
 ```
@@ -35,6 +38,35 @@ upa-app/
    * Fuente unica de verdad (Single Source of Truth): una publicacion puede ser post, evento de agenda o ambos.
    * Segmentacion de destinatarios basada en Google Groups mediante Google Workspace Admin API.
 
+## Infraestructura y Despliegue con Docker Compose
+
+La plataforma utiliza una arquitectura modular basada en contenedores Docker y PostgreSQL 16 con persistencia de datos:
+
+```bash
+# Copiar plantilla de variables de entorno
+cp .env.example .env
+
+# Iniciar la pila completa (PostgreSQL 16 + FastAPI Backend)
+docker compose up -d
+
+# Verificar estado de los servicios
+docker compose ps
+
+# Comprobar salud de la API
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+
+# Detener los servicios manteniendo los datos persistentes
+docker compose down
+```
+
+### Arquitectura Modular y Escalabilidad
+
+* **Base de Datos (postgres):** PostgreSQL 16 Alpine con volumen persistente (`postgres_data`) y healthcheck nativo con `pg_isready`.
+* **Backend API (backend):** FastAPI bajo Python 3.12-slim, usuario sin privilegios `appuser`, verificaciones de salud liveness (`/health`) y readiness (`/ready`).
+* **Extension Modular (web-admin):** Perfil de compose configurable (`docker compose --profile admin up`) para acoplar el portal web de administracion.
+* **Red Aislada (upa-network):** Red interna tipo puente para comunicacion segura entre microservicios.
+
 ## Politica de Seguridad y Codigo Abierto
 
 Este repositorio es publico. Todos los desarrolladores y agentes de IA deben cumplir estrictamente:
@@ -42,7 +74,7 @@ Este repositorio es publico. Todos los desarrolladores y agentes de IA deben cum
 * Todas las configuraciones se gestionan mediante archivos `.env` protegidos por `.gitignore`.
 * Las variables requeridas se documentan con valores de ejemplo en `.env.example`.
 
-## Inicio Rapido del Backend
+## Inicio Rapido Local del Backend (Sin Docker)
 
 ```bash
 cd backend

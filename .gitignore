@@ -58,6 +58,9 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+*.db
+*.sqlite
+*.sqlite3
 
 # ==========================================
 # ANDROID STUDIO & GRADLE
