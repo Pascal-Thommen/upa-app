@@ -1,53 +1,54 @@
-# UPA App Backend - API-Dokumentation
+# UPA App Backend - Documentación de la API REST
 
-Vollständige Schnittstellendokumentation für die mobile Client-Entwicklung (Android / Theresa).
-Zero-Mock-Standard: Alle Endpunkte sind produktiv implementiert, typisiert und an PostgreSQL 16 angebunden.
+Documentación completa de endpoints para el equipo de desarrollo de clientes móviles (Android / Kotlin).
+Estándar Zero-Mock: Todos los endpoints están productivamente implementados, tipados y conectados a PostgreSQL 16.
 
-## Basis-URL
-* Lokal: `http://localhost:8000`
-* Interaktive Swagger-UI: `http://localhost:8000/docs`
-* OpenAPI Spezifikation: `http://localhost:8000/openapi.json`
+## URL Base
+* Red local / NetBird Mesh: `http://acersrv.netbird.cloud:8000` o `http://100.110.128.107:8000`
+* Desarrollo local: `http://localhost:8000`
+* Interfaz interactiva Swagger UI: `http://localhost:8000/docs`
+* Especificación OpenAPI: `http://localhost:8000/openapi.json`
 
 ---
 
-## 1. System & Health
+## 1. Sistema y Diagnóstico (Healthcheck)
 
 ### `GET /health`
-Prüft den Zustand des Backends und der Datenbankverbindung.
+Verifica la disponibilidad operativa del backend y la conexión a la base de datos.
 
-**Response (200 OK):**
+**Respuesta (200 OK):**
 ```json
 {
   "status": "healthy",
-  "environment": "development",
+  "environment": "production",
   "service": "upa-app-backend"
 }
 ```
 
 ---
 
-## 2. Authentifizierung & Profil
+## 2. Autenticación y Perfil de Usuario
 
 ### `POST /api/auth/google`
-Authentifiziert den Benutzer mit einem Google ID-Token (aus der Android Google Sign-In SDK). Erzwingt die Domänen-Sperre `@upa.edu.py`.
+Autentica al usuario mediante el ID Token emitido por Google Sign-In en Android. Aplica restricción obligatoria al dominio institucional `@upa.edu.py`.
 
-**Request Body:**
+**Cuerpo de la Petición:**
 ```json
 {
   "id_token": "eyJhbGciOiJSUzI1NiIs...",
-  "classroom_access_token": "ya29.a0AfH6SM..."  // Optional für Classroom-Sync
+  "classroom_access_token": "ya29.a0AfH6SM..."  // Opcional para sincronización de Classroom
 }
 ```
 
-**Response (200 OK):**
+**Respuesta (200 OK):**
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "bearer",
   "user": {
     "id": 1,
-    "email": "pascal.thommen@upa.edu.py",
-    "full_name": "Pascal Thommen",
+    "email": "estudiante@upa.edu.py",
+    "full_name": "Nombre de Estudiante",
     "role": "user",
     "groups": ["TIE", "Semester_4"]
   }
@@ -55,15 +56,15 @@ Authentifiziert den Benutzer mit einem Google ID-Token (aus der Android Google S
 ```
 
 ### `GET /api/auth/me`
-Liefert das Profil des aktuell authentifizierten Benutzers.
-* **Header:** `Authorization: Bearer <access_token>`
+Retorna el perfil del usuario autenticado actualmente.
+* **Encabezado:** `Authorization: Bearer <access_token>`
 
-**Response (200 OK):**
+**Respuesta (200 OK):**
 ```json
 {
   "id": 1,
-  "email": "pascal.thommen@upa.edu.py",
-  "full_name": "Pascal Thommen",
+  "email": "estudiante@upa.edu.py",
+  "full_name": "Nombre de Estudiante",
   "role": "user",
   "groups": ["TIE", "Semester_4"],
   "created_at": "2026-10-20T14:00:00Z"
@@ -72,17 +73,17 @@ Liefert das Profil des aktuell authentifizierten Benutzers.
 
 ---
 
-## 3. Campus Feed & News
+## 3. Feed del Campus y Noticias
 
 ### `GET /api/v1/feed`
-Liefert den aggregierten Campus-Feed (Eilmeldungen als oberer Banner und chronologische Beiträge inklusive Instagram @upalemana).
+Retorna el feed institucional consolidado (avisos de emergencia en formato banner superior y publicaciones cronológicas, incluyendo Instagram @upalemana).
 
-* **Query Parameters:**
-  * `group` (optional): Filter nach Studiengang/Gruppe (z. B. `TIE`)
-  * `limit` (optional, default: 20): Anzahl der Einträge
-  * `offset` (optional, default: 0): Paginierung
+* **Parámetros de Consulta (Query):**
+  * `group` (opcional): Filtro por carrera o grupo (ej. `TIE`)
+  * `limit` (opcional, por defecto: 20): Cantidad de elementos
+  * `offset` (opcional, por defecto: 0): Paginación
 
-**Response (200 OK):**
+**Respuesta (200 OK):**
 ```json
 {
   "urgent_banners": [
@@ -123,22 +124,22 @@ Liefert den aggregierten Campus-Feed (Eilmeldungen als oberer Banner und chronol
 ```
 
 ### `GET /api/news`
-Liefert eine Liste aller Campus-News.
+Retorna la lista de todas las noticias institucionales.
 
-* **Query Parameters:** `group`, `limit`, `offset`
+* **Parámetros de Consulta:** `group`, `limit`, `offset`
 
 ---
 
-## 4. Agenda & Kalender-Events
+## 4. Agenda y Calendario de Eventos
 
 ### `GET /api/events`
-Liefert alle anstehenden Veranstaltungen und Termine chronologisch sortiert.
+Retorna todos los eventos y conferencias académicas ordenados cronológicamente.
 
-* **Query Parameters:**
-  * `group` (optional): Filter nach Studiengang (z. B. `TIE`)
-  * `from_date` (optional): Startdatum (ISO 8601)
+* **Parámetros de Consulta:**
+  * `group` (opcional): Filtro por carrera (ej. `TIE`)
+  * `from_date` (opcional): Fecha inicial (ISO 8601)
 
-**Response (200 OK):**
+**Respuesta (200 OK):**
 ```json
 [
   {
@@ -157,22 +158,22 @@ Liefert alle anstehenden Veranstaltungen und Termine chronologisch sortiert.
 
 ---
 
-## 5. Google Classroom Integration
+## 5. Integración con Google Classroom
 
 ### `GET /api/classroom/deadlines`
-Liefert die anstehenden Hausaufgaben, Aufgaben und Abgabefristen des eingeloggten Nutzers direkt aus der Google Classroom API.
-* **Header:** `Authorization: Bearer <access_token>`
+Retorna las tareas, entregas y plazos académicos activos del estudiante autenticado directamente desde la API oficial de Google Classroom.
+* **Encabezado:** `Authorization: Bearer <access_token>`
 
-**Response (200 OK):**
+**Respuesta (200 OK):**
 ```json
 {
   "deadlines": [
     {
       "course_id": "12345678",
-      "course_name": "Wirtschaftsinformatik II",
+      "course_name": "Ingeniería de Software II",
       "assignment_id": "87654321",
-      "title": "ERP Architektur Fallstudie",
-      "description": "Erstellung eines Modells für Auftragsabwicklung...",
+      "title": "Entrega de Caso de Estudio ERP",
+      "description": "Especificación de arquitectura y flujos...",
       "due_date": "2026-10-25T23:59:00Z",
       "alternate_link": "https://classroom.google.com/c/12345678/a/87654321/details"
     }
@@ -182,13 +183,13 @@ Liefert die anstehenden Hausaufgaben, Aufgaben und Abgabefristen des eingeloggte
 
 ---
 
-## 6. Social Media Sync
+## 6. Sincronización de Redes Sociales (Instagram)
 
 ### `POST /api/social/sync`
-Triggert die sofortige Synchronisation von Instagram (@upalemana) via SociableKIT (Embed-ID: 25723525).
-* **Header:** `Authorization: Bearer <admin_access_token>` (Nur Administratoren)
+Ejecuta la sincronización inmediata del feed de Instagram (@upalemana) mediante SociableKIT (Embed-ID: 25723525).
+* **Encabezado:** `Authorization: Bearer <admin_access_token>` (Solo administradores)
 
-**Response (200 OK):**
+**Respuesta (200 OK):**
 ```json
 {
   "status": "success",
@@ -200,15 +201,17 @@ Triggert die sofortige Synchronisation von Instagram (@upalemana) via SociableKI
 
 ---
 
-## Lokaler Start für Theresa
+## Ejecución Local y Desarrollo de Cliente
 ```bash
-# 1. Repository klonen und in den Backend-Ordner wechseln
+# 1. Clonar el repositorio
+git clone https://github.com/Pascal-Thommen/upa-app.git
 cd upa-app
 
-# 2. Docker Compose Stack starten (PostgreSQL 16 + FastAPI)
+# 2. Iniciar el stack completo con Docker Compose (PostgreSQL 16 + FastAPI)
 docker compose up -d
 
-# 3. Swagger UI im Browser öffnen
+# 3. Acceder a la documentación interactiva en el navegador
 # http://localhost:8000/docs
 ```
-Theresa benötigt keinerlei Dummy-Daten. Die Datenbank wird beim ersten Start automatisch migriert und mit realen Daten befüllt.
+
+El desarrollo del cliente móvil se conecta directamente contra el backend real sin necesidad de datos simulados o mocks. La base de datos ejecuta migraciones automáticas al iniciar y carga datos representativos del campus.

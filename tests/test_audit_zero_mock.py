@@ -81,6 +81,41 @@ def test_clean_codebase_passes(tmp_path: Path) -> None:
     assert stats.blocker_count == 0
 
 
+def test_forbidden_personal_name_detected(tmp_path: Path) -> None:
+    doc_file = tmp_path / "docs" / "team.md"
+    doc_file.parent.mkdir(parents=True, exist_ok=True)
+    doc_file.write_text("# Team\nDesarrollo a cargo de Theresa en Android.\n")
+
+    auditor = ZeroMockAuditor(tmp_path)
+    stats = auditor.scan_all()
+    blockers = [v for v in stats.violations if v.rule_id == "GOV_FORBIDDEN_NAME"]
+    assert len(blockers) == 1
+    assert "theresa" in blockers[0].message.lower()
+
+
+def test_german_documentation_detected(tmp_path: Path) -> None:
+    doc_file = tmp_path / "docs" / "api.md"
+    doc_file.parent.mkdir(parents=True, exist_ok=True)
+    doc_file.write_text("# API\nVollständige Schnittstellendokumentation für die App.\n")
+
+    auditor = ZeroMockAuditor(tmp_path)
+    stats = auditor.scan_all()
+    blockers = [v for v in stats.violations if v.rule_id == "GOV_SPANISH_DOCS"]
+    assert len(blockers) >= 1
+
+
+def test_spanish_documentation_passes(tmp_path: Path) -> None:
+    doc_file = tmp_path / "docs" / "api.md"
+    doc_file.parent.mkdir(parents=True, exist_ok=True)
+    doc_file.write_text("# API\nDocumentacion completa de endpoints para el equipo de desarrollo.\n")
+
+    auditor = ZeroMockAuditor(tmp_path)
+    stats = auditor.scan_all()
+    gov_blockers = [v for v in stats.violations if v.rule_id in ("GOV_FORBIDDEN_NAME", "GOV_SPANISH_DOCS")]
+    assert len(gov_blockers) == 0
+
+
+
 def test_python_prod_mock_import_detected(tmp_path: Path) -> None:
     prod_file = tmp_path / "backend" / "src" / "service.py"
     prod_file.parent.mkdir(parents=True, exist_ok=True)
@@ -258,3 +293,38 @@ def test_client_test_files_permitted_mocks(tmp_path: Path) -> None:
     auditor = ZeroMockAuditor(tmp_path)
     stats = auditor.scan_all()
     assert stats.blocker_count == 0
+
+
+def test_forbidden_personal_name_detected(tmp_path: Path) -> None:
+    doc_file = tmp_path / "docs" / "team.md"
+    doc_file.parent.mkdir(parents=True, exist_ok=True)
+    doc_file.write_text("# Team\nDesarrollo a cargo de Theresa en Android.\n")
+
+    auditor = ZeroMockAuditor(tmp_path)
+    stats = auditor.scan_all()
+    blockers = [v for v in stats.violations if v.rule_id == "GOV_FORBIDDEN_NAME"]
+    assert len(blockers) == 1
+    assert "theresa" in blockers[0].message.lower()
+
+
+def test_german_documentation_detected(tmp_path: Path) -> None:
+    doc_file = tmp_path / "docs" / "api.md"
+    doc_file.parent.mkdir(parents=True, exist_ok=True)
+    doc_file.write_text("# API\nVollständige Schnittstellendokumentation für die App.\n")
+
+    auditor = ZeroMockAuditor(tmp_path)
+    stats = auditor.scan_all()
+    blockers = [v for v in stats.violations if v.rule_id == "GOV_SPANISH_DOCS"]
+    assert len(blockers) >= 1
+
+
+def test_spanish_documentation_passes(tmp_path: Path) -> None:
+    doc_file = tmp_path / "docs" / "api.md"
+    doc_file.parent.mkdir(parents=True, exist_ok=True)
+    doc_file.write_text("# API\nDocumentacion completa de endpoints para el equipo de desarrollo.\n")
+
+    auditor = ZeroMockAuditor(tmp_path)
+    stats = auditor.scan_all()
+    gov_blockers = [v for v in stats.violations if v.rule_id in ("GOV_FORBIDDEN_NAME", "GOV_SPANISH_DOCS")]
+    assert len(gov_blockers) == 0
+

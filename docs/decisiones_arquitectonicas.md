@@ -27,5 +27,5 @@ El objetivo de la UPA App es consolidar en un punto unico de acceso la vida acad
 
 ## 5. Modelo Operativo del Equipo
 * Pascal Thommen: Product Owner y Arquitecto de Integracion.
-* Theresa y Natasha: Desarrollo de componentes de interfaz en GitHub.
+* Equipo de Frontend: Desarrollo de componentes de interfaz en GitHub.
 * Mika (IA): Generacion de especificaciones, revision Zero-Mock y seguridad.

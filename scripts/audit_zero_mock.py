@@ -116,6 +116,25 @@ class ZeroMockAuditor:
     )
 
     CLIENT_EXTENSIONS = {".kt", ".kts", ".java", ".ts", ".tsx", ".js", ".jsx"}
+    DOC_EXTENSIONS = {".md"}
+
+    # Prohibited personal names in repository files (Governance)
+    FORBIDDEN_PERSONAL_NAMES = {
+        "theresa",
+    }
+
+    # German keywords prohibited in repository documentation (Spanish is mandatory)
+    GERMAN_DOC_KEYWORDS = (
+        "schnittstellendokumentation",
+        "vollständige",
+        "lokaler start",
+        "prüft den zustand",
+        "überprüfung",
+        "einsatzbereit",
+        "nachrichten",
+        "schnittstelle",
+        "anleitung",
+    )
 
     def __init__(self, root_dir: Path):
         self.root_dir = root_dir.resolve()
@@ -183,6 +202,8 @@ class ZeroMockAuditor:
             elif p.suffix in self.CLIENT_EXTENSIONS:
                 scanned_files.append(p)
                 self.stats.client_files_scanned += 1
+            elif p.suffix in self.DOC_EXTENSIONS:
+                scanned_files.append(p)
 
         self.stats.total_files_scanned = len(scanned_files)
 
@@ -194,7 +215,12 @@ class ZeroMockAuditor:
             else:
                 self.stats.production_files_scanned += 1
 
-            if file_path.suffix == ".py":
+            # Governance check: Enforce absence of forbidden personal names
+            self.audit_personal_names(file_path, rel_path)
+
+            if file_path.suffix == ".md":
+                self.audit_markdown_documentation(file_path, rel_path)
+            elif file_path.suffix == ".py":
                 if is_test:
                     self.audit_python_test_file(file_path, rel_path)
                 else:
@@ -610,6 +636,52 @@ class ZeroMockAuditor:
                 1,
                 "Observability Violation: Backend lacks /health or /ready endpoint.",
             )
+
+    def audit_personal_names(self, file_path: Path, rel_path: Path) -> None:
+        """
+        Garantiza que ningún nombre personal de desarrolladores o colaboradores
+        esté presente en los archivos del repositorio (política de gobernanza).
+        """
+        if rel_path.name in {"AGENTS.md", "audit_zero_mock.py", "test_audit_zero_mock.py"}:
+            return
+        try:
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+            for idx, line in enumerate(content.splitlines(), start=1):
+                lower_line = line.lower()
+                for name in self.FORBIDDEN_PERSONAL_NAMES:
+                    if re.search(rf"\b{re.escape(name)}\b", lower_line):
+                        self.add_violation(
+                            "GOV_FORBIDDEN_NAME",
+                            "BLOCKER",
+                            file_path,
+                            idx,
+                            f"Governance Blocker: Forbidden personal name '{name}' detected. Repository must not contain personal names.",
+                        )
+        except Exception:
+            pass
+
+    def audit_markdown_documentation(self, file_path: Path, rel_path: Path) -> None:
+        """
+        Garantiza que toda la documentación del repositorio esté redactada
+        obligatoriamente en español (política de gobernanza).
+        """
+        if rel_path.name in {"AGENTS.md", "audit_zero_mock.py", "test_audit_zero_mock.py"}:
+            return
+        try:
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+            for idx, line in enumerate(content.splitlines(), start=1):
+                lower_line = line.lower()
+                for keyword in self.GERMAN_DOC_KEYWORDS:
+                    if keyword in lower_line:
+                        self.add_violation(
+                            "GOV_SPANISH_DOCS",
+                            "BLOCKER",
+                            file_path,
+                            idx,
+                            f"Governance Blocker: Documentation must be written in Spanish. Detected German term: '{keyword}'.",
+                        )
+        except Exception:
+            pass
 
 
 def format_console_report(stats: AuditStats) -> str:
