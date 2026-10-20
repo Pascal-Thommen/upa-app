@@ -1,8 +1,11 @@
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .api.auth import router as auth_router
 from .api.classroom import router as classroom_router
@@ -76,4 +79,33 @@ def get_agenda():
     return {
         "events": [],
         "deadlines": [],
+    }
+
+
+# Static Dashboard Web-Admin Mounten
+candidate_static_dirs = [
+    Path(__file__).resolve().parent / "static",
+    Path(__file__).resolve().parent.parent.parent / "web-admin",
+    Path("/app/src/static"),
+    Path("/app/web-admin"),
+]
+active_static_dir = None
+for candidate in candidate_static_dirs:
+    if candidate.exists() and (candidate / "index.html").exists():
+        active_static_dir = candidate
+        break
+
+if active_static_dir:
+    app.mount("/dashboard", StaticFiles(directory=str(active_static_dir), html=True), name="dashboard")
+    app.mount("/admin", StaticFiles(directory=str(active_static_dir), html=True), name="admin")
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    if active_static_dir:
+        return RedirectResponse(url="/dashboard/")
+    return {
+        "status": "healthy",
+        "service": "upa-app-backend",
+        "docs": "/docs",
     }

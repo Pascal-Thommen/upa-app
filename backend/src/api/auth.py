@@ -20,6 +20,10 @@ class UserResponse(BaseModel):
     full_name: str
     role: str
     groups: list[str]
+    has_classroom_token: bool = False
+
+class ClassroomTokenRequest(BaseModel):
+    classroom_token: str
 
 class AuthResponse(BaseModel):
     access_token: str
@@ -77,7 +81,8 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
             email=user.email,
             full_name=user.full_name,
             role=user.role,
-            groups=user.groups or ["ALL"]
+            groups=user.groups or ["ALL"],
+            has_classroom_token=bool(user.classroom_token),
         )
     )
 
@@ -89,5 +94,28 @@ def get_me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         full_name=current_user.full_name,
         role=current_user.role,
-        groups=current_user.groups or ["ALL"]
+        groups=current_user.groups or ["ALL"],
+        has_classroom_token=bool(current_user.classroom_token),
+    )
+
+@router.post("/classroom-token", response_model=UserResponse)
+def update_classroom_token(
+    payload: ClassroomTokenRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Actualiza el token de Google Classroom para el usuario autenticado.
+    Permite activar la integracion de Classroom si no se concedio durante el login inicial.
+    """
+    current_user.classroom_token = payload.classroom_token
+    db.commit()
+    db.refresh(current_user)
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        role=current_user.role,
+        groups=current_user.groups or ["ALL"],
+        has_classroom_token=bool(current_user.classroom_token),
     )
