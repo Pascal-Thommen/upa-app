@@ -6,6 +6,8 @@ from .config import settings
 from .database import engine, Base
 from .api.news import router as news_router
 from .api.events import router as events_router
+from .api.auth import router as auth_router
+from .api.classroom import router as classroom_router
 from .seed import seed_database
 
 @asynccontextmanager
@@ -34,8 +36,10 @@ app.add_middleware(
 )
 
 # API-Router einbinden
+app.include_router(auth_router)
 app.include_router(news_router)
 app.include_router(events_router)
+app.include_router(classroom_router)
 
 @app.get("/health", tags=["Health"])
 def health_check():

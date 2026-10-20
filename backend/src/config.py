@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     
+    JWT_SECRET: str = "upa_super_secure_jwt_secret_dev_2026"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+    
     DATABASE_URL: str = "postgresql://upa_user:upa_password@postgres:5432/upa_app"
 
     @property

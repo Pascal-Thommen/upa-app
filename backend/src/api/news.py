@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_, func
+from sqlalchemy import desc, or_
 from typing import List, Optional
 from datetime import datetime, timezone
 
 from ..database import get_db
-from ..models import Post
-from ..schemas.post import NewsResponse
+from ..models import Post, User
+from ..schemas.post import NewsResponse, PostCreate
+from ..auth import require_admin
 
 router = APIRouter(prefix="/api/news", tags=["News"])
 
@@ -29,12 +30,9 @@ def get_news(
         or_(Post.expires_at == None, Post.expires_at > now)
     )
     
-    # Sortierung: zuerst angepinnte Beiträge, dann neueste zuerst
     query = query.order_by(desc(Post.is_pinned), desc(Post.created_at))
-    
     posts = query.offset(offset).limit(limit).all()
     
-    # Client-/Gruppenfilterung im Speicher für JSON-Listen
     result = []
     for post in posts:
         groups = post.target_groups or ["ALL"]
@@ -45,3 +43,39 @@ def get_news(
             result.append(NewsResponse.from_orm_post(post))
             
     return result
+
+@router.post("", response_model=NewsResponse, status_code=status.HTTP_201_CREATED)
+def create_news(
+    payload: PostCreate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """
+    Erstellt einen neuen Beitrag.
+    Geschützt: Nur Benutzer mit der Rolle 'admin' dürfen Beiträge veröffentlichen.
+    """
+    new_post = Post(
+        title=payload.title,
+        caption=payload.caption,
+        content=payload.content,
+        post_type=payload.post_type,
+        is_news=payload.is_news,
+        is_event=payload.is_event,
+        is_pinned=payload.is_pinned,
+        expires_at=payload.expires_at,
+        event_start=payload.event_start,
+        event_end=payload.event_end,
+        location=payload.location,
+        target_groups=payload.target_groups or ["ALL"],
+        has_registration=payload.has_registration,
+        reminder_minutes_before=payload.reminder_minutes_before,
+        instagram_id=payload.instagram_id,
+        media_type=payload.media_type,
+        media_url=payload.media_url,
+        permalink=payload.permalink,
+        author_id=admin.id
+    )
+    db.add(new_post)
+    db.commit()
+    db.refresh(new_post)
+    return NewsResponse.from_orm_post(new_post)

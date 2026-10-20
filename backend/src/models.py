@@ -13,6 +13,7 @@ class User(Base):
     full_name = Column(String(255), nullable=False)
     role = Column(String(50), default="user", nullable=False)  # "user" oder "admin"
     groups = Column(JSON, default=list, nullable=False)  # z. B. ["TIE", "Semester_4"]
+    classroom_token = Column(Text, nullable=True)  # Optionaler Google Access Token für Classroom API
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
