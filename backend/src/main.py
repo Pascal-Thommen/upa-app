@@ -115,7 +115,7 @@ def get_app_state(
                 "id": p.id,
                 "title": p.title,
                 "summary": p.caption or p.content or "",
-                "image_url": p.image_url,
+                "image_url": p.media_url,
                 "permalink": p.permalink,
                 "published_at": p.published_at.isoformat() if p.published_at else None,
             }
