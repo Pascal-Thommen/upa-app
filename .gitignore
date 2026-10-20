@@ -7,6 +7,11 @@
 !.env.example
 *.env
 
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
 # API Keys, Tokens and Credentials
 *token*.json
 *credentials*.json
