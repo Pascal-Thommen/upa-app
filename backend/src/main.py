@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .api.events import router as events_router
 from .api.news import router as news_router
 from .config import settings
 from .database import check_db_connection
@@ -20,6 +21,7 @@ app.add_middleware(
 )
 
 app.include_router(news_router)
+app.include_router(events_router)
 
 
 @app.get("/health", tags=["Health"])
