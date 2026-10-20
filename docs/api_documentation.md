@@ -73,6 +73,29 @@ Retorna el perfil del usuario autenticado actualmente.
 }
 ```
 
+### `POST /api/auth/classroom-token`
+Actualiza el token OAuth de Google Classroom para el usuario autenticado.
+* **Encabezado:** `Authorization: Bearer <access_token>`
+
+**Cuerpo de la Petición:**
+```json
+{
+  "classroom_token": "ya29.a0AfH6SM..."
+}
+```
+
+**Respuesta (200 OK):**
+```json
+{
+  "id": 1,
+  "email": "estudiante@upa.edu.py",
+  "full_name": "Nombre de Estudiante",
+  "role": "user",
+  "groups": ["TIE", "Semester_4"],
+  "has_classroom_token": true
+}
+```
+
 ---
 
 ## 3. Feed del Campus y Noticias
@@ -168,6 +191,23 @@ Retorna todos los eventos y conferencias académicas ordenados cronológicamente
 ---
 
 ## 5. Integración con Google Classroom
+
+### `GET /api/classroom/courses`
+Retorna la lista de cursos académicos activos del estudiante o docente directamente desde Google Classroom.
+* **Encabezado:** `Authorization: Bearer <access_token>`
+
+**Respuesta (200 OK):**
+```json
+[
+  {
+    "id": "12345678",
+    "name": "Ingeniería de Software II",
+    "section": "Semestre 4 - Turno Noche",
+    "alternate_link": "https://classroom.google.com/c/12345678",
+    "room": "Aula 204"
+  }
+]
+```
 
 ### `GET /api/classroom/deadlines`
 Retorna las tareas, entregas y plazos académicos activos del estudiante autenticado directamente desde la API oficial de Google Classroom.

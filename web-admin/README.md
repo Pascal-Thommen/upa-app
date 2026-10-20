@@ -1,13 +1,18 @@
-# Portal de Administracion Web y Marketing (Escritorio)
+# Portal de Administracion Web y Dashboard Institucional (Escritorio)
 
-Sistema de gestion de contenidos para el equipo de marketing de la UPA.
+Panel web institucional y sistema de gestión para la Universidad Paraguayo Alemana (UPA).
 
 ## Responsabilidades y Funciones
-* Creacion y edicion de publicaciones (noticias, charlas, avisos urgentes).
-* Asignacion de contenidos al calendario bajo el principio de fuente unica de verdad (Single Source of Truth).
-* Segmentacion de destinatarios mediante grupos de Google Workspace.
-* Vista previa y publicacion inmediata hacia los dispositivos moviles.
+* Panel de control (Dashboard) con visualización de perfil verificado `@upa.edu.py`.
+* Segmentación y visualización de grupos de Google Workspace (Mailgruppen: `ALL`, `TIE`, `PI`, `TI`, `PROF`).
+* Integración bidireccional con Google Classroom: Cursos activos, asignaciones, tareas y fechas límite (deadlines).
+* Acceso directo mediante enlaces a Google Classroom oficial para estudiantes y docentes.
+* Conexión directa y resiliente contra la API REST del backend bajo estándar Zero-Mock.
 
-## Tecnologia
-* Frontend web ligero (Next.js o interfaz administrativa HTML5/Tailwind).
-* Comunicacion directa con la API REST del backend.
+## Componentes y Arquitectura
+* `index.html`: Shell de la aplicación de una sola página (SPA) con diseño adaptativo.
+* `app.js`: Lógica de autenticación, manejo de sesiones JWT y llamadas REST a endpoints del backend (`/api/auth/me`, `/api/classroom/deadlines`, `/api/classroom/courses`).
+* `style.css`: Estilos visuales institucionales e indicadores de estado.
+
+## Ejecución
+El portal es servido automáticamente por el backend en `/dashboard/` y `/admin/`, o de forma independiente mediante cualquier servidor web estático.

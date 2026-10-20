@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -28,11 +27,31 @@ class UserResponse(BaseModel):
     role: str
     groups: list[str]
     google_groups: list[GoogleGroupDetail] = []
+    has_classroom_token: bool = False
+
+class ClassroomTokenRequest(BaseModel):
+    classroom_token: str
 
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+def _filter_user_groups_for_privacy(email: str, groups: list[str] | None) -> list[str]:
+    """
+    Erzwingt die Datenschutz- und Berechtigungs-Vorgabe:
+    Normale Studenten duerfen ihre Mailgruppen nicht direkt sehen.
+    Die Gruppenanzeige ist strikt auf das Konto pascal.thommen@upa.edu.py beschraenkt.
+    """
+    if email.lower() == "pascal.thommen@upa.edu.py":
+        return groups or ["ALL"]
+    return []
+
+def _filter_google_groups_for_privacy(email: str, google_groups: list[dict] | None) -> list[GoogleGroupDetail]:
+    """Erzwingt exklusive Google Groups Einsicht fuer pascal.thommen@upa.edu.py."""
+    if email.lower() == "pascal.thommen@upa.edu.py":
+        return [GoogleGroupDetail(**g) for g in (google_groups or [])]
+    return []
 
 @router.post("/google", response_model=AuthResponse)
 async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
@@ -93,8 +112,9 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
             email=user.email,
             full_name=user.full_name,
             role=user.role,
-            groups=user.groups or ["ALL"],
-            google_groups=[GoogleGroupDetail(**g) for g in (user.google_groups or [])]
+            groups=_filter_user_groups_for_privacy(user.email, user.groups),
+            google_groups=_filter_google_groups_for_privacy(user.email, user.google_groups),
+            has_classroom_token=bool(user.classroom_token),
         )
     )
 
@@ -106,11 +126,35 @@ def get_me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         full_name=current_user.full_name,
         role=current_user.role,
-        groups=current_user.groups or ["ALL"],
-        google_groups=[GoogleGroupDetail(**g) for g in (current_user.google_groups or [])]
+        groups=_filter_user_groups_for_privacy(current_user.email, current_user.groups),
+        google_groups=_filter_google_groups_for_privacy(current_user.email, current_user.google_groups),
+        has_classroom_token=bool(current_user.classroom_token),
+    )
+
+@router.post("/classroom-token", response_model=UserResponse)
+def update_classroom_token(
+    payload: ClassroomTokenRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Actualiza el token de Google Classroom para el usuario autenticado.
+    Permite activar la integracion de Classroom si no se concedio durante el login inicial.
+    """
+    current_user.classroom_token = payload.classroom_token
+    db.commit()
+    db.refresh(current_user)
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        role=current_user.role,
+        groups=_filter_user_groups_for_privacy(current_user.email, current_user.groups),
+        google_groups=_filter_google_groups_for_privacy(current_user.email, current_user.google_groups),
+        has_classroom_token=bool(current_user.classroom_token),
     )
 
 @router.get("/groups", response_model=list[GoogleGroupDetail])
 def get_my_groups(current_user: User = Depends(get_current_user)):
-    """Liefert die synchronisierten Google Groups des Benutzers."""
-    return [GoogleGroupDetail(**g) for g in (current_user.google_groups or [])]
+    """Liefert die synchronisierten Google Groups des Benutzers (exklusiv fuer pascal.thommen@upa.edu.py)."""
+    return _filter_google_groups_for_privacy(current_user.email, current_user.google_groups)
