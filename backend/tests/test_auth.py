@@ -100,3 +100,22 @@ def test_create_news_allowed_for_admin():
     data = response.json()
     assert data["title"] == "Offizieller Admin Post"
     assert data["is_pinned"] is True
+
+def test_get_my_groups_authorized():
+    token = create_access_token(data={"sub": "10", "email": "student@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get("/api/auth/groups", headers=headers)
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+def test_map_groups_to_logical_tags():
+    from src.services.google_groups import map_groups_to_logical_tags
+    groups = [
+        {"id": "1", "name": "Estudiantes TIE 2025", "email": "estudiantes.tie2025@upa.edu.py", "description": ""},
+        {"id": "2", "name": "Profesores Ingenieria", "email": "prof.ingenieria@upa.edu.py", "description": ""}
+    ]
+    tags = map_groups_to_logical_tags(groups)
+    assert "ALL" in tags
+    assert "TIE" in tags
+    assert "PROF" in tags
+    assert "Estudiantes TIE 2025" in tags
