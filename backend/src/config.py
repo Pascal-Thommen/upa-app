@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     PORT: int = 8000
     HOST: str = "0.0.0.0"
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000,http://100.110.128.107:8000,http://acersrv.netbird.cloud:8000,https://acersrv.netbird.cloud,https://multica.eu1.netbird.services"
     
     ALLOWED_EMAIL_DOMAIN: str = "upa.edu.py"
     GOOGLE_CLIENT_ID: str = ""
