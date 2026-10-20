@@ -76,14 +76,34 @@ class InstagramSyncService:
 
     def parse_sociablekit_item(self, item: dict[str, Any]) -> NormalizedSocialPost:
         """Parst ein Element aus dem SociableKIT Widget JSON Feed."""
-        media_id = str(item.get("post_id") or item.get("id") or "")
-        caption = item.get("content") or item.get("caption") or item.get("message") or ""
-        media_type = item.get("media_type") or ("VIDEO" if item.get("video_url") else "IMAGE")
-        media_url = item.get("picture") or item.get("media_url") or item.get("image_url") or ""
-        permalink = item.get("link") or item.get("permalink") or item.get("post_url") or self.DEFAULT_PERMALINK_FALLBACK
+        media_id = str(item.get("post_id") or item.get("id") or item.get("code") or "")
+        caption = (
+            item.get("pic_text_raw")
+            or item.get("pic_text")
+            or item.get("content")
+            or item.get("caption")
+            or item.get("message")
+            or ""
+        )
+        media_type = item.get("pic_type") or item.get("media_type") or ("VIDEO" if item.get("video_url") else "IMAGE")
+        media_url = (
+            item.get("image_url")
+            or item.get("post_link")
+            or item.get("full_pic_src")
+            or item.get("pic_src")
+            or item.get("picture")
+            or item.get("media_url")
+            or ""
+        )
+        permalink = (
+            item.get("link")
+            or item.get("permalink")
+            or item.get("post_url")
+            or (f"https://www.instagram.com/p/{media_id}/" if media_id else self.DEFAULT_PERMALINK_FALLBACK)
+        )
 
         timestamp = None
-        raw_ts = item.get("date") or item.get("created_time") or item.get("timestamp")
+        raw_ts = item.get("date_time_posted") or item.get("date") or item.get("created_time") or item.get("timestamp")
         if raw_ts:
             try:
                 timestamp = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
@@ -145,24 +165,32 @@ class InstagramSyncService:
     async def fetch_from_sociablekit(self, embed_id: str) -> list[NormalizedSocialPost]:
         """
         Ruft Beiträge über die SociableKIT Widget JSON API ab.
+        Unterstützt primär data.accentapi.com/feed/{embed_id}.json und data.sociablekit.com als Fallback.
         Expliziter Timeout (10s) und Netzwerkresilienz.
         """
-        url = f"https://data.sociablekit.com/embeds/{embed_id}/data"
+        urls_to_try = [
+            f"https://data.accentapi.com/feed/{embed_id}.json",
+            f"https://data.sociablekit.com/embeds/{embed_id}/data",
+        ]
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url)
-                if response.status_code != 200:
-                    logger.error(f"[SociableKIT API] Statuscode {response.status_code}: {response.text}")
-                    return []
-
-                data = response.json()
-                raw_items = data if isinstance(data, list) else data.get("data", data.get("posts", []))
-                posts = []
-                for item in raw_items:
-                    parsed = self.parse_sociablekit_item(item)
-                    if parsed.instagram_id:
-                        posts.append(parsed)
+                for url in urls_to_try:
+                    try:
+                        response = await client.get(url)
+                        if response.status_code == 200:
+                            data = response.json()
+                            raw_items = data if isinstance(data, list) else data.get("posts", data.get("data", []))
+                            posts = []
+                            for item in raw_items:
+                                parsed = self.parse_sociablekit_item(item)
+                                if parsed.instagram_id:
+                                    posts.append(parsed)
+                            if posts:
+                                return posts
+                    except Exception as exc:
+                        logger.warning(f"[SociableKIT] Anfrage an {url} fehlgeschlagen: {exc}")
+                return []
                 return posts
         except httpx.RequestError as exc:
             logger.error(f"[SociableKIT Netzwerkfehler] {exc}")
