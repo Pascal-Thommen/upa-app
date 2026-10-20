@@ -130,6 +130,18 @@ jobs:
           curl --fail http://127.0.0.1:8000/ready
           echo ""
 
+          # Run Alembic database migrations against PostgreSQL
+          docker compose exec -T backend alembic upgrade head
+
+          # Verify PostgreSQL schema tables and foreign key constraint
+          docker compose exec -T postgres psql -U upa_user -d upa_db -c "\dt"
+          FK_CHECK=$(docker compose exec -T postgres psql -U upa_user -d upa_db -t -c "SELECT conname FROM pg_constraint WHERE conrelid = 'news'::regclass AND contype = 'f';" | xargs)
+          if [ -z "$FK_CHECK" ]; then
+            echo "Alembic foreign key verification failed!"
+            exit 1
+          fi
+          echo "Alembic migration and foreign key successfully verified: $FK_CHECK"
+
           # Test PostgreSQL Persistence: write data, restart container, verify data
           docker compose exec -T postgres psql -U upa_user -d upa_db -c "CREATE TABLE ci_persistence_test (id serial PRIMARY KEY, note text);"
           docker compose exec -T postgres psql -U upa_user -d upa_db -c "INSERT INTO ci_persistence_test (note) VALUES ('persistence_verified');"
