@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import desc
@@ -6,13 +8,21 @@ from sqlalchemy.orm import Session
 from .api.events import router as events_router
 from .api.news import router as news_router
 from .config import settings
-from .database import check_db_connection, get_db
+from .database import Base, check_db_connection, engine, get_db
 from .models import Post
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
 
 app = FastAPI(
     title="UPA App API",
     description="Backend API fuer die Campus-Plattform der Universidad Paraguayo Alemana",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

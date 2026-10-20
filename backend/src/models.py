@@ -129,6 +129,17 @@ class Post(Base):
             "is_pinned": self.is_pinned,
             "is_urgent": self.is_urgent,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "event_start": self.event_start.isoformat() if self.event_start else None,
+            "event_end": self.event_end.isoformat() if self.event_end else None,
+            "location": self.location,
+            "has_registration": self.has_registration,
+            "reminder_minutes_before": self.reminder_minutes_before,
+            "send_push_notification": self.send_push_notification,
+            "push_notification_sent_at": (
+                self.push_notification_sent_at.isoformat()
+                if self.push_notification_sent_at
+                else None
+            ),
             "target_groups": self.target_groups,
             "instagram_id": self.instagram_id,
             "media_type": self.media_type,
