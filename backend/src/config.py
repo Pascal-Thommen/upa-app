@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     
-    DATABASE_URL: str = "sqlite:///./upa_app.db"
+    DATABASE_URL: str = "postgresql://upa_user:upa_password@postgres:5432/upa_app"
 
     @property
     def cors_origins_list(self) -> List[str]:
