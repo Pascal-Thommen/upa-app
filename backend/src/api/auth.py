@@ -1,12 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import urllib.parse
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import create_access_token, get_current_user, verify_google_id_token
+from ..auth import SESSION_COOKIE_NAME, create_access_token, get_current_user, verify_google_id_token
 from ..config import settings
 from ..database import get_db
 from ..models import User
 from ..services.google_groups import get_google_groups_for_user, map_groups_to_logical_tags
+from .classroom import clear_classroom_cache
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -53,8 +58,129 @@ def _filter_google_groups_for_privacy(email: str, google_groups: list[dict] | No
         return [GoogleGroupDetail(**g) for g in (google_groups or [])]
     return []
 
+
+def _set_session_cookie(response: Response, session_token: str) -> None:
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=session_token,
+        httponly=True,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        samesite="lax",
+        secure=settings.APP_ENV == "production",
+        path="/",
+    )
+
+
+@router.get("/login-google")
+@router.get("/google/login")
+def login_google():
+    """Startet den offiziellen Google OAuth 2.0 Web Flow mit automatischer Classroom Freigabe."""
+    client_id = settings.GOOGLE_CLIENT_ID
+    params = urllib.parse.urlencode({
+        "client_id": client_id,
+        "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+        "access_type": "offline",
+        "prompt": "select_account",
+        "hd": settings.ALLOWED_EMAIL_DOMAIN,
+    })
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+
+@router.get("/google")
+@router.get("/google/callback")
+async def google_callback(
+    code: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Empfaengt den OAuth 2.0 Authorization Code von Google,
+    tauscht ihn server-seitig gegen Tokens (ID-Token + Classroom Access Token),
+    fuehrt die Domaenenpruefung und Google Groups Ermittlung durch,
+    und leitet direkt in das Dashboard weiter.
+    """
+    if error or not code:
+        return RedirectResponse(f"/dashboard/?auth_error={error or 'missing_code'}")
+
+    client_id = settings.GOOGLE_CLIENT_ID
+    client_secret = settings.GOOGLE_CLIENT_SECRET
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            token_resp = await http_client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=10.0,
+            )
+    except httpx.HTTPError:
+        return RedirectResponse("/dashboard/?auth_error=token_exchange_failed")
+
+    if token_resp.status_code != 200:
+        return RedirectResponse("/dashboard/?auth_error=token_exchange_failed")
+
+    token_data = token_resp.json()
+    id_token = token_data.get("id_token")
+    access_token = token_data.get("access_token")
+
+    if not id_token:
+        return RedirectResponse("/dashboard/?auth_error=missing_id_token")
+
+    try:
+        google_data = await verify_google_id_token(id_token)
+    except HTTPException:
+        return RedirectResponse("/dashboard/?auth_error=invalid_id_token")
+
+    email = google_data.get("email", "").lower()
+    full_name = google_data.get("name", email.split("@")[0])
+
+    if not email.endswith(f"@{settings.ALLOWED_EMAIL_DOMAIN}"):
+        return RedirectResponse("/dashboard/?auth_error=forbidden_domain")
+
+    raw_google_groups = await get_google_groups_for_user(email)
+    mapped_tags = map_groups_to_logical_tags(raw_google_groups)
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        initial_role = "admin" if email in ["pascal.thommen@upa.edu.py", "soporte.ti@upa.edu.py"] else "user"
+        user = User(
+            email=email,
+            full_name=full_name,
+            role=initial_role,
+            groups=mapped_tags,
+            google_groups=raw_google_groups,
+            classroom_token=access_token,
+        )
+        db.add(user)
+    else:
+        user.full_name = full_name
+        user.groups = mapped_tags
+        user.google_groups = raw_google_groups
+        if access_token:
+            user.classroom_token = access_token
+
+    if access_token:
+        clear_classroom_cache(email)
+
+    db.commit()
+    db.refresh(user)
+
+    session_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
+    redirect = RedirectResponse(f"/dashboard/?token={session_token}")
+    _set_session_cookie(redirect, session_token)
+    return redirect
+
+
 @router.post("/google", response_model=AuthResponse)
-async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
+async def google_login(payload: GoogleLoginRequest, response: Response, db: Session = Depends(get_db)):
     """
     Validiert den Google ID Token und meldet den Benutzer an.
     Erzwingt die Domänen-Sperre (@upa.edu.py).
@@ -97,12 +223,16 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
         user.google_groups = raw_google_groups
         if payload.classroom_token:
             user.classroom_token = payload.classroom_token
-            
+
+    if payload.classroom_token:
+        clear_classroom_cache(email)
+
     db.commit()
     db.refresh(user)
 
     # 4. Eigenen signierten JWT Session-Token generieren
     session_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
+    _set_session_cookie(response, session_token)
 
     return AuthResponse(
         access_token=session_token,
@@ -117,6 +247,13 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
             has_classroom_token=bool(user.classroom_token),
         )
     )
+
+
+@router.post("/logout")
+def logout_session(response: Response):
+    """Beendet die aktive Cookie-Session des Benutzers."""
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    return {"status": "logged_out"}
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
@@ -142,6 +279,7 @@ def update_classroom_token(
     Permite activar la integracion de Classroom si no se concedio durante el login inicial.
     """
     current_user.classroom_token = payload.classroom_token
+    clear_classroom_cache(current_user.email)
     db.commit()
     db.refresh(current_user)
     return UserResponse(

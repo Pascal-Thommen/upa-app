@@ -89,6 +89,7 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
                         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
                         "assertion": signed_jwt,
                     },
+                    timeout=10.0,
                 )
             except Exception as e:
                 logger.error("Netzwerkfehler beim Anfordern des Service Account Tokens: %s", e)
@@ -108,6 +109,7 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
                 groups_resp = await client.get(
                     groups_url,
                     headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=10.0,
                 )
             except Exception as e:
                 logger.error("Netzwerkfehler bei Google Groups Abfrage für %s: %s", user_email, e)
@@ -116,15 +118,58 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
             if groups_resp.status_code == 200:
                 data = groups_resp.json()
                 raw_groups = data.get("groups", [])
-                parsed_groups: list[dict[str, str]] = []
+
+                # Direkte und indirekte (verschachtelte) Gruppenmitgliedschaften rekursiv auflösen
+                all_groups_map: dict[str, dict[str, str]] = {}
+                queue: list[str] = []
+                visited: set[str] = {user_email.strip().lower()}
+
                 for g in raw_groups:
-                    parsed_groups.append({
-                        "id": g.get("id", ""),
-                        "name": g.get("name", ""),
-                        "email": g.get("email", ""),
-                        "description": g.get("description", "") or "",
-                    })
-                return parsed_groups
+                    g_email = (g.get("email") or "").strip()
+                    g_id = str(g.get("id") or "").strip()
+                    key = g_email.lower() if g_email else g_id
+                    if not key:
+                        continue
+                    all_groups_map[key] = {
+                        "id": g_id,
+                        "name": (g.get("name") or g_email).strip(),
+                        "email": g_email,
+                        "description": (g.get("description") or "").strip(),
+                    }
+                    if key not in visited:
+                        visited.add(key)
+                        queue.append(g_email or g_id)
+
+                max_iterations = 50
+                iterations = 0
+                while queue and iterations < max_iterations:
+                    iterations += 1
+                    current_key = queue.pop(0)
+                    parent_url = f"https://admin.googleapis.com/admin/directory/v1/groups?userKey={current_key}"
+                    try:
+                        p_resp = await client.get(
+                            parent_url,
+                            headers={"Authorization": f"Bearer {access_token}"},
+                            timeout=10.0,
+                        )
+                        if p_resp.status_code == 200:
+                            for pg in p_resp.json().get("groups", []):
+                                p_email = (pg.get("email") or "").strip()
+                                p_id = str(pg.get("id") or "").strip()
+                                p_key = p_email.lower() if p_email else p_id
+                                if p_key and p_key not in visited:
+                                    visited.add(p_key)
+                                    queue.append(p_email or p_id)
+                                    all_groups_map[p_key] = {
+                                        "id": p_id,
+                                        "name": (pg.get("name") or p_email).strip(),
+                                        "email": p_email,
+                                        "description": (pg.get("description") or "").strip(),
+                                    }
+                    except Exception as err:
+                        logger.debug("Fehler beim Abrufen der übergeordneten Gruppe für %s: %s", current_key, err)
+
+                return list(all_groups_map.values())
             elif groups_resp.status_code == 403:
                 logger.info("Delegierter User %s nicht autorisiert für Directory API, versuche nächsten...", delegated_user)
                 continue

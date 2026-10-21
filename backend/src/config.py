@@ -7,11 +7,12 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     PORT: int = 8000
     HOST: str = "0.0.0.0"
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000,http://localhost:8085,http://100.110.128.107:8000,http://acersrv.netbird.cloud:8000,https://acersrv.netbird.cloud,https://multica.eu1.netbird.services,https://upa-2vgh.eu1.netbird.services,https://upa-pwa-asn9.eu1.netbird.services,https://upa-pwa-io8l.eu1.netbird.services"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000,http://localhost:8085,http://100.110.128.107:8000,http://acersrv.netbird.cloud:8000,https://acersrv.netbird.cloud,https://multica.eu1.netbird.services,https://upa.eu1.netbird.services,https://upa-2vgh.eu1.netbird.services,https://upa-pwa-asn9.eu1.netbird.services,https://upa-pwa-io8l.eu1.netbird.services"
     
     ALLOWED_EMAIL_DOMAIN: str = "upa.edu.py"
-    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_ID: str = "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com"
     GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "https://upa.eu1.netbird.services/api/auth/google"
     ALLOWED_GOOGLE_CLIENT_IDS: str = "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com,567912225771-7cf17vkfujmhb4itu2lri0ttssavfmcg.apps.googleusercontent.com"
     
     # Google Workspace Admin Directory API (Service Account)

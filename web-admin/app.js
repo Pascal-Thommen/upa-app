@@ -39,8 +39,10 @@ const DOM_ELEMENTS = {
   calNext: document.getElementById("cal-next"),
   selectedDateLabel: document.getElementById("selected-date-label"),
   classroomPermissionAlert: document.getElementById("classroom-permission-alert"),
+  btnConnectClassroom: document.getElementById("btn-connect-classroom"),
   btnOpenClassroomModal: document.getElementById("btn-open-classroom-modal"),
   modalClassroom: document.getElementById("modal-classroom"),
+  modalBtnConnectGoogle: document.getElementById("modal-btn-connect-google"),
   formClassroomToken: document.getElementById("form-classroom-token"),
   modalInputClassroomToken: document.getElementById("modal-input-classroom-token"),
   btnCloseClassroomModal: document.getElementById("btn-close-classroom-modal"),
@@ -82,8 +84,10 @@ function setStoredToken(token) {
 }
 
 function logout() {
+  fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
   setStoredToken(null);
   state.currentUser = null;
+  document.documentElement.classList.remove("has-auth");
   showLoginView();
   showLoginAlert("Sesión finalizada correctamente.", "info");
 }
@@ -105,12 +109,14 @@ function showLoginAlert(message, type = "error") {
 }
 
 function showLoginView() {
+  document.documentElement.classList.remove("has-auth");
   DOM_ELEMENTS.viewLogin.classList.remove("hidden");
   DOM_ELEMENTS.viewDashboard.classList.add("hidden");
   DOM_ELEMENTS.authActions.innerHTML = "";
 }
 
 function showDashboardView(user) {
+  document.documentElement.classList.add("has-auth");
   DOM_ELEMENTS.viewLogin.classList.add("hidden");
   DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
 
@@ -213,26 +219,29 @@ function renderUserProfile(user) {
     DOM_ELEMENTS.userClassroomSyncBadge.className = "text-emerald-600 font-semibold";
     DOM_ELEMENTS.classroomPermissionAlert.classList.add("hidden");
   } else {
-    DOM_ELEMENTS.userClassroomSyncBadge.textContent = "• Classroom: Pendiente";
-    DOM_ELEMENTS.userClassroomSyncBadge.className = "text-amber-600 font-semibold";
+    DOM_ELEMENTS.userClassroomSyncBadge.textContent = "• Classroom: Sin vincular (Clic para conectar)";
+    DOM_ELEMENTS.userClassroomSyncBadge.className = "text-blue-700 hover:text-blue-900 font-semibold cursor-pointer underline";
     DOM_ELEMENTS.classroomPermissionAlert.classList.remove("hidden");
   }
 
   // 2. Regla de Privacidad de Google Mailgruppen:
   // Estrictamente visible solo para pascal.thommen@upa.edu.py
   const isExclusiveUser = (user.email || "").toLowerCase() === "pascal.thommen@upa.edu.py";
-  const groups = Array.isArray(user.groups) ? user.groups : [];
+  const googleGroups = Array.isArray(user.google_groups) && user.google_groups.length > 0
+    ? user.google_groups
+    : [];
 
-  if (isExclusiveUser && groups.length > 0) {
+  if (isExclusiveUser && googleGroups.length > 0) {
     DOM_ELEMENTS.tileMailgroups.classList.remove("hidden");
-    DOM_ELEMENTS.groupsCount.textContent = `${groups.length} grupos`;
-    DOM_ELEMENTS.userGroupsContainer.innerHTML = groups
+    DOM_ELEMENTS.groupsCount.textContent = `${googleGroups.length} grupos`;
+    DOM_ELEMENTS.userGroupsContainer.innerHTML = googleGroups
       .map((grp) => {
-        const label = GROUP_LABELS[grp] || grp;
+        const name = grp.name || grp.email;
+        const email = grp.email ? `<span class="ml-1 text-[10px] opacity-75 font-normal">&bull; ${grp.email}</span>` : "";
         return `
-          <span class="group-badge group-badge-all" title="${label}">
-            <span>${grp}</span>
-            <span class="ml-1 text-[10px] opacity-75 font-normal">&bull; ${label}</span>
+          <span class="group-badge group-badge-all" title="${grp.email || name}">
+            <span>${name}</span>
+            ${email}
           </span>
         `;
       })
@@ -671,6 +680,67 @@ async function handleLoginSubmit(event) {
   }
 }
 
+const GOOGLE_CLIENT_ID = "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com";
+const CLASSROOM_SCOPES = [
+  "https://www.googleapis.com/auth/classroom.courses.readonly",
+  "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+].join(" ");
+
+let tokenClient = null;
+
+/**
+ * Inicia el flujo oficial de consentimiento Google OAuth 2.0 para Classroom.
+ * Solicita acceso a asignaturas y tareas sin requerir copiar tokens manualmente.
+ */
+function connectGoogleClassroom() {
+  if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
+    window.location.href = "/api/auth/login-google";
+    return;
+  }
+
+  try {
+    if (!tokenClient) {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: CLASSROOM_SCOPES,
+        hint: state.currentUser ? state.currentUser.email : "",
+        callback: async (tokenResponse) => {
+          if (tokenResponse.error) {
+            console.error("Google Classroom Consent Error:", tokenResponse);
+            alert("No se concedió autorización para Google Classroom: " + (tokenResponse.error_description || tokenResponse.error));
+            return;
+          }
+          if (tokenResponse.access_token) {
+            try {
+              const res = await apiRequest("/api/auth/classroom-token", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ classroom_token: tokenResponse.access_token }),
+              });
+              if (res.ok) {
+                if (DOM_ELEMENTS.modalClassroom) {
+                  DOM_ELEMENTS.modalClassroom.classList.add("hidden");
+                }
+                await refreshDashboard();
+              } else {
+                alert("Error al registrar el token de Classroom en el servidor.");
+              }
+            } catch (err) {
+              console.error("Error al registrar classroom token:", err);
+              alert("Error de conexión al guardar el token.");
+            }
+          }
+        },
+      });
+    }
+
+    tokenClient.requestAccessToken({ prompt: "select_account" });
+  } catch (err) {
+    console.error("Error al solicitar acceso a Google Classroom:", err);
+    window.location.href = "/api/auth/login-google";
+  }
+}
+
 async function handleClassroomTokenSubmit(event) {
   event.preventDefault();
   const token = DOM_ELEMENTS.modalInputClassroomToken.value.trim();
@@ -696,9 +766,23 @@ async function handleClassroomTokenSubmit(event) {
   }
 }
 
-function init() {
+async function init() {
   DOM_ELEMENTS.formLogin.addEventListener("submit", handleLoginSubmit);
   DOM_ELEMENTS.btnRefresh.addEventListener("click", refreshDashboard);
+
+  if (DOM_ELEMENTS.btnConnectClassroom) {
+    DOM_ELEMENTS.btnConnectClassroom.addEventListener("click", connectGoogleClassroom);
+  }
+  if (DOM_ELEMENTS.modalBtnConnectGoogle) {
+    DOM_ELEMENTS.modalBtnConnectGoogle.addEventListener("click", connectGoogleClassroom);
+  }
+  if (DOM_ELEMENTS.userClassroomSyncBadge) {
+    DOM_ELEMENTS.userClassroomSyncBadge.addEventListener("click", () => {
+      if (!state.currentUser || !state.currentUser.has_classroom_token) {
+        connectGoogleClassroom();
+      }
+    });
+  }
 
   DOM_ELEMENTS.calPrev.addEventListener("click", () => {
     state.currentMonth--;
@@ -781,9 +865,34 @@ function init() {
 
   checkHealth();
 
+  // Verarbeitet Rückleitung aus dem Google OAuth 2.0 Web Redirect Flow
+  const urlParams = new URLSearchParams(window.location.search);
+  const tokenFromUrl = urlParams.get("token");
+  const authError = urlParams.get("auth_error");
+
+  if (tokenFromUrl) {
+    setStoredToken(tokenFromUrl);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    document.documentElement.classList.add("has-auth");
+    DOM_ELEMENTS.viewLogin.classList.add("hidden");
+    DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
+    await refreshDashboard();
+    return;
+  }
+
+  if (authError) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showLoginView();
+    showLoginAlert("Error de autenticación Google: " + authError, "error");
+    return;
+  }
+
   const existingToken = getStoredToken();
   if (existingToken) {
-    refreshDashboard();
+    document.documentElement.classList.add("has-auth");
+    DOM_ELEMENTS.viewLogin.classList.add("hidden");
+    DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
+    await refreshDashboard();
   } else {
     showLoginView();
   }

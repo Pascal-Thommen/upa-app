@@ -99,12 +99,15 @@ def get_app_state(
     )
     user_data = None
     if current_user:
+        is_authorized_groups = current_user.email.lower() == "pascal.thommen@upa.edu.py"
         user_data = {
             "id": current_user.id,
             "email": current_user.email,
             "full_name": current_user.full_name,
             "role": current_user.role,
-            "groups": current_user.groups if current_user.email == "pascal.thommen@upa.edu.py" else [],
+            "groups": (current_user.groups or []) if is_authorized_groups else [],
+            "google_groups": (current_user.google_groups or []) if is_authorized_groups else [],
+            "has_classroom_token": bool(current_user.classroom_token),
         }
     return {
         "portal": "UPA Mobile Campus Platform",

@@ -29,6 +29,15 @@
   
   <link rel="stylesheet" href="/dashboard/style.css">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    if (localStorage.getItem("upa_access_token") || localStorage.getItem("upa_auth_token") || window.location.search.includes("token=")) {
+      document.documentElement.classList.add("has-auth");
+    }
+  </script>
+  <style>
+    html.has-auth #view-login, html.has-auth #section-login { display: none !important; }
+    html.has-auth #view-dashboard, html.has-auth #section-dashboard { display: block !important; }
+  </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
 
@@ -96,22 +105,19 @@
 
         <!-- Google OAuth 2.0 Web Sign-In Button -->
         <div class="mb-6 flex flex-col items-center">
-          <div id="g_id_onload"
-               data-client_id="50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com"
-               data-callback="handleGoogleCredentialResponse"
-               data-auto_prompt="false">
-          </div>
-          <div class="g_id_signin mb-2 shadow-sm"
-               data-type="standard"
-               data-shape="pill"
-               data-theme="outline"
-               data-text="signin_with"
-               data-size="large"
-               data-logo_alignment="left"
-               data-width="320">
-          </div>
+          <a href="/api/auth/login-google"
+             id="btn-login-google-direct"
+             class="w-full max-w-[320px] flex items-center justify-center gap-3 px-4 py-3 bg-white border border-slate-300 rounded-full shadow-sm hover:bg-slate-50 hover:border-slate-400 transition text-slate-700 font-semibold text-sm">
+            <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Iniciar sesión con Google</span>
+          </a>
           <p class="text-[11px] text-slate-400 text-center mt-2">
-            Autenticación directa con tu cuenta oficial de Google
+            Autenticación directa con tu cuenta oficial @upa.edu.py
           </p>
         </div>
 
@@ -204,17 +210,27 @@
       <div id="tab-content-dashboard" class="space-y-6">
 
         <!-- Alerta de Classroom cuando faltan permisos -->
-        <div id="classroom-permission-alert" class="hidden p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm bg-amber-50/80 border-amber-200 text-amber-900">
+        <div id="classroom-permission-alert" class="hidden p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm bg-blue-50/90 border-blue-200 text-blue-950">
           <div class="flex items-center gap-3">
-            <span class="text-2xl">⚠️</span>
+            <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm shrink-0">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/>
+              </svg>
+            </div>
             <div>
-              <h3 class="font-bold text-sm">Google Classroom sin vincular</h3>
-              <p class="text-xs text-amber-800">Conecte su token de Classroom para sincronizar asignaturas y tareas en tiempo real.</p>
+              <h3 class="font-bold text-sm text-slate-900">Sincronización de Google Classroom</h3>
+              <p class="text-xs text-slate-600">Autorice el acceso directo para cargar sus materias oficiales y tareas pendientes de la UPA.</p>
             </div>
           </div>
-          <button id="btn-open-classroom-modal" class="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white shadow-sm whitespace-nowrap">
-            Vincular Token Classroom
-          </button>
+          <div class="flex items-center gap-2">
+            <button id="btn-connect-classroom" class="px-4 py-2 text-xs font-bold rounded-xl bg-blue-700 hover:bg-blue-800 text-white shadow-sm whitespace-nowrap flex items-center gap-1.5 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+              <span>Vincular con Google (1-Clic)</span>
+            </button>
+            <button id="btn-open-classroom-modal" class="px-2.5 py-2 text-xs font-medium rounded-xl text-slate-500 hover:bg-slate-200/60 transition" title="Configuración avanzada">
+              ⚙️
+            </button>
+          </div>
         </div>
 
         <!-- SECCIÓN 1: ACADÉMICO, GRUPOS Y CLASSROOM -->
@@ -353,32 +369,51 @@
 
   </main>
 
-  <!-- Modal para Vincular Token de Classroom Manual -->
+  <!-- Modal para Vincular Google Classroom -->
   <div id="modal-classroom" class="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-8 border border-slate-200">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-extrabold text-slate-900">Vincular Token de Classroom</h3>
+        <h3 class="text-lg font-extrabold text-slate-900">Vincular Google Classroom</h3>
         <button id="btn-close-classroom-modal" class="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
       </div>
-      <p class="text-xs text-slate-500 mb-5 leading-relaxed">
-        Ingrese el token OAuth de Google Classroom obtenido durante el inicio de sesión para activar la sincronización en vivo de cursos y tareas.
+      <p class="text-xs text-slate-600 mb-5 leading-relaxed">
+        Conceda permisos a la plataforma para consultar sus asignaturas y tareas pendientes desde Google Classroom institucional (@upa.edu.py).
       </p>
-      <form id="form-classroom-token" class="space-y-4">
-        <div>
-          <label for="modal-input-classroom-token" class="block text-xs font-semibold text-slate-700 mb-1.5">
-            Google Classroom Token
-          </label>
-          <input type="text" id="modal-input-classroom-token" required placeholder="ya29.a0AfH6SM..." class="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 font-mono bg-slate-50">
-        </div>
-        <div class="flex justify-end gap-2.5 pt-2">
-          <button type="button" id="btn-cancel-classroom" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition">
-            Cancelar
-          </button>
-          <button type="submit" class="px-4 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-xl shadow-md transition">
-            Guardar y Sincronizar
-          </button>
-        </div>
-      </form>
+
+      <!-- Botón de Conexión Automática (1-Clic) -->
+      <div class="mb-5 p-4 rounded-2xl bg-blue-50 border border-blue-100 flex flex-col items-center text-center">
+        <button id="modal-btn-connect-google" type="button" class="w-full py-2.5 px-4 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/>
+          </svg>
+          <span>Conectar con Google (1-Clic)</span>
+        </button>
+        <span class="text-[11px] text-slate-500 mt-2">Abre el consentimiento oficial de Google OAuth 2.0</span>
+      </div>
+
+      <!-- Opciones Avanzadas (Token Manual) -->
+      <details class="text-xs border-t border-slate-100 pt-3">
+        <summary class="cursor-pointer text-slate-400 hover:text-slate-600 font-medium py-1">Entrada manual de token (Modo desarrollador)</summary>
+        <form id="form-classroom-token" class="space-y-3 pt-2">
+          <div>
+            <label for="modal-input-classroom-token" class="block text-[11px] font-semibold text-slate-700 mb-1">
+              Google Classroom Token (Bearer)
+            </label>
+            <input type="text" id="modal-input-classroom-token" placeholder="ya29.a0AfH6SM..." class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 font-mono bg-slate-50">
+          </div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button type="submit" class="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition">
+              Guardar Manualmente
+            </button>
+          </div>
+        </form>
+      </details>
+
+      <div class="flex justify-end pt-4 border-t border-slate-100 mt-4">
+        <button type="button" id="btn-cancel-classroom" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition">
+          Cerrar
+        </button>
+      </div>
     </div>
   </div>
 
