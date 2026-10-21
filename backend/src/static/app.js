@@ -225,18 +225,21 @@ function renderUserProfile(user) {
   // 2. Regla de Privacidad de Google Mailgruppen:
   // Estrictamente visible solo para pascal.thommen@upa.edu.py
   const isExclusiveUser = (user.email || "").toLowerCase() === "pascal.thommen@upa.edu.py";
-  const groups = Array.isArray(user.groups) ? user.groups : [];
+  const googleGroups = Array.isArray(user.google_groups) && user.google_groups.length > 0
+    ? user.google_groups
+    : [];
 
-  if (isExclusiveUser && groups.length > 0) {
+  if (isExclusiveUser && googleGroups.length > 0) {
     DOM_ELEMENTS.tileMailgroups.classList.remove("hidden");
-    DOM_ELEMENTS.groupsCount.textContent = `${groups.length} grupos`;
-    DOM_ELEMENTS.userGroupsContainer.innerHTML = groups
+    DOM_ELEMENTS.groupsCount.textContent = `${googleGroups.length} grupos`;
+    DOM_ELEMENTS.userGroupsContainer.innerHTML = googleGroups
       .map((grp) => {
-        const label = GROUP_LABELS[grp] || grp;
+        const name = grp.name || grp.email;
+        const email = grp.email ? `<span class="ml-1 text-[10px] opacity-75 font-normal">&bull; ${grp.email}</span>` : "";
         return `
-          <span class="group-badge group-badge-all" title="${label}">
-            <span>${grp}</span>
-            <span class="ml-1 text-[10px] opacity-75 font-normal">&bull; ${label}</span>
+          <span class="group-badge group-badge-all" title="${grp.email || name}">
+            <span>${name}</span>
+            ${email}
           </span>
         `;
       })
