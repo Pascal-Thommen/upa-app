@@ -140,3 +140,24 @@ def test_map_groups_to_logical_tags():
     assert "TIE" in tags
     assert "PROF" in tags
     assert "Estudiantes TIE 2025" in tags
+
+def test_login_google_redirect():
+    response = client.get("/api/auth/login-google", follow_redirects=False)
+    assert response.status_code == 307
+    location = response.headers.get("location", "")
+    assert "accounts.google.com" in location
+    assert "client_id=" in location
+    assert "redirect_uri=" in location
+
+def test_google_callback_missing_code_redirects_error():
+    response = client.get("/api/auth/google", follow_redirects=False)
+    assert response.status_code == 307
+    location = response.headers.get("location", "")
+    assert "/dashboard/?auth_error=missing_code" in location
+
+def test_google_callback_error_param_redirects():
+    response = client.get("/api/auth/google?error=access_denied", follow_redirects=False)
+    assert response.status_code == 307
+    location = response.headers.get("location", "")
+    assert "/dashboard/?auth_error=access_denied" in location
+

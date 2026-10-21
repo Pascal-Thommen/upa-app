@@ -865,6 +865,22 @@ function init() {
 
   checkHealth();
 
+  // Verarbeitet Rückleitung aus dem Google OAuth 2.0 Web Redirect Flow
+  const urlParams = new URLSearchParams(window.location.search);
+  const tokenFromUrl = urlParams.get("token");
+  const authError = urlParams.get("auth_error");
+
+  if (tokenFromUrl) {
+    setStoredToken(tokenFromUrl);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    await refreshDashboard();
+    return;
+  }
+
+  if (authError) {
+    showLoginAlert("Error de autenticación Google: " + authError, "error");
+  }
+
   const existingToken = getStoredToken();
   if (existingToken) {
     refreshDashboard();

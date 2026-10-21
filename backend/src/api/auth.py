@@ -1,4 +1,8 @@
+import urllib.parse
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
+import httpx
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -52,6 +56,97 @@ def _filter_google_groups_for_privacy(email: str, google_groups: list[dict] | No
     if email.lower() == "pascal.thommen@upa.edu.py":
         return [GoogleGroupDetail(**g) for g in (google_groups or [])]
     return []
+
+@router.get("/login-google")
+def login_google():
+    """Startet den offiziellen Google OAuth 2.0 Web Flow mit automatischer Classroom Freigabe."""
+    client_id = settings.GOOGLE_CLIENT_ID
+    params = urllib.parse.urlencode({
+        "client_id": client_id,
+        "redirect_uri": "https://upa.eu1.netbird.services/api/auth/google",
+        "response_type": "code",
+        "scope": "openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+        "access_type": "offline",
+        "prompt": "consent",
+        "hd": settings.ALLOWED_EMAIL_DOMAIN,
+    })
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+@router.get("/google")
+async def google_callback(
+    code: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Empfaengt den OAuth 2.0 Authorization Code von Google,
+    tauscht ihn server-seitig gegen Tokens (ID-Token + Classroom Access Token),
+    fuehrt die Domaenenpruefung und Google Groups Ermittlung durch,
+    und leitet direkt in das Dashboard weiter.
+    """
+    if error or not code:
+        return RedirectResponse(f"/dashboard/?auth_error={error or 'missing_code'}")
+
+    client_id = settings.GOOGLE_CLIENT_ID
+    client_secret = settings.GOOGLE_CLIENT_SECRET
+
+    async with httpx.AsyncClient(timeout=10.0) as http_client:
+        token_resp = await http_client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": "https://upa.eu1.netbird.services/api/auth/google",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+
+    if token_resp.status_code != 200:
+        return RedirectResponse("/dashboard/?auth_error=token_exchange_failed")
+
+    token_data = token_resp.json()
+    id_token = token_data.get("id_token")
+    access_token = token_data.get("access_token")
+
+    if not id_token:
+        return RedirectResponse("/dashboard/?auth_error=missing_id_token")
+
+    google_data = await verify_google_id_token(id_token)
+    email = google_data.get("email", "").lower()
+    full_name = google_data.get("name", email.split("@")[0])
+
+    if not email.endswith(f"@{settings.ALLOWED_EMAIL_DOMAIN}"):
+        return RedirectResponse("/dashboard/?auth_error=forbidden_domain")
+
+    raw_google_groups = await get_google_groups_for_user(email)
+    mapped_tags = map_groups_to_logical_tags(raw_google_groups)
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        initial_role = "admin" if email in ["pascal.thommen@upa.edu.py", "soporte.ti@upa.edu.py"] else "user"
+        user = User(
+            email=email,
+            full_name=full_name,
+            role=initial_role,
+            groups=mapped_tags,
+            google_groups=raw_google_groups,
+            classroom_token=access_token,
+        )
+        db.add(user)
+    else:
+        user.full_name = full_name
+        user.groups = mapped_tags
+        user.google_groups = raw_google_groups
+        if access_token:
+            user.classroom_token = access_token
+
+    db.commit()
+    db.refresh(user)
+
+    session_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
+    return RedirectResponse(f"/dashboard/?token={session_token}")
 
 @router.post("/google", response_model=AuthResponse)
 async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):

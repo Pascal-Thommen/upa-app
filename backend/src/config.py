@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     ALLOWED_EMAIL_DOMAIN: str = "upa.edu.py"
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    ALLOWED_GOOGLE_CLIENT_IDS: str = "567912225771-7cf17vkfujmhb4itu2lri0ttssavfmcg.apps.googleusercontent.com,50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com"
+    ALLOWED_GOOGLE_CLIENT_IDS: str = "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com,567912225771-7cf17vkfujmhb4itu2lri0ttssavfmcg.apps.googleusercontent.com"
     
     # Google Workspace Admin Directory API (Service Account)
     GOOGLE_SERVICE_ACCOUNT_FILE: str = "./secrets/service-account.json"
