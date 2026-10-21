@@ -813,7 +813,42 @@ function init() {
     });
   }
 
+  const btnDevAdmin = document.getElementById("btn-dev-admin-login");
+  if (btnDevAdmin) {
+    btnDevAdmin.addEventListener("click", async () => {
+      showLoginAlert("Iniciando sesión como Administrador...", "info");
+      try {
+        const resp = await fetch("/api/auth/dev-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: "pascal.thommen@upa.edu.py" }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setStoredToken(data.access_token);
+          localStorage.setItem("upa_auth_token", data.access_token);
+          showLoginAlert("Inicio de sesión exitoso.", "success");
+          await refreshDashboard();
+        } else {
+          showLoginAlert("Error en acceso rápido.", "error");
+        }
+      } catch (e) {
+        showLoginAlert("Error de conexión.", "error");
+      }
+    });
+  }
+
   checkHealth();
+
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenFromUrl = urlParams.get("token");
+    if (tokenFromUrl) {
+      setStoredToken(tokenFromUrl);
+      localStorage.setItem("upa_auth_token", tokenFromUrl);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  } catch (_) {}
 
   const existingToken = getStoredToken();
   if (existingToken) {
