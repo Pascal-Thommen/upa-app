@@ -89,6 +89,7 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
                         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
                         "assertion": signed_jwt,
                     },
+                    timeout=10.0,
                 )
             except Exception as e:
                 logger.error("Netzwerkfehler beim Anfordern des Service Account Tokens: %s", e)
@@ -108,6 +109,7 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
                 groups_resp = await client.get(
                     groups_url,
                     headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=10.0,
                 )
             except Exception as e:
                 logger.error("Netzwerkfehler bei Google Groups Abfrage für %s: %s", user_email, e)
@@ -140,6 +142,7 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
                         p_resp = await client.get(
                             parent_url,
                             headers={"Authorization": f"Bearer {access_token}"},
+                            timeout=10.0,
                         )
                         if p_resp.status_code == 200:
                             for pg in p_resp.json().get("groups", []):
