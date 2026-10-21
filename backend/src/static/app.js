@@ -39,8 +39,10 @@ const DOM_ELEMENTS = {
   calNext: document.getElementById("cal-next"),
   selectedDateLabel: document.getElementById("selected-date-label"),
   classroomPermissionAlert: document.getElementById("classroom-permission-alert"),
+  btnConnectClassroom: document.getElementById("btn-connect-classroom"),
   btnOpenClassroomModal: document.getElementById("btn-open-classroom-modal"),
   modalClassroom: document.getElementById("modal-classroom"),
+  modalBtnConnectGoogle: document.getElementById("modal-btn-connect-google"),
   formClassroomToken: document.getElementById("form-classroom-token"),
   modalInputClassroomToken: document.getElementById("modal-input-classroom-token"),
   btnCloseClassroomModal: document.getElementById("btn-close-classroom-modal"),
@@ -213,8 +215,8 @@ function renderUserProfile(user) {
     DOM_ELEMENTS.userClassroomSyncBadge.className = "text-emerald-600 font-semibold";
     DOM_ELEMENTS.classroomPermissionAlert.classList.add("hidden");
   } else {
-    DOM_ELEMENTS.userClassroomSyncBadge.textContent = "• Classroom: Pendiente";
-    DOM_ELEMENTS.userClassroomSyncBadge.className = "text-amber-600 font-semibold";
+    DOM_ELEMENTS.userClassroomSyncBadge.textContent = "• Classroom: Sin vincular (Clic para conectar)";
+    DOM_ELEMENTS.userClassroomSyncBadge.className = "text-blue-700 hover:text-blue-900 font-semibold cursor-pointer underline";
     DOM_ELEMENTS.classroomPermissionAlert.classList.remove("hidden");
   }
 
@@ -572,6 +574,13 @@ window.handleGoogleCredentialResponse = async function(response) {
       setStoredToken(authData.access_token);
       showLoginAlert("Inicio de sesión exitoso.", "success");
       await refreshDashboard();
+      if (!authData.user || !authData.user.has_classroom_token) {
+        setTimeout(() => {
+          if (DOM_ELEMENTS.modalClassroom) {
+            DOM_ELEMENTS.modalClassroom.classList.remove("hidden");
+          }
+        }, 600);
+      }
       return;
     }
     if (res.status === 403) {
@@ -671,6 +680,67 @@ async function handleLoginSubmit(event) {
   }
 }
 
+const GOOGLE_CLIENT_ID = "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com";
+const CLASSROOM_SCOPES = [
+  "https://www.googleapis.com/auth/classroom.courses.readonly",
+  "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+].join(" ");
+
+let tokenClient = null;
+
+/**
+ * Inicia el flujo oficial de consentimiento Google OAuth 2.0 para Classroom.
+ * Solicita acceso a asignaturas y tareas sin requerir copiar tokens manualmente.
+ */
+function connectGoogleClassroom() {
+  if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
+    alert("El servicio de Google Identity Services se está cargando. Por favor intente en unos segundos.");
+    return;
+  }
+
+  try {
+    if (!tokenClient) {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: CLASSROOM_SCOPES,
+        hint: state.currentUser ? state.currentUser.email : "",
+        callback: async (tokenResponse) => {
+          if (tokenResponse.error) {
+            console.error("Google Classroom Consent Error:", tokenResponse);
+            alert("No se concedió autorización para Google Classroom: " + (tokenResponse.error_description || tokenResponse.error));
+            return;
+          }
+          if (tokenResponse.access_token) {
+            try {
+              const res = await apiRequest("/api/auth/classroom-token", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ classroom_token: tokenResponse.access_token }),
+              });
+              if (res.ok) {
+                if (DOM_ELEMENTS.modalClassroom) {
+                  DOM_ELEMENTS.modalClassroom.classList.add("hidden");
+                }
+                await refreshDashboard();
+              } else {
+                alert("Error al registrar el token de Classroom en el servidor.");
+              }
+            } catch (err) {
+              console.error("Error al registrar classroom token:", err);
+              alert("Error de conexión al guardar el token.");
+            }
+          }
+        },
+      });
+    }
+
+    tokenClient.requestAccessToken({ prompt: "consent" });
+  } catch (err) {
+    console.error("Error al solicitar acceso a Google Classroom:", err);
+    alert("No se pudo iniciar el flujo de consentimiento de Google Classroom.");
+  }
+}
+
 async function handleClassroomTokenSubmit(event) {
   event.preventDefault();
   const token = DOM_ELEMENTS.modalInputClassroomToken.value.trim();
@@ -699,6 +769,20 @@ async function handleClassroomTokenSubmit(event) {
 function init() {
   DOM_ELEMENTS.formLogin.addEventListener("submit", handleLoginSubmit);
   DOM_ELEMENTS.btnRefresh.addEventListener("click", refreshDashboard);
+
+  if (DOM_ELEMENTS.btnConnectClassroom) {
+    DOM_ELEMENTS.btnConnectClassroom.addEventListener("click", connectGoogleClassroom);
+  }
+  if (DOM_ELEMENTS.modalBtnConnectGoogle) {
+    DOM_ELEMENTS.modalBtnConnectGoogle.addEventListener("click", connectGoogleClassroom);
+  }
+  if (DOM_ELEMENTS.userClassroomSyncBadge) {
+    DOM_ELEMENTS.userClassroomSyncBadge.addEventListener("click", () => {
+      if (!state.currentUser || !state.currentUser.has_classroom_token) {
+        connectGoogleClassroom();
+      }
+    });
+  }
 
   DOM_ELEMENTS.calPrev.addEventListener("click", () => {
     state.currentMonth--;

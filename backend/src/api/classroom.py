@@ -30,7 +30,7 @@ async def get_classroom_deadlines(
         async with httpx.AsyncClient(timeout=10.0) as client:
             # 1. Obtener cursos activos del estudiante
             courses_resp = await client.get(
-                "https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE",
+                "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
                 headers=headers,
                 timeout=10.0,
             )
@@ -121,7 +121,7 @@ async def get_classroom_courses(
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             courses_resp = await client.get(
-                "https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE",
+                "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
                 headers=headers,
                 timeout=10.0,
             )
