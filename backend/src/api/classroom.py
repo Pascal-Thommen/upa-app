@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Any
 
 import httpx
@@ -8,6 +9,11 @@ from ..auth import get_current_user
 from ..models import User
 
 router = APIRouter(prefix="/api/classroom", tags=["Classroom"])
+
+# In-Memory Cache (TTL: 5 Minuten)
+_DEADLINES_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_COURSES_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+CACHE_TTL_SECONDS = 300
 
 
 @router.get("/deadlines", response_model=list[dict[str, Any]])
@@ -24,11 +30,17 @@ async def get_classroom_deadlines(
         response.headers["X-Classroom-Status"] = "missing_token"
         return []
 
+    # Cache-Prüfung
+    user_cache = _DEADLINES_CACHE.get(current_user.email)
+    if user_cache and (time.time() - user_cache[0] < CACHE_TTL_SECONDS):
+        response.headers["X-Classroom-Status"] = "cached"
+        return user_cache[1]
+
     headers = {"Authorization": f"Bearer {current_user.classroom_token}"}
     deadlines = []
 
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             # 1. Obtener cursos activos del estudiante
             courses_resp = await client.get(
                 "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
@@ -108,6 +120,7 @@ async def get_classroom_deadlines(
             return item.get("due_date_formatted") or "9999-99-99"
 
         deadlines.sort(key=_deadline_sort_key)
+        _DEADLINES_CACHE[current_user.email] = (time.time(), deadlines)
         return deadlines
 
     except Exception as e:
@@ -127,6 +140,11 @@ async def get_classroom_courses(
     if not current_user.classroom_token:
         response.headers["X-Classroom-Status"] = "missing_token"
         return []
+
+    user_cache = _COURSES_CACHE.get(current_user.email)
+    if user_cache and (time.time() - user_cache[0] < CACHE_TTL_SECONDS):
+        response.headers["X-Classroom-Status"] = "cached"
+        return user_cache[1]
 
     headers = {"Authorization": f"Bearer {current_user.classroom_token}"}
 
@@ -148,7 +166,7 @@ async def get_classroom_courses(
             courses = courses_data.get("courses", [])
             response.headers["X-Classroom-Status"] = "active" if courses else "no_courses"
 
-            return [
+            result = [
                 {
                     "id": str(c.get("id", "")),
                     "name": c.get("name", "Curso sin nombre"),
@@ -158,6 +176,8 @@ async def get_classroom_courses(
                 }
                 for c in courses
             ]
+            _COURSES_CACHE[current_user.email] = (time.time(), result)
+            return result
     except Exception as e:
         print(f"[Classroom Courses Sync Error] {e}")
         response.headers["X-Classroom-Status"] = "network_error"
