@@ -387,6 +387,84 @@ Permite registrar el token FCM de Android / iOS / Web del dispositivo del usuari
 Entrega por separado los avisos de emergencia (`urgent_banners`) y las publicaciones generales (`posts`).
 * **Encabezado Opcional:** `Authorization: Bearer <token>`
 
+### 3.9 Subida de Archivos: Carteles, Banners y Documentos (`POST /api/media/upload`)
+
+Sube una imagen (JPG, PNG, WEBP) o un documento PDF de hasta **10 MB** y devuelve la URL final para usarla en `media_url` de una publicacion.
+
+* **Autenticacion:** obligatoria. Cualquier usuario autenticado o administrador (`Authorization: Bearer <token>`).
+* **Formato:** `multipart/form-data` con un unico campo `file`.
+* **Validacion en servidor:** el tipo se comprueba por el contenido real del archivo, no solo por `Content-Type` o la extension. Un `.exe` renombrado a `.png` se rechaza.
+* **Nombre en el servidor:** siempre `UUID + extension` (nunca el nombre original), por lo que dos subidas nunca colisionan.
+
+**Respuesta `201 Created`:**
+
+```json
+{
+  "url": "https://api.upa.edu.py/uploads/3f2b8c1e4d5a4f7e9a0b1c2d3e4f5a6b.png",
+  "filename": "3f2b8c1e4d5a4f7e9a0b1c2d3e4f5a6b.png",
+  "content_type": "image/png",
+  "size_bytes": 482133
+}
+```
+
+**Ejemplo con `curl`:**
+
+```bash
+curl -X POST "$BASE_URL/api/media/upload" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@cartel_semana_tie.png;type=image/png"
+```
+
+**Ejemplo en Android / Kotlin (`Retrofit`):**
+
+```kotlin
+interface MediaApi {
+    @Multipart
+    @POST("api/media/upload")
+    suspend fun upload(@Part file: MultipartBody.Part): MediaUploadResponse
+}
+
+data class MediaUploadResponse(
+    val url: String,
+    val filename: String,
+    @SerializedName("content_type") val contentType: String,
+    @SerializedName("size_bytes") val sizeBytes: Long,
+)
+
+val body = file.asRequestBody("image/png".toMediaType())
+val part = MultipartBody.Part.createFormData("file", file.name, body)
+val result = mediaApi.upload(part)
+```
+
+**Errores:**
+
+| Codigo | Causa | `detail` |
+|---|---|---|
+| `400` | Tipo no permitido (por ejemplo `.exe`, GIF, SVG, HTML) | `"Tipo de archivo no permitido. Formatos validos: JPG, PNG, WEBP y PDF."` |
+| `400` | Contenido no coincide con el tipo declarado | `"El contenido del archivo no coincide con un formato permitido (JPG, PNG, WEBP, PDF)."` |
+| `400` | Mas de 10 MB | `"El archivo supera el tamano maximo permitido de 10 MB."` |
+| `400` | Archivo vacio o campo `file` ausente | `"El archivo esta vacio."` / `"Falta el archivo multipart (campo 'file')."` |
+| `401` | Sin token o token invalido | `"Autenticacion requerida (Bearer Token ausente)"` |
+| `500` | Almacenamiento del servidor no disponible | `"El almacenamiento de archivos no esta disponible."` |
+
+**Descarga de archivos (`GET /uploads/{filename}`):** publico, sin autenticacion, para que `Coil`, `Glide` o `<img>` puedan cargar la URL directamente. Se entrega con el `Content-Type` correcto, `ETag`, `Cache-Control: public, max-age=31536000, immutable` y `X-Content-Type-Options: nosniff`. Como el nombre es un UUID y nunca cambia, el cliente puede cachear sin limite.
+
+### 3.10 Notificaciones Push por Eilmeldung (`EMERGENCY_BANNER`)
+
+Cuando un administrador crea una publicacion con `post_type = "EMERGENCY_BANNER"` en `POST /api/news`, el servidor envia automaticamente una notificacion FCM a todos los dispositivos registrados (ver 3.7) de los usuarios autorizados para los `target_groups` de la publicacion. La respuesta HTTP no espera al envio y un fallo de FCM nunca impide la publicacion.
+
+Mensaje FCM recibido por la app:
+
+```json
+{
+  "notification": { "title": "<title de la publicacion>", "body": "<caption o content, max. 240 caracteres>" },
+  "data": { "type": "EMERGENCY_BANNER", "post_id": "42" },
+  "android": { "priority": "HIGH" }
+}
+```
+
+La app debe leer `data.type` y `data.post_id` para abrir la Eilmeldung (`GET /api/news/{post_id}`). Configuracion del servidor: `FCM_SERVICE_ACCOUNT_FILE` y opcionalmente `FCM_PROJECT_ID` (ver `backend/.env.example`).
+
 ## 4. Manejo Estandarizado de Errores HTTP
 
 Todos los errores de negocio, autenticacion y autorizacion retornan un objeto JSON uniforme con la clave `detail`:
@@ -400,6 +478,7 @@ Todos los errores de negocio, autenticacion y autorizacion retornan un objeto JS
 | Codigo HTTP | Caso de Uso | Ejemplo de `detail` |
 |---|---|---|
 | `400 Bad Request` | Datos malformados, correo invalido, titulo vacio, rango de fechas incoherente o token de dispositivo vacio | `"El token de dispositivo (device_token) es invalido o esta vacio."` |
+| `400 Bad Request` (subida de archivos) | Ver tabla de errores en 3.9 | `"Tipo de archivo no permitido. Formatos validos: JPG, PNG, WEBP y PDF."` |
 | `401 Unauthorized` | Encabezado `Authorization` ausente, token JWT malformado o sesion expirada | `"Autenticacion requerida (Bearer Token ausente)"` |
 | `403 Forbidden` | Correo fuera de `@upa.edu.py`, usuario sin rol `admin` en endpoints CRUD o sin acceso al grupo del recurso | `"Acceso denegado: Se requieren permisos de administrador (Administrator-Rechte erforderlich)"` |
 | `404 Not Found` | Recurso solicitado por ID inexistente o expirado (`/api/news/{id}`, `/api/events/{id}`, `/api/events/{id}/register`) | `"Evento no encontrado."` |

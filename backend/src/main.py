@@ -22,6 +22,8 @@ from .api.classroom import fetch_user_classroom_deadlines
 from .api.classroom import router as classroom_router
 from .api.events import router as events_router
 from .api.feed import router as feed_router
+from .api.media import UploadsStaticFiles, get_upload_dir
+from .api.media import router as media_router
 from .api.news import router as news_router
 from .api.users import router as users_router
 from .auth import get_current_user_optional
@@ -88,6 +90,7 @@ app.include_router(news_router)
 app.include_router(events_router)
 app.include_router(classroom_router)
 app.include_router(feed_router)
+app.include_router(media_router)
 
 
 @app.get(
@@ -295,6 +298,12 @@ async def get_app_state(
         upcoming_deadlines=upcoming_deadlines,
     )
 
+
+# Entrega de los medios subidos (carteles, banners, documentos) bajo /uploads
+try:
+    app.mount("/uploads", UploadsStaticFiles(directory=str(get_upload_dir())), name="uploads")
+except OSError as upload_dir_error:
+    print(f"[Startup Warning] Directorio de subidas no disponible, /uploads no montado: {upload_dir_error}")
 
 # Montaje del portal estatico Web-Admin
 candidate_static_dirs = [
