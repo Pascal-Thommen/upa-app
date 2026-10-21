@@ -766,7 +766,7 @@ async function handleClassroomTokenSubmit(event) {
   }
 }
 
-function init() {
+async function init() {
   DOM_ELEMENTS.formLogin.addEventListener("submit", handleLoginSubmit);
   DOM_ELEMENTS.btnRefresh.addEventListener("click", refreshDashboard);
 
