@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user, require_admin
 from ..database import get_db
-from ..models import Post, User
+from ..models import AdminAuditLog, Post, User
 from ..schemas.feed import ErrorResponse
 from ..schemas.post import (
+    DeleteResponse,
     NewsResponse,
     PostCreate,
+    PostUpdate,
     ensure_utc_datetime,
     matches_group_filter,
     normalize_target_groups,
@@ -168,6 +170,165 @@ def create_news(
     db.commit()
     db.refresh(new_post)
     return NewsResponse.from_orm_post(new_post)
+
+
+@router.put(
+    "/{post_id}",
+    response_model=NewsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Actualizar una noticia o comunicado institucional (Solo Admin)",
+    responses={
+        400: {"model": ErrorResponse, "description": "Datos de actualizacion invalidos"},
+        401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
+        403: {"model": ErrorResponse, "description": "Permisos de administrador requeridos"},
+        404: {"model": ErrorResponse, "description": "Noticia no encontrada"},
+    },
+)
+def update_news(
+    payload: PostUpdate,
+    post_id: int = Path(..., ge=1, description="Identificador unico de la noticia"),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> NewsResponse:
+    """
+    Actualiza una publicacion o noticia institucional existente.
+    Protegido: Solo administradores autorizados.
+    """
+    post = (
+        db.query(Post)
+        .filter(Post.id == post_id, Post.is_news.is_(True))
+        .first()
+    )
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Publicacion de noticias no encontrada.",
+        )
+
+    if payload.title is not None:
+        clean_title = payload.title.strip()
+        if not clean_title:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El titulo de la publicacion no puede estar vacio.",
+            )
+        post.title = clean_title
+
+    if payload.post_type is not None:
+        clean_type = payload.post_type.strip().upper()
+        if clean_type not in ALLOWED_POST_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tipo de publicacion invalido. Valores permitidos: MANUAL, INSTAGRAM, EMERGENCY_BANNER.",
+            )
+        post.post_type = clean_type
+
+    new_caption = payload.caption if payload.caption is not None else payload.summary
+    if new_caption is not None:
+        post.caption = new_caption.strip()
+
+    if payload.content is not None:
+        post.content = payload.content.strip()
+
+    new_start = payload.event_start if payload.event_start is not None else post.event_start
+    new_end = payload.event_end if payload.event_end is not None else post.event_end
+    if new_start and new_end:
+        if ensure_utc_datetime(new_end) < ensure_utc_datetime(new_start):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La fecha de finalizacion del evento no puede ser anterior a la fecha de inicio.",
+            )
+
+    if payload.is_news is not None:
+        post.is_news = payload.is_news
+    if payload.is_event is not None:
+        post.is_event = payload.is_event
+    if payload.is_pinned is not None:
+        post.is_pinned = payload.is_pinned
+    if payload.expires_at is not None:
+        post.expires_at = payload.expires_at
+    if payload.event_start is not None:
+        post.event_start = payload.event_start
+    if payload.event_end is not None:
+        post.event_end = payload.event_end
+    if payload.location is not None:
+        post.location = payload.location.strip()
+    if payload.target_groups is not None:
+        post.target_groups = normalize_target_groups(payload.target_groups)
+    if payload.has_registration is not None:
+        post.has_registration = payload.has_registration
+    if payload.reminder_minutes_before is not None:
+        post.reminder_minutes_before = payload.reminder_minutes_before
+    if payload.instagram_id is not None:
+        post.instagram_id = payload.instagram_id.strip() or None
+    if payload.media_type is not None:
+        post.media_type = payload.media_type.strip()
+
+    new_media_url = payload.media_url if payload.media_url is not None else payload.image_url
+    if new_media_url is not None:
+        post.media_url = new_media_url.strip()
+    if payload.permalink is not None:
+        post.permalink = payload.permalink.strip()
+
+    audit = AdminAuditLog(
+        admin_id=admin.id,
+        action="UPDATE_NEWS",
+        target_type="post",
+        target_id=post.id,
+        details={"title": post.title},
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(post)
+    return NewsResponse.from_orm_post(post)
+
+
+@router.delete(
+    "/{post_id}",
+    response_model=DeleteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Eliminar una noticia o comunicado institucional (Solo Admin)",
+    responses={
+        401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
+        403: {"model": ErrorResponse, "description": "Permisos de administrador requeridos"},
+        404: {"model": ErrorResponse, "description": "Noticia no encontrada"},
+    },
+)
+def delete_news(
+    post_id: int = Path(..., ge=1, description="Identificador unico de la noticia"),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> DeleteResponse:
+    """
+    Elimina permanentemente una publicacion de noticias del sistema.
+    Protegido: Solo administradores autorizados.
+    """
+    post = (
+        db.query(Post)
+        .filter(Post.id == post_id, Post.is_news.is_(True))
+        .first()
+    )
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Publicacion de noticias no encontrada.",
+        )
+
+    audit = AdminAuditLog(
+        admin_id=admin.id,
+        action="DELETE_NEWS",
+        target_type="post",
+        target_id=post_id,
+        details={"title": post.title},
+    )
+    db.add(audit)
+    db.delete(post)
+    db.commit()
+    return DeleteResponse(
+        status="deleted",
+        id=post_id,
+        detail="Publicacion de noticias eliminada correctamente.",
+    )
 
 
 @router.post(

@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .classroom import ClassroomDeadlineResponse
+from .event import EventResponse
 from .post import ensure_utc_datetime, normalize_target_groups
 
 
@@ -260,6 +262,26 @@ class AppStateResponse(BaseModel):
                         "published_at": "2026-10-20T14:00:00+00:00",
                     }
                 ],
+                "upcoming_events": [
+                    {
+                        "id": 2,
+                        "title": "¿Que significa seguir siendo humanos en la era de la IA?",
+                        "description": "Inteligencia artificial, decisiones, libertad y responsabilidad.",
+                        "summary": "holaa 👋 manana tenemos charla de 11 a 12, vayan pues",
+                        "event_start": "2026-10-22T11:00:00Z",
+                        "event_end": "2026-10-22T12:00:00Z",
+                        "location": "Auditorio Edificio 1, Piso 1",
+                        "has_registration": True,
+                        "is_pinned": True,
+                        "target_groups": ["ALL", "TIE", "Informatica"],
+                        "image_url": "",
+                        "permalink": "",
+                        "created_at": "2026-10-21T10:00:00Z",
+                        "is_registered": False,
+                        "registered_count": 0,
+                    }
+                ],
+                "upcoming_deadlines": [],
             }
         }
     )
@@ -272,6 +294,14 @@ class AppStateResponse(BaseModel):
     )
     feed: list[AppStateFeedItem] = Field(
         default_factory=list, description="Publicaciones filtradas segun nivel de acceso y rol"
+    )
+    upcoming_events: list[EventResponse] = Field(
+        default_factory=list,
+        description="Proximos eventos del calendario ordenados cronologicamente",
+    )
+    upcoming_deadlines: list[ClassroomDeadlineResponse] = Field(
+        default_factory=list,
+        description="Proximos plazos academicos de Google Classroom ordenados cronologicamente",
     )
 
 
@@ -291,15 +321,56 @@ class HealthResponse(BaseModel):
     service: str = Field(default="upa-app-backend", description="Identificador del microservicio")
 
 
+class AgendaItemResponse(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "item_type": "EVENT",
+                "id": "2",
+                "title": "¿Que significa seguir siendo humanos en la era de la IA?",
+                "description": "Inteligencia artificial, decisiones, libertad y responsabilidad.",
+                "timestamp": "2026-10-22T11:00:00+00:00",
+                "sort_key": "2026-10-22 11:00",
+                "location_or_course": "Auditorio Edificio 1, Piso 1",
+                "link": "",
+                "is_registered": False,
+                "registered_count": 0,
+            }
+        }
+    )
+
+    item_type: str = Field(..., description="Tipo de entrada en la agenda: EVENT o DEADLINE")
+    id: str = Field(..., description="Identificador del evento o entrega")
+    title: str = Field(..., description="Titulo del evento o tarea")
+    description: str = Field(default="", description="Descripcion detallada (nunca nulo)")
+    timestamp: str = Field(..., description="Fecha y hora de inicio o vencimiento")
+    sort_key: str = Field(..., description="Clave ISO normalizada YYYY-MM-DD HH:MM para ordenamiento cronologico")
+    location_or_course: str = Field(default="", description="Ubicacion del evento o nombre del curso")
+    link: str = Field(default="", description="Enlace externo o de Google Classroom")
+    is_registered: bool = Field(default=False, description="Indica si el usuario esta inscrito (para eventos)")
+    registered_count: int = Field(default=0, ge=0, description="Total de inscritos (para eventos)")
+
+
 class AgendaResponse(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "events": [],
                 "deadlines": [],
+                "items": [],
             }
         }
     )
 
-    events: list[dict[str, Any]] = Field(default_factory=list, description="Lista de eventos de agenda")
-    deadlines: list[dict[str, Any]] = Field(default_factory=list, description="Lista de plazos academicos")
+    events: list[EventResponse] = Field(
+        default_factory=list,
+        description="Lista de eventos de calendario ordenados cronologicamente",
+    )
+    deadlines: list[ClassroomDeadlineResponse] = Field(
+        default_factory=list,
+        description="Lista de plazos academicos de Classroom ordenados cronologicamente",
+    )
+    items: list[AgendaItemResponse] = Field(
+        default_factory=list,
+        description="Linea de tiempo consolidada de eventos y plazos en orden cronologico",
+    )

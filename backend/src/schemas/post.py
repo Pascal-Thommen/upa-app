@@ -105,6 +105,63 @@ class PostCreate(PostBase):
     )
 
 
+class PostUpdate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "Convocatoria de Becas de Investigacion UPA 2026 (Plazo Extendido)",
+                "caption": "Postulaciones abiertas hasta el 15 de noviembre.",
+                "content": "Los estudiantes de ingenieria pueden presentar sus proyectos en secretaria academica.",
+                "post_type": "MANUAL",
+                "is_news": True,
+                "is_event": False,
+                "is_pinned": True,
+                "target_groups": ["ALL", "TIE"],
+            }
+        }
+    )
+
+    title: str | None = Field(default=None, description="Titulo principal actualizado")
+    caption: str | None = Field(default=None, description="Resumen corto o pie de foto")
+    summary: str | None = Field(default=None, description="Alias compatible para resumen corto")
+    content: str | None = Field(default=None, description="Contenido detallado de la publicacion")
+    post_type: str | None = Field(
+        default=None,
+        description="Origen de la publicacion: MANUAL, INSTAGRAM o EMERGENCY_BANNER",
+    )
+    is_news: bool | None = Field(default=None, description="Indica si se muestra en la seccion de noticias")
+    is_event: bool | None = Field(default=None, description="Indica si es un evento de calendario")
+    is_pinned: bool | None = Field(default=None, description="Fija la publicacion en la parte superior")
+    expires_at: datetime | None = Field(default=None, description="Fecha de expiracion automatica")
+    target_groups: list[str] | None = Field(default=None, description="Grupos destinatarios")
+    event_start: datetime | None = Field(default=None, description="Fecha y hora de inicio del evento")
+    event_end: datetime | None = Field(default=None, description="Fecha y hora de finalizacion del evento")
+    location: str | None = Field(default=None, description="Ubicacion fisica o virtual del evento")
+    has_registration: bool | None = Field(default=None, description="Habilita confirmacion de asistencia")
+    reminder_minutes_before: int | None = Field(default=None, ge=0, description="Minutos previos para recordatorio")
+    instagram_id: str | None = Field(default=None, description="ID unico del post en Instagram")
+    media_type: str | None = Field(default=None, description="IMAGE, VIDEO o CAROUSEL_ALBUM")
+    media_url: str | None = Field(default=None, description="URL del recurso multimedia")
+    image_url: str | None = Field(default=None, description="Alias compatible para URL de imagen")
+    permalink: str | None = Field(default=None, description="Enlace permanente externo")
+
+
+class DeleteResponse(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "deleted",
+                "id": 1,
+                "detail": "Publicacion eliminada correctamente.",
+            }
+        }
+    )
+
+    status: str = Field(default="deleted", description="Estado de la operacion de eliminacion")
+    id: int = Field(..., description="Identificador unico del recurso eliminado")
+    detail: str = Field(..., description="Mensaje de confirmacion")
+
+
 class NewsResponse(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,

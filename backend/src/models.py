@@ -14,6 +14,8 @@ class User(Base):
     groups = Column(JSON, default=list, nullable=False)  # z. B. ["TIE", "Semester_4"]
     google_groups = Column(JSON, default=list, nullable=False)  # Rohe Google Groups Datensätze
     classroom_token = Column(Text, nullable=True)  # Optionaler Google Access Token für Classroom API
+    classroom_refresh_token = Column(Text, nullable=True)  # Optionaler Google Refresh Token für Auto-Refresh
+    device_token = Column(String(512), nullable=True)  # Optionaler FCM/Android Push Device Token
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
@@ -22,6 +24,7 @@ class User(Base):
     registrations = relationship("EventRegistration", back_populates="user", cascade="all, delete-orphan")
     post_views = relationship("PostView", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AdminAuditLog", back_populates="admin")
+    device_tokens = relationship("DeviceToken", back_populates="user", cascade="all, delete-orphan")
 
 
 class Post(Base):
@@ -116,3 +119,20 @@ class AdminAuditLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     admin = relationship("User", back_populates="audit_logs")
+
+
+class DeviceToken(Base):
+    __tablename__ = "device_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_token = Column(String(512), nullable=False, index=True)
+    platform = Column(String(50), default="android", nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "device_token", name="uq_user_device_token"),
+    )
+
+    user = relationship("User", back_populates="device_tokens")
