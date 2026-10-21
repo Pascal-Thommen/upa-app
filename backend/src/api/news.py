@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user, require_admin
+from ..auth import get_current_user, require_editor
 from ..database import get_db
 from ..models import AdminAuditLog, Post, User
 from ..schemas.feed import ErrorResponse
@@ -16,6 +16,7 @@ from ..schemas.post import (
     PostUpdate,
     ensure_utc_datetime,
     matches_group_filter,
+    normalize_category,
     normalize_target_groups,
     user_can_access_post,
 )
@@ -125,7 +126,7 @@ def create_news(
     payload: PostCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_editor),
 ) -> NewsResponse:
     """
     Crea una nueva publicacion en el sistema.
@@ -145,6 +146,11 @@ def create_news(
             detail="Tipo de publicacion invalido. Valores permitidos: MANUAL, INSTAGRAM, EMERGENCY_BANNER.",
         )
 
+    try:
+        clean_category = normalize_category(payload.category)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     if payload.event_start and payload.event_end:
         if ensure_utc_datetime(payload.event_end) < ensure_utc_datetime(payload.event_start):
             raise HTTPException(
@@ -154,6 +160,7 @@ def create_news(
 
     new_post = Post(
         title=clean_title,
+        category=clean_category,
         caption=payload.caption.strip() if payload.caption else None,
         content=payload.content.strip() if payload.content else None,
         post_type=clean_type,
@@ -215,7 +222,7 @@ def update_news(
     payload: PostUpdate,
     post_id: int = Path(..., ge=1, description="Identificador unico de la noticia"),
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_editor),
 ) -> NewsResponse:
     """
     Actualiza una publicacion o noticia institucional existente.
@@ -249,6 +256,12 @@ def update_news(
                 detail="Tipo de publicacion invalido. Valores permitidos: MANUAL, INSTAGRAM, EMERGENCY_BANNER.",
             )
         post.post_type = clean_type
+
+    if payload.category is not None:
+        try:
+            post.category = normalize_category(payload.category)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     new_caption = payload.caption if payload.caption is not None else payload.summary
     if new_caption is not None:
@@ -324,7 +337,7 @@ def update_news(
 def delete_news(
     post_id: int = Path(..., ge=1, description="Identificador unico de la noticia"),
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_editor),
 ) -> DeleteResponse:
     """
     Elimina permanentemente una publicacion de noticias del sistema.
@@ -369,7 +382,7 @@ def delete_news(
 )
 async def sync_instagram_posts(
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_editor),
 ) -> dict[str, Any]:
     """
     Ejecuta la sincronizacion manual de publicaciones de Instagram (@upalemana).

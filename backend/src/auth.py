@@ -143,3 +143,16 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Acceso denegado: Se requieren permisos de administrador (Administrator-Rechte erforderlich)",
         )
     return current_user
+
+
+EDITOR_ROLES = {"admin", "editor"}
+
+
+def require_editor(current_user: User = Depends(get_current_user)) -> User:
+    """Garantiza que el usuario autenticado sea administrador o redactor (Marketing)."""
+    if (current_user.role or "user") not in EDITOR_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: Se requieren permisos de administrador o redaccion (Administrator-Rechte erforderlich)",
+        )
+    return current_user

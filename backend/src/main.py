@@ -28,7 +28,7 @@ from .api.news import router as news_router
 from .api.users import router as users_router
 from .auth import get_current_user_optional
 from .config import settings
-from .database import Base, engine, get_db
+from .database import Base, engine, ensure_schema_upgrades, get_db
 from .models import Post, User
 from .schemas.classroom import ClassroomDeadlineResponse
 from .schemas.event import EventResponse
@@ -49,6 +49,7 @@ from .services.scheduler import start_feed_sync_scheduler, stop_feed_sync_schedu
 async def lifespan(app: FastAPI):
     try:
         Base.metadata.create_all(bind=engine)
+        ensure_schema_upgrades(engine)
         seed_database()
     except Exception as e:
         print(f"[Lifespan Warning] Inicializacion de base de datos: {e}")
