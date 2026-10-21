@@ -115,6 +115,7 @@ function showLoginView() {
 }
 
 function showDashboardView(user) {
+  document.documentElement.classList.add("has-auth");
   DOM_ELEMENTS.viewLogin.classList.add("hidden");
   DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
 

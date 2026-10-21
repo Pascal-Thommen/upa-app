@@ -142,9 +142,223 @@ def test_dashboard_static_files_served():
     assert "Portal Institucional Campus" in response.text
     assert "Google Classroom" in response.text
 
+def test_dashboard_anti_flicker_assets_served():
+    response = client.get("/dashboard/")
+    assert response.status_code == 200
+    # Verifiziert die Anti-Flicker CSS- und Script-Injektion
+    assert "html.has-auth #view-login" in response.text
+    assert "html.has-auth #view-dashboard" in response.text
+    assert "upa_access_token" in response.text
 
 def test_root_redirects_to_dashboard():
     response = client.get("/", follow_redirects=False)
     assert response.status_code in (307, 200)
     if response.status_code == 307:
         assert response.headers["location"] == "/dashboard/"
+
+def test_classroom_deadlines_semantic_payload_and_caching(monkeypatch):
+    import httpx
+    from src.api import classroom
+
+    # Cache leeren für deterministischen Test
+    classroom._DEADLINES_CACHE.clear()
+
+    jwt_token = create_access_token(data={"sub": "102", "email": "estudiante2@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
+    class MockClassroomTransport(httpx.AsyncBaseTransport):
+        call_count = 0
+
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            MockClassroomTransport.call_count += 1
+            url_str = str(request.url)
+
+            if "courses?studentId=me" in url_str:
+                return httpx.Response(200, json={
+                    "courses": [
+                        {"id": "c-100", "name": "Ingeniería de Software", "section": "TIE-8"}
+                    ]
+                })
+            elif "courses/c-100/courseWork" in url_str:
+                return httpx.Response(200, json={
+                    "courseWork": [
+                        {
+                            "id": "w-501",
+                            "title": "Entrega Final: Sprint 3",
+                            "description": "Subir repositorio y video demo",
+                            "dueDate": {"year": 2026, "month": 11, "day": 10},
+                            "dueTime": {"hours": 18, "minutes": 30},
+                            "alternateLink": "https://classroom.google.com/c/c-100/a/w-501",
+                            "maxPoints": 100
+                        },
+                        {
+                            "id": "w-500",
+                            "title": "Avance 1: Arquitectura",
+                            "description": "Documento técnico",
+                            "dueDate": {"year": 2026, "month": 10, "day": 25},
+                            "dueTime": {"hours": 23, "minutes": 59},
+                            "alternateLink": "https://classroom.google.com/c/c-100/a/w-500",
+                            "maxPoints": 50
+                        }
+                    ]
+                })
+            return httpx.Response(404, json={})
+
+    original_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original_async_client(transport=MockClassroomTransport(), **kwargs)
+    )
+
+    # Erster Aufruf: Fragt API ab, formatiert Payloads semantisch und befüllt Cache
+    resp1 = client.get("/api/classroom/deadlines", headers=headers)
+    assert resp1.status_code == 200
+    assert resp1.headers.get("X-Classroom-Status") == "active"
+    deadlines = resp1.json()
+    assert len(deadlines) == 2
+
+    # Prüfung der semantischen Pflichtfelder und Datumsformatierung
+    first = deadlines[0]
+    assert first["id"] == "w-500"
+    assert first["course_id"] == "c-100"
+    assert first["course"] == "Ingeniería de Software"
+    assert first["title"] == "Avance 1: Arquitectura"
+    assert first["due_date_formatted"] == "2026-10-25 23:59"
+    assert first["max_points"] == 50
+
+    second = deadlines[1]
+    assert second["id"] == "w-501"
+    assert second["due_date_formatted"] == "2026-11-10 18:30"
+
+    # Zweiter Aufruf: Muss zwingend aus dem In-Memory Cache kommen (Performance & Timeout-Schutz)
+    initial_calls = MockClassroomTransport.call_count
+    resp2 = client.get("/api/classroom/deadlines", headers=headers)
+    assert resp2.status_code == 200
+    assert resp2.headers.get("X-Classroom-Status") == "cached"
+    assert len(resp2.json()) == 2
+    assert MockClassroomTransport.call_count == initial_calls
+
+def test_classroom_courses_semantic_payload_and_caching(monkeypatch):
+    import httpx
+    from src.api import classroom
+
+    classroom._COURSES_CACHE.clear()
+
+    jwt_token = create_access_token(data={"sub": "102", "email": "estudiante2@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
+    class MockCoursesTransport(httpx.AsyncBaseTransport):
+        call_count = 0
+
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            MockCoursesTransport.call_count += 1
+            return httpx.Response(200, json={
+                "courses": [
+                    {
+                        "id": "c-201",
+                        "name": "Gestión Financiera",
+                        "section": "PI-5",
+                        "alternateLink": "https://classroom.google.com/c/c-201",
+                        "room": "Aula B102"
+                    }
+                ]
+            })
+
+    original_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original_async_client(transport=MockCoursesTransport(), **kwargs)
+    )
+
+    # 1. Aufruf
+    resp1 = client.get("/api/classroom/courses", headers=headers)
+    assert resp1.status_code == 200
+    assert resp1.headers.get("X-Classroom-Status") == "active"
+    courses = resp1.json()
+    assert len(courses) == 1
+    assert courses[0]["id"] == "c-201"
+    assert courses[0]["name"] == "Gestión Financiera"
+    assert courses[0]["section"] == "PI-5"
+    assert courses[0]["room"] == "Aula B102"
+
+    # 2. Aufruf: Muss gecached sein
+    calls = MockCoursesTransport.call_count
+    resp2 = client.get("/api/classroom/courses", headers=headers)
+    assert resp2.status_code == 200
+    assert resp2.headers.get("X-Classroom-Status") == "cached"
+    assert len(resp2.json()) == 1
+    assert MockCoursesTransport.call_count == calls
+
+def test_classroom_api_500_error_handling(monkeypatch):
+    import httpx
+    from src.api import classroom
+    classroom._DEADLINES_CACHE.clear()
+
+    jwt_token = create_access_token(data={"sub": "102", "email": "estudiante2@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
+    class Error500Transport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, json={"error": "Google Internal Server Error"})
+
+    original_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original_async_client(transport=Error500Transport(), **kwargs)
+    )
+
+    response = client.get("/api/classroom/deadlines", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("X-Classroom-Status") == "api_error"
+    assert response.json() == []
+
+def test_classroom_timeout_network_error_handling(monkeypatch):
+    import httpx
+    from src.api import classroom
+    classroom._DEADLINES_CACHE.clear()
+
+    jwt_token = create_access_token(data={"sub": "102", "email": "estudiante2@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
+    class TimeoutTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectTimeout("Connection timed out after 6.0s")
+
+    original_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original_async_client(transport=TimeoutTransport(), **kwargs)
+    )
+
+    response = client.get("/api/classroom/deadlines", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("X-Classroom-Status") == "network_error"
+    assert response.json() == []
+
+def test_classroom_no_courses_boundary(monkeypatch):
+    import httpx
+    from src.api import classroom
+    classroom._DEADLINES_CACHE.clear()
+
+    jwt_token = create_access_token(data={"sub": "102", "email": "estudiante2@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
+    class NoCoursesTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"courses": []})
+
+    original_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original_async_client(transport=NoCoursesTransport(), **kwargs)
+    )
+
+    response = client.get("/api/classroom/deadlines", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("X-Classroom-Status") == "no_courses"
+    assert response.json() == []

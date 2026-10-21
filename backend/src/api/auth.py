@@ -1,8 +1,8 @@
 import urllib.parse
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
-import httpx
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
