@@ -35,6 +35,7 @@ class Post(Base):
     caption = Column(Text, nullable=True)
     content = Column(Text, nullable=True)
     post_type = Column(String(50), default="MANUAL", nullable=False)  # "INSTAGRAM", "MANUAL", "EMERGENCY_BANNER"
+    category = Column(String(50), nullable=True)  # Redaktionelle Kategorie, z. B. "MELDUNG", "ANKUENDIGUNG"
     
     # Sichtbarkeit & Priorität
     is_news = Column(Boolean, default=True, nullable=False)

@@ -145,3 +145,57 @@ class EventUpdate(BaseModel):
     permalink: str | None = Field(default=None, description="Enlace externo del evento")
     reminder_minutes_before: int | None = Field(default=None, ge=0, description="Minutos previos para recordatorio")
     expires_at: datetime | None = Field(default=None, description="Fecha de expiracion opcional")
+
+
+class EventCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "Conferencia Magistral de Inteligencia Artificial 2026",
+                "description": "Charla abierta con disertante invitado.",
+                "summary": "Charla magistral en el Auditorio Principal",
+                "event_start": "2026-10-22T14:00:00Z",
+                "event_end": "2026-10-22T16:00:00Z",
+                "location": "Auditorio Principal Edificio 1",
+                "has_registration": True,
+                "is_pinned": False,
+                "target_groups": ["ALL", "TIE"],
+                "image_url": "",
+            }
+        }
+    )
+
+    title: str = Field(..., description="Titulo del evento")
+    description: str | None = Field(default=None, description="Descripcion o contenido detallado del evento")
+    summary: str | None = Field(default=None, description="Resumen corto o subtitulo del evento")
+    caption: str | None = Field(default=None, description="Alias compatible para resumen corto")
+    content: str | None = Field(default=None, description="Alias compatible para contenido detallado")
+    event_start: datetime = Field(..., description="Fecha y hora de inicio en ISO-8601 UTC")
+    event_end: datetime | None = Field(default=None, description="Fecha y hora de finalizacion en ISO-8601 UTC")
+    location: str | None = Field(default=None, description="Ubicacion fisica o virtual del evento")
+    has_registration: bool = Field(default=False, description="Habilita inscripcion (RSVP)")
+    is_pinned: bool = Field(default=False, description="Destaca el evento en la parte superior")
+    is_news: bool = Field(default=False, description="Indica si tambien aparece en noticias")
+    target_groups: list[str] = Field(default_factory=lambda: ["ALL"], description="Grupos destinatarios")
+    image_url: str | None = Field(default=None, description="URL de imagen del evento")
+    media_url: str | None = Field(default=None, description="Alias compatible para URL multimedia")
+    media_type: str | None = Field(default=None, description="Tipo de medio: IMAGE, VIDEO o CAROUSEL_ALBUM")
+    permalink: str | None = Field(default=None, description="Enlace externo del evento")
+    reminder_minutes_before: int | None = Field(default=30, ge=0, description="Minutos previos para recordatorio")
+    expires_at: datetime | None = Field(default=None, description="Fecha de expiracion opcional")
+
+
+class EventRegistrationEntry(BaseModel):
+    user_id: int = Field(..., description="Identificador del usuario inscrito")
+    full_name: str = Field(default="", description="Nombre completo del participante")
+    email: str = Field(default="", description="Correo institucional del participante")
+    status: str = Field(default="attending", description="Estado de la inscripcion: attending o declined")
+    registered_at: datetime = Field(..., description="Fecha de inscripcion en ISO-8601 UTC")
+
+
+class EventRegistrationsResponse(BaseModel):
+    event_id: int = Field(..., description="Identificador del evento")
+    title: str = Field(..., description="Titulo del evento")
+    has_registration: bool = Field(default=False, description="Indica si el evento admite inscripcion")
+    attending_count: int = Field(default=0, ge=0, description="Cantidad de participantes con estado attending")
+    registrations: list[EventRegistrationEntry] = Field(default_factory=list, description="Lista de inscritos")

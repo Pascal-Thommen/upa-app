@@ -1,0 +1,383 @@
+/*
+ * Estilos del Cockpit de Redaccion (web-admin).
+ *
+ * Todos los colores, radios y sombras se controlan con las variables --ed-* de abajo.
+ * Para adaptar el cockpit al diseno institucional basta con cambiar este bloque :root
+ * (o sobrescribirlo en una hoja posterior); los componentes (.ed-*) no contienen colores fijos.
+ */
+
+:root {
+  /* Paleta principal */
+  --ed-primary: #1e40af;
+  --ed-primary-hover: #1e3a8a;
+  --ed-primary-contrast: #ffffff;
+  --ed-accent: #779a0b;
+
+  /* Superficies y texto */
+  --ed-surface: #ffffff;
+  --ed-surface-muted: #f1f5f9;
+  --ed-border: #e2e8f0;
+  --ed-text: #0f172a;
+  --ed-text-muted: #64748b;
+
+  /* Estados */
+  --ed-danger: #dc2626;
+  --ed-danger-hover: #b91c1c;
+  --ed-danger-soft: #fef2f2;
+  --ed-success: #047857;
+  --ed-success-soft: #ecfdf5;
+  --ed-warning: #b45309;
+  --ed-warning-soft: #fffbeb;
+  --ed-info: #1d4ed8;
+  --ed-info-soft: #eff6ff;
+  --ed-social: #7e22ce;
+  --ed-social-soft: #faf5ff;
+
+  /* Forma */
+  --ed-radius: 0.75rem;
+  --ed-radius-lg: 1.25rem;
+  --ed-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* Tarjetas */
+.ed-card {
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius-lg);
+  box-shadow: var(--ed-shadow);
+  padding: 1.25rem;
+}
+
+.ed-card-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--ed-text);
+}
+
+.ed-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+}
+
+/* Conmutador de modo y pestanas */
+.ed-mode-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  color: var(--ed-text-muted);
+  transition: all 0.15s ease-in-out;
+}
+
+.ed-mode-btn:hover {
+  color: var(--ed-text);
+}
+
+.ed-mode-btn.is-active {
+  background: var(--ed-surface);
+  color: var(--ed-primary);
+  font-weight: 700;
+  box-shadow: var(--ed-shadow);
+}
+
+/* Botones */
+.ed-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: var(--ed-radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out, opacity 0.15s ease-in-out;
+}
+
+.ed-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ed-btn-sm {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.7rem;
+}
+
+.ed-btn-primary {
+  background: var(--ed-primary);
+  color: var(--ed-primary-contrast);
+}
+
+.ed-btn-primary:hover:not(:disabled) {
+  background: var(--ed-primary-hover);
+}
+
+.ed-btn-secondary {
+  background: var(--ed-surface-muted);
+  color: var(--ed-text);
+  border-color: var(--ed-border);
+}
+
+.ed-btn-secondary:hover:not(:disabled) {
+  background: var(--ed-border);
+}
+
+.ed-btn-danger {
+  background: var(--ed-danger-soft);
+  color: var(--ed-danger);
+  border-color: var(--ed-danger);
+}
+
+.ed-btn-danger:hover:not(:disabled) {
+  background: var(--ed-danger);
+  color: var(--ed-primary-contrast);
+}
+
+.ed-link {
+  color: var(--ed-primary);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Formularios */
+.ed-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ed-text);
+  margin-bottom: 0.3rem;
+}
+
+.ed-input {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--ed-text);
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+}
+
+.ed-input:focus {
+  outline: 2px solid var(--ed-primary);
+  outline-offset: 0;
+  border-color: transparent;
+}
+
+.ed-input.has-error {
+  border-color: var(--ed-danger);
+}
+
+.ed-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--ed-text);
+}
+
+.ed-field-error {
+  min-height: 0;
+  margin-top: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ed-danger);
+}
+
+.ed-subtle {
+  font-size: 0.7rem;
+  color: var(--ed-text-muted);
+}
+
+.ed-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+/* Zona de carga de archivos (arrastrar y soltar) */
+.ed-dropzone {
+  border: 2px dashed var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 1rem;
+  text-align: center;
+  background: var(--ed-surface-muted);
+  transition: border-color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.ed-dropzone.is-dragover {
+  border-color: var(--ed-primary);
+  background: var(--ed-info-soft);
+}
+
+.ed-dropzone.is-uploading {
+  opacity: 0.7;
+}
+
+.ed-dz-status {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.ed-dz-status.is-error {
+  color: var(--ed-danger);
+}
+
+.ed-dz-status.is-ok {
+  color: var(--ed-success);
+}
+
+.ed-dz-preview {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.ed-dz-preview img {
+  max-height: 7rem;
+  border-radius: var(--ed-radius);
+  border: 1px solid var(--ed-border);
+}
+
+/* Avisos globales */
+.ed-notice {
+  padding: 0.75rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: var(--ed-radius);
+  border: 1px solid transparent;
+}
+
+.ed-notice.is-error {
+  background: var(--ed-danger-soft);
+  color: var(--ed-danger);
+  border-color: var(--ed-danger);
+}
+
+.ed-notice.is-success {
+  background: var(--ed-success-soft);
+  color: var(--ed-success);
+  border-color: var(--ed-success);
+}
+
+.ed-notice.is-info {
+  background: var(--ed-info-soft);
+  color: var(--ed-info);
+  border-color: var(--ed-info);
+}
+
+.ed-notice.is-warning {
+  background: var(--ed-warning-soft);
+  color: var(--ed-warning);
+  border-color: var(--ed-warning);
+}
+
+/* Tablas */
+.ed-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.ed-table th {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ed-text-muted);
+  border-bottom: 1px solid var(--ed-border);
+}
+
+.ed-table td {
+  padding: 0.6rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--ed-border);
+}
+
+.ed-cell-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ed-title {
+  font-weight: 700;
+  color: var(--ed-text);
+}
+
+.ed-thumb {
+  width: 2.75rem;
+  height: 2.75rem;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ed-border);
+}
+
+.ed-actions {
+  white-space: nowrap;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ed-empty {
+  padding: 1.25rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--ed-text-muted);
+}
+
+.ed-participants-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Insignias */
+.ed-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+}
+
+.ed-badge-neutral {
+  background: var(--ed-surface-muted);
+  color: var(--ed-text-muted);
+  border-color: var(--ed-border);
+}
+
+.ed-badge-info {
+  background: var(--ed-info-soft);
+  color: var(--ed-info);
+}
+
+.ed-badge-ok {
+  background: var(--ed-success-soft);
+  color: var(--ed-success);
+}
+
+.ed-badge-urgent {
+  background: var(--ed-danger-soft);
+  color: var(--ed-danger);
+  border-color: var(--ed-danger);
+}
+
+.ed-badge-social {
+  background: var(--ed-social-soft);
+  color: var(--ed-social);
+}

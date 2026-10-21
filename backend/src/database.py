@@ -21,3 +21,20 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def ensure_schema_upgrades(bind_engine=None) -> None:
+    """
+    Ergaenzt idempotent Spalten, die create_all() bei bestehenden Tabellen nicht nachzieht.
+    Aktuell: posts.category (Redaktionskategorie, siehe Alembic 004).
+    """
+    from sqlalchemy import inspect, text
+
+    target = bind_engine or engine
+    inspector = inspect(target)
+    if "posts" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("posts")}
+    if "category" not in columns:
+        with target.begin() as conn:
+            conn.execute(text("ALTER TABLE posts ADD COLUMN category VARCHAR(50)"))

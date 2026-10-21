@@ -12,6 +12,27 @@ def ensure_utc_datetime(dt: datetime | None, fallback: datetime | None = None) -
     return target.astimezone(UTC)
 
 
+# Redaktionelle Kategorien des Redaktions-Cockpits (Code -> Anzeigename im Web-Admin)
+ALLOWED_CATEGORIES = {"MELDUNG", "ANKUENDIGUNG", "VERANSTALTUNG", "STELLENANGEBOT"}
+
+
+def normalize_category(raw_category: Any) -> str | None:
+    """
+    Normaliza la categoria editorial a mayusculas. Devuelve None si esta vacia.
+    Lanza ValueError si el valor no pertenece al catalogo permitido.
+    """
+    if raw_category is None:
+        return None
+    clean = str(raw_category).strip().upper()
+    if not clean:
+        return None
+    if clean not in ALLOWED_CATEGORIES:
+        raise ValueError(
+            "Categoria invalida. Valores permitidos: " + ", ".join(sorted(ALLOWED_CATEGORIES)) + "."
+        )
+    return clean
+
+
 def normalize_target_groups(raw_groups: Any) -> list[str]:
     """Normaliza la lista de grupos destino evitando valores nulos o vacios."""
     if not isinstance(raw_groups, list):
@@ -33,7 +54,7 @@ def user_can_access_post(user: Any, raw_groups: Any) -> bool:
         return True
     if user is None:
         return False
-    if getattr(user, "role", "user") == "admin":
+    if getattr(user, "role", "user") in ("admin", "editor"):
         return True
     raw_user_groups = getattr(user, "groups", None) or []
     user_groups = {"ALL"} | {
@@ -58,6 +79,10 @@ class PostBase(BaseModel):
     post_type: str = Field(
         default="MANUAL",
         description="Origen de la publicacion: MANUAL, INSTAGRAM o EMERGENCY_BANNER",
+    )
+    category: str | None = Field(
+        default=None,
+        description="Categoria editorial: MELDUNG, ANKUENDIGUNG, VERANSTALTUNG o STELLENANGEBOT",
     )
     is_news: bool = Field(default=True, description="Indica si se muestra en la seccion de noticias")
     is_event: bool = Field(default=False, description="Indica si es un evento de calendario")
@@ -129,6 +154,10 @@ class PostUpdate(BaseModel):
         default=None,
         description="Origen de la publicacion: MANUAL, INSTAGRAM o EMERGENCY_BANNER",
     )
+    category: str | None = Field(
+        default=None,
+        description="Categoria editorial: MELDUNG, ANKUENDIGUNG, VERANSTALTUNG o STELLENANGEBOT",
+    )
     is_news: bool | None = Field(default=None, description="Indica si se muestra en la seccion de noticias")
     is_event: bool | None = Field(default=None, description="Indica si es un evento de calendario")
     is_pinned: bool | None = Field(default=None, description="Fija la publicacion en la parte superior")
@@ -192,6 +221,7 @@ class NewsResponse(BaseModel):
     content: str = Field(default="", description="Contenido completo de la noticia (nunca nulo)")
     caption: str = Field(default="", description="Texto corto o pie de publicacion (nunca nulo)")
     post_type: str = Field(default="MANUAL", description="Tipo de publicacion: MANUAL, INSTAGRAM, EMERGENCY_BANNER")
+    category: str = Field(default="", description="Categoria editorial (cadena vacia si no tiene)")
     is_pinned: bool = Field(default=False, description="Indica si la noticia esta fijada")
     target_groups: list[str] = Field(default_factory=lambda: ["ALL"], description="Lista de grupos destino")
     instagram_id: str = Field(default="", description="Identificador de Instagram (cadena vacia si no aplica)")
@@ -222,6 +252,7 @@ class NewsResponse(BaseModel):
             content=full_content,
             caption=raw_caption or summary_text,
             post_type=(getattr(post, "post_type", None) or "MANUAL").strip() or "MANUAL",
+            category=(getattr(post, "category", None) or "").strip(),
             is_pinned=bool(getattr(post, "is_pinned", False)),
             target_groups=normalize_target_groups(getattr(post, "target_groups", None)),
             instagram_id=(getattr(post, "instagram_id", None) or "").strip(),

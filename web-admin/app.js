@@ -105,6 +105,7 @@ function showLoginAlert(message, type = "error") {
 }
 
 function showLoginView() {
+  if (window.UpaCockpit) window.UpaCockpit.reset();
   DOM_ELEMENTS.viewLogin.classList.remove("hidden");
   DOM_ELEMENTS.viewDashboard.classList.add("hidden");
   DOM_ELEMENTS.authActions.innerHTML = "";
@@ -204,7 +205,8 @@ function renderUserProfile(user) {
   DOM_ELEMENTS.userAvatar.textContent = initials || "U";
 
   const role = (user.role || "user").toUpperCase();
-  DOM_ELEMENTS.userRoleBadge.textContent = role === "ADMIN" ? "ADMINISTRADOR" : "ESTUDIANTE";
+  const roleLabels = { ADMIN: "ADMINISTRADOR", EDITOR: "REDACCIÓN" };
+  DOM_ELEMENTS.userRoleBadge.textContent = roleLabels[role] || "ESTUDIANTE";
 
   // Estado de Classroom
   const hasClassroom = Boolean(user.has_classroom_token);
@@ -547,6 +549,8 @@ async function refreshDashboard() {
   await checkHealth();
   const user = await loadUserProfile();
   if (user) {
+    // Cockpit de redaccion: visible solo para administradores y redactores
+    if (window.UpaCockpit) window.UpaCockpit.onUserLoaded(user);
     await Promise.all([loadClassroomCourses(), loadClassroomDeadlines(), loadCampusFeed()]);
     updateJsonView();
   }
@@ -718,6 +722,15 @@ async function handleClassroomTokenSubmit(event) {
 }
 
 function init() {
+  if (window.UpaCockpit) {
+    window.UpaCockpit.configure({
+      getToken: getStoredToken,
+      onUnauthorized: () => {
+        logout();
+        showLoginAlert("Su sesión ha expirado. Por favor, inicie sesión nuevamente.", "info");
+      },
+    });
+  }
   DOM_ELEMENTS.formLogin.addEventListener("submit", handleLoginSubmit);
   DOM_ELEMENTS.btnRefresh.addEventListener("click", refreshDashboard);
 

@@ -4,10 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import asc, or_
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user, require_admin
+from ..auth import get_current_user, require_editor
 from ..database import get_db
 from ..models import AdminAuditLog, EventRegistration, Post, User
-from ..schemas.event import EventResponse, EventUpdate
+from ..schemas.event import (
+    EventCreate,
+    EventRegistrationEntry,
+    EventRegistrationsResponse,
+    EventResponse,
+    EventUpdate,
+)
 from ..schemas.feed import ErrorResponse
 from ..schemas.post import (
     DeleteResponse,
@@ -99,6 +105,128 @@ def get_event_by_id(
             detail="Acceso denegado: No pertenece al grupo destinatario de este evento.",
         )
     return EventResponse.from_orm_post(post, current_user_id=current_user.id)
+
+
+@router.post(
+    "",
+    response_model=EventResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear un nuevo evento institucional (Admin o Redaccion)",
+    responses={
+        400: {"model": ErrorResponse, "description": "Datos del evento invalidos"},
+        401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
+        403: {"model": ErrorResponse, "description": "Permisos de administrador o redaccion requeridos"},
+    },
+)
+def create_event(
+    payload: EventCreate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_editor),
+) -> EventResponse:
+    """Crea un evento de calendario persistente (hibrido post/evento) con RSVP opcional."""
+    clean_title = (payload.title or "").strip()
+    if not clean_title:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El titulo del evento no puede estar vacio.",
+        )
+
+    if payload.event_end is not None and ensure_utc_datetime(payload.event_end) < ensure_utc_datetime(
+        payload.event_start
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La fecha de finalizacion del evento no puede ser anterior a la fecha de inicio.",
+        )
+
+    content = payload.content if payload.content is not None else payload.description
+    caption = payload.caption if payload.caption is not None else payload.summary
+    media_url = payload.media_url if payload.media_url is not None else payload.image_url
+
+    new_event = Post(
+        title=clean_title,
+        caption=caption.strip() if caption else None,
+        content=content.strip() if content else None,
+        post_type="MANUAL",
+        category="VERANSTALTUNG",
+        is_news=payload.is_news,
+        is_event=True,
+        is_pinned=payload.is_pinned,
+        expires_at=payload.expires_at,
+        event_start=payload.event_start,
+        event_end=payload.event_end,
+        location=payload.location.strip() if payload.location else None,
+        target_groups=normalize_target_groups(payload.target_groups),
+        has_registration=payload.has_registration,
+        reminder_minutes_before=payload.reminder_minutes_before,
+        media_type=payload.media_type.strip() if payload.media_type else None,
+        media_url=media_url.strip() if media_url else None,
+        permalink=payload.permalink.strip() if payload.permalink else None,
+        author_id=admin.id,
+    )
+    db.add(new_event)
+    db.flush()
+    db.add(
+        AdminAuditLog(
+            admin_id=admin.id,
+            action="CREATE_EVENT",
+            target_type="event",
+            target_id=new_event.id,
+            details={"title": new_event.title},
+        )
+    )
+    db.commit()
+    db.refresh(new_event)
+    return EventResponse.from_orm_post(new_event, current_user_id=admin.id)
+
+
+@router.get(
+    "/{event_id}/registrations",
+    response_model=EventRegistrationsResponse,
+    summary="Listar los participantes inscritos en un evento (Admin o Redaccion)",
+    responses={
+        401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
+        403: {"model": ErrorResponse, "description": "Permisos de administrador o redaccion requeridos"},
+        404: {"model": ErrorResponse, "description": "Evento no encontrado"},
+    },
+)
+def get_event_registrations(
+    event_id: int = Path(..., ge=1, description="Identificador unico del evento"),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_editor),
+) -> EventRegistrationsResponse:
+    """Devuelve la lista real de inscripciones (event_registrations) con datos del participante."""
+    post = db.query(Post).filter(Post.id == event_id, Post.is_event.is_(True)).first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evento no encontrado.",
+        )
+
+    rows = (
+        db.query(EventRegistration, User)
+        .join(User, User.id == EventRegistration.user_id)
+        .filter(EventRegistration.post_id == event_id)
+        .order_by(asc(EventRegistration.created_at), asc(EventRegistration.id))
+        .all()
+    )
+    entries = [
+        EventRegistrationEntry(
+            user_id=user.id,
+            full_name=(user.full_name or "").strip(),
+            email=(user.email or "").strip(),
+            status=(registration.status or "attending"),
+            registered_at=ensure_utc_datetime(registration.created_at),
+        )
+        for registration, user in rows
+    ]
+    return EventRegistrationsResponse(
+        event_id=post.id,
+        title=(post.title or "").strip(),
+        has_registration=bool(post.has_registration),
+        attending_count=sum(1 for e in entries if e.status == "attending"),
+        registrations=entries,
+    )
 
 
 @router.post(
@@ -240,7 +368,7 @@ def update_event(
     payload: EventUpdate,
     event_id: int = Path(..., ge=1, description="Identificador unico del evento"),
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_editor),
 ) -> EventResponse:
     """
     Actualiza los campos de un evento institucional existente.
@@ -337,7 +465,7 @@ def update_event(
 def delete_event(
     event_id: int = Path(..., ge=1, description="Identificador unico del evento"),
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_editor),
 ) -> DeleteResponse:
     """
     Elimina permanentemente un evento del calendario y sus inscripciones asociadas.

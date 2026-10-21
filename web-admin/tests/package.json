@@ -1,0 +1,8 @@
+{
+  "name": "upa-web-admin-tests",
+  "private": true,
+  "description": "Dependencias de desarrollo para las pruebas del Cockpit de Redaccion (web-admin).",
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}
