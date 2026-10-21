@@ -280,6 +280,263 @@ def test_not_found_404_and_bad_request_400_errors():
     assert bad_dates.status_code == 400
 
 
+def test_event_rsvp_register_unregister_idempotency_and_errors():
+    db = TestingSessionLocal()
+    student1 = User(
+        id=61,
+        email="alumno1.tie@upa.edu.py",
+        full_name="Alumno Uno",
+        role="user",
+        groups=["TIE"],
+    )
+    student2 = User(
+        id=62,
+        email="alumno2.tie@upa.edu.py",
+        full_name="Alumno Dos",
+        role="user",
+        groups=["TIE"],
+    )
+    outsider = User(
+        id=63,
+        email="externo.admin@upa.edu.py",
+        full_name="Alumno Otra Carrera",
+        role="user",
+        groups=["MECA"],
+    )
+    prof_event = Post(
+        id=700,
+        title="Seminario Exclusivo TIE",
+        content="Solo para estudiantes de TIE",
+        post_type="MANUAL",
+        is_news=False,
+        is_event=True,
+        event_start=datetime.now(UTC) + timedelta(days=2),
+        has_registration=True,
+        target_groups=["TIE"],
+    )
+    db.add_all([student1, student2, outsider, prof_event])
+    db.commit()
+    db.close()
+
+    h1 = {"Authorization": f"Bearer {create_access_token({'sub': '61', 'email': 'alumno1.tie@upa.edu.py', 'role': 'user'})}"}
+    h2 = {"Authorization": f"Bearer {create_access_token({'sub': '62', 'email': 'alumno2.tie@upa.edu.py', 'role': 'user'})}"}
+    h_out = {"Authorization": f"Bearer {create_access_token({'sub': '63', 'email': 'externo.admin@upa.edu.py', 'role': 'user'})}"}
+
+    # 1. Estado inicial antes de inscripcion
+    init_detail = client.get("/api/events/700", headers=h1)
+    assert init_detail.status_code == 200
+    assert init_detail.json()["is_registered"] is False
+    assert init_detail.json()["registered_count"] == 0
+
+    # 2. Alumno 1 se inscribe (POST /api/events/700/register)
+    reg1 = client.post("/api/events/700/register", headers=h1)
+    assert reg1.status_code == 200
+    assert reg1.json()["is_registered"] is True
+    assert reg1.json()["registered_count"] == 1
+
+    # 3. Idempotencia: Alumno 1 vuelve a inscribirse -> sigue en 1
+    reg1_dup = client.post("/api/events/700/register", headers=h1)
+    assert reg1_dup.status_code == 200
+    assert reg1_dup.json()["is_registered"] is True
+    assert reg1_dup.json()["registered_count"] == 1
+
+    # 4. Alumno 2 se inscribe -> registered_count sube a 2
+    reg2 = client.post("/api/events/700/register", headers=h2)
+    assert reg2.status_code == 200
+    assert reg2.json()["is_registered"] is True
+    assert reg2.json()["registered_count"] == 2
+
+    # 5. Alumno 1 cancela su inscripcion (DELETE /api/events/700/register)
+    unreg1 = client.delete("/api/events/700/register", headers=h1)
+    assert unreg1.status_code == 200
+    assert unreg1.json()["is_registered"] is False
+    assert unreg1.json()["registered_count"] == 1
+
+    # 6. Idempotencia en DELETE: cancelar de nuevo mantiene 200 OK y contador en 1
+    unreg1_dup = client.delete("/api/events/700/register", headers=h1)
+    assert unreg1_dup.status_code == 200
+    assert unreg1_dup.json()["is_registered"] is False
+    assert unreg1_dup.json()["registered_count"] == 1
+
+    # 7. Errores de autenticacion (401), autorizacion (403) y recurso inexistente (404)
+    assert client.post("/api/events/700/register").status_code == 401
+    assert client.delete("/api/events/700/register").status_code == 401
+    assert client.post("/api/events/700/register", headers=h_out).status_code == 403
+    assert client.delete("/api/events/700/register", headers=h_out).status_code == 403
+    assert client.post("/api/events/999999/register", headers=h1).status_code == 404
+    assert client.delete("/api/events/999999/register", headers=h1).status_code == 404
+    # Post 1 es noticia pero NO es evento (is_event=False) -> 404 en /api/events/1/register
+    assert client.post("/api/events/1/register", headers=h1).status_code == 404
+
+
+def test_admin_crud_update_and_delete_news_and_events():
+    db = TestingSessionLocal()
+    student = User(
+        id=75,
+        email="estudiante.regular@upa.edu.py",
+        full_name="Estudiante Regular",
+        role="user",
+        groups=["TIE"],
+    )
+    db.add(student)
+    db.commit()
+    db.close()
+
+    admin_headers = {
+        "Authorization": f"Bearer {create_access_token({'sub': '1', 'email': 'test@upa.edu.py', 'role': 'admin'})}"
+    }
+    student_headers = {
+        "Authorization": f"Bearer {create_access_token({'sub': '75', 'email': 'estudiante.regular@upa.edu.py', 'role': 'user'})}"
+    }
+
+    # 1. Estudiante regular recibe 403 en PUT/DELETE de noticias y eventos
+    assert client.put("/api/news/1", json={"title": "Intento Hack"}, headers=student_headers).status_code == 403
+    assert client.delete("/api/news/1", headers=student_headers).status_code == 403
+    assert client.put("/api/events/2", json={"title": "Intento Hack"}, headers=student_headers).status_code == 403
+    assert client.delete("/api/events/2", headers=student_headers).status_code == 403
+
+    # 2. Peticiones sin token reciben 401
+    assert client.put("/api/news/1", json={"title": "Sin Token"}).status_code == 401
+    assert client.delete("/api/news/1").status_code == 401
+    assert client.put("/api/events/2", json={"title": "Sin Token"}).status_code == 401
+    assert client.delete("/api/events/2").status_code == 401
+
+    # 3. Admin actualiza noticia (PUT /api/news/1)
+    upd_news = client.put(
+        "/api/news/1",
+        json={
+            "title": "Busqueda Laboral: Recepcionista Bilingue Actualizada",
+            "caption": "Convocatoria extendida hasta viernes",
+            "content": "Requisitos actualizados para recepcion.",
+            "is_pinned": True,
+        },
+        headers=admin_headers,
+    )
+    assert upd_news.status_code == 200
+    news_data = upd_news.json()
+    assert news_data["id"] == 1
+    assert news_data["title"] == "Busqueda Laboral: Recepcionista Bilingue Actualizada"
+    assert news_data["summary"] == "Convocatoria extendida hasta viernes"
+    assert news_data["is_pinned"] is True
+
+    # 4. Validaciones 400 y 404 en PUT/DELETE de noticias
+    assert client.put("/api/news/1", json={"title": "   "}, headers=admin_headers).status_code == 400
+    assert client.put("/api/news/1", json={"post_type": "INVALIDO"}, headers=admin_headers).status_code == 400
+    assert client.put("/api/news/999999", json={"title": "No Existe"}, headers=admin_headers).status_code == 404
+    assert client.delete("/api/news/999999", headers=admin_headers).status_code == 404
+
+    # 5. Admin actualiza evento (PUT /api/events/2)
+    now = datetime.now(UTC)
+    new_start = (now + timedelta(days=4)).isoformat()
+    new_end = (now + timedelta(days=4, hours=2)).isoformat()
+    upd_ev = client.put(
+        "/api/events/2",
+        json={
+            "title": "Simposio IA y Etica Profesional",
+            "description": "Nueva descripcion extendida del simposio",
+            "location": "Aula Magna Edificio Central",
+            "event_start": new_start,
+            "event_end": new_end,
+            "has_registration": True,
+        },
+        headers=admin_headers,
+    )
+    assert upd_ev.status_code == 200
+    ev_data = upd_ev.json()
+    assert ev_data["id"] == 2
+    assert ev_data["title"] == "Simposio IA y Etica Profesional"
+    assert ev_data["description"] == "Nueva descripcion extendida del simposio"
+    assert ev_data["location"] == "Aula Magna Edificio Central"
+
+    # 6. Validaciones 400 y 404 en PUT/DELETE de eventos
+    assert client.put("/api/events/2", json={"title": "  "}, headers=admin_headers).status_code == 400
+    bad_ev_dates = client.put(
+        "/api/events/2",
+        json={
+            "event_start": (now + timedelta(days=5)).isoformat(),
+            "event_end": (now + timedelta(days=4)).isoformat(),
+        },
+        headers=admin_headers,
+    )
+    assert bad_ev_dates.status_code == 400
+    assert client.put("/api/events/999999", json={"title": "No Existe"}, headers=admin_headers).status_code == 404
+    assert client.delete("/api/events/999999", headers=admin_headers).status_code == 404
+
+    # 7. Admin elimina noticia y evento (DELETE /api/news/1 y DELETE /api/events/2)
+    del_news = client.delete("/api/news/1", headers=admin_headers)
+    assert del_news.status_code == 200
+    assert del_news.json()["status"] == "deleted"
+    assert del_news.json()["id"] == 1
+    assert client.get("/api/news/1", headers=admin_headers).status_code == 404
+
+    del_ev = client.delete("/api/events/2", headers=admin_headers)
+    assert del_ev.status_code == 200
+    assert del_ev.json()["status"] == "deleted"
+    assert del_ev.json()["id"] == 2
+    assert client.get("/api/events/2", headers=admin_headers).status_code == 404
+
+
+def test_device_token_registration_persistence_and_validation():
+    admin_headers = {
+        "Authorization": f"Bearer {create_access_token({'sub': '1', 'email': 'test@upa.edu.py', 'role': 'admin'})}"
+    }
+
+    # 1. Sin autenticacion -> 401
+    assert client.post("/api/users/device-token", json={"device_token": "fcm_valid_token_12345"}).status_code == 401
+
+    # 2. Registro valido e idempotente
+    resp1 = client.post(
+        "/api/users/device-token",
+        json={
+            "device_token": "fcm_android_token_9876543210abcdef",
+            "platform": "android",
+        },
+        headers=admin_headers,
+    )
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1["user_id"] == 1
+    assert data1["device_token"] == "fcm_android_token_9876543210abcdef"
+    assert data1["platform"] == "android"
+    assert data1["has_device_token"] is True
+    assert "updated_at" in data1
+
+    # Repetir registro con el mismo token actualiza sin duplicar
+    resp2 = client.post(
+        "/api/users/device-token",
+        json={
+            "device_token": "fcm_android_token_9876543210abcdef",
+            "platform": "android",
+        },
+        headers=admin_headers,
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["device_token"] == "fcm_android_token_9876543210abcdef"
+
+    # Verificar persistencia en base de datos
+    db = TestingSessionLocal()
+    u = db.query(User).filter(User.id == 1).first()
+    assert u.device_token == "fcm_android_token_9876543210abcdef"
+    assert len(u.device_tokens) == 1
+    db.close()
+
+    # 3. Validaciones de error 400 (token vacio, muy corto, con espacios o plataforma invalida)
+    for bad_token in ["", "   ", "corto", "token con espacios 123456"]:
+        r_bad = client.post(
+            "/api/users/device-token",
+            json={"device_token": bad_token, "platform": "android"},
+            headers=admin_headers,
+        )
+        assert r_bad.status_code == 400
+
+    r_bad_plat = client.post(
+        "/api/users/device-token",
+        json={"device_token": "fcm_android_token_9876543210abcdef", "platform": "symbian"},
+        headers=admin_headers,
+    )
+    assert r_bad_plat.status_code == 400
+
+
 def test_openapi_docs_and_integration_guide_completeness():
     from pathlib import Path
 
@@ -295,11 +552,23 @@ def test_openapi_docs_and_integration_guide_completeness():
         "/api/auth/dev-login",
         "/api/auth/me",
         "/api/v1/app-state",
+        "/api/v1/agenda",
         "/api/news",
+        "/api/news/{post_id}",
         "/api/events",
+        "/api/events/{event_id}",
+        "/api/events/{event_id}/register",
+        "/api/users/device-token",
         "/api/classroom/deadlines",
     ]:
         assert required_path in paths, f"Missing {required_path} in OpenAPI spec"
+
+    assert "post" in paths["/api/events/{event_id}/register"]
+    assert "delete" in paths["/api/events/{event_id}/register"]
+    assert "put" in paths["/api/news/{post_id}"]
+    assert "delete" in paths["/api/news/{post_id}"]
+    assert "put" in paths["/api/events/{event_id}"]
+    assert "delete" in paths["/api/events/{event_id}"]
 
     components = schema.get("components", {}).get("schemas", {})
     for required_model in [
@@ -308,16 +577,34 @@ def test_openapi_docs_and_integration_guide_completeness():
         "UserResponse",
         "NewsResponse",
         "EventResponse",
+        "EventUpdate",
+        "PostUpdate",
+        "DeleteResponse",
+        "DeviceTokenRequest",
+        "DeviceTokenResponse",
         "ClassroomDeadlineResponse",
         "AppStateResponse",
+        "AgendaResponse",
     ]:
         assert required_model in components, f"Missing {required_model} in OpenAPI schemas"
 
     guide_path = Path(__file__).resolve().parent.parent.parent / "docs" / "FRONTEND_INTEGRATION_GUIDE.md"
     assert guide_path.exists()
     guide_text = guide_path.read_text(encoding="utf-8")
-    assert "POST /api/auth/dev-login" in guide_text
-    assert "Authorization: Bearer" in guide_text
-    assert "/api/v1/app-state" in guide_text
-    assert "/api/classroom/deadlines" in guide_text
+    for expected_snippet in [
+        "POST /api/auth/dev-login",
+        "Authorization: Bearer",
+        "/api/v1/app-state",
+        "/api/v1/agenda",
+        "/api/events/{event_id}/register",
+        "/api/users/device-token",
+        "PUT /api/news/{post_id}",
+        "DELETE /api/news/{post_id}",
+        "PUT /api/events/{event_id}",
+        "DELETE /api/events/{event_id}",
+        "classroom_refresh_token",
+        "/api/classroom/deadlines",
+    ]:
+        assert expected_snippet in guide_text, f"Missing {expected_snippet} in FRONTEND_INTEGRATION_GUIDE.md"
+
 

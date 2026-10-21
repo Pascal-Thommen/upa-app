@@ -4,8 +4,11 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, Response
+from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
+from ..config import settings
+from ..database import get_db
 from ..models import User
 from ..schemas.classroom import (
     ClassroomCourseResponse,
@@ -32,6 +35,79 @@ def clear_classroom_cache(email: str | None = None) -> None:
     else:
         _DEADLINES_CACHE.clear()
         _COURSES_CACHE.clear()
+
+
+async def refresh_classroom_access_token(
+    user: User,
+    db: Session,
+    client: httpx.AsyncClient | None = None,
+) -> str | None:
+    """
+    Renueva automaticamente el token OAuth 2.0 de Google Classroom mediante el
+    classroom_refresh_token almacenado del usuario contra el endpoint oficial de Google.
+    """
+    refresh_token = (getattr(user, "classroom_refresh_token", None) or "").strip()
+    if not refresh_token:
+        return None
+
+    form_data = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    try:
+        if client is not None:
+            token_resp = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data=form_data,
+                headers=headers,
+                timeout=10.0,
+            )
+        else:
+            async with httpx.AsyncClient(timeout=10.0) as owned_client:
+                token_resp = await owned_client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data=form_data,
+                    headers=headers,
+                    timeout=10.0,
+                )
+    except Exception as exc:
+        print(f"[Classroom Token Refresh Error] {exc}")
+        return None
+
+    if token_resp.status_code != 200:
+        return None
+
+    try:
+        token_data = token_resp.json()
+    except ValueError:
+        return None
+
+    if not isinstance(token_data, dict):
+        return None
+
+    new_access_token = str(token_data.get("access_token") or "").strip()
+    if not new_access_token:
+        return None
+
+    new_refresh_token = str(token_data.get("refresh_token") or "").strip()
+    user.classroom_token = new_access_token
+    if new_refresh_token:
+        user.classroom_refresh_token = new_refresh_token
+
+    try:
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except Exception as exc:
+        db.rollback()
+        print(f"[Classroom Token DB Commit Error] {exc}")
+
+    clear_classroom_cache(user.email)
+    return new_access_token
 
 
 def _parse_due_date_and_time(
@@ -77,58 +153,79 @@ def _parse_due_date_and_time(
     return due_date_obj, due_time_obj, due_date_formatted
 
 
-@router.get(
-    "/deadlines",
-    response_model=list[ClassroomDeadlineResponse],
-    summary="Obtener entregas y plazos academicos de Google Classroom",
-    responses={
-        401: {
-            "model": ErrorResponse,
-            "description": "Token JWT ausente, invalido o expirado",
-        }
-    },
-)
-async def get_classroom_deadlines(
-    response: Response,
-    current_user: User = Depends(get_current_user),
+async def fetch_user_classroom_deadlines(
+    current_user: User,
+    db: Session,
+    response: Response | None = None,
 ) -> list[ClassroomDeadlineResponse]:
     """
-    Sincroniza tareas y plazos academicos de Google Classroom para el usuario autenticado.
-    Garantiza objetos completamente tipados sin valores nulos.
+    Obtiene y sincroniza los plazos academicos de Google Classroom para el usuario,
+    ejecutando auto-refresh transparente del token OAuth si recibe HTTP 401.
     """
     token = (current_user.classroom_token or "").strip()
-    if not token:
-        response.headers["X-Classroom-Status"] = "missing_token"
+    refresh_token = (getattr(current_user, "classroom_refresh_token", None) or "").strip()
+    if not token and not refresh_token:
+        if response is not None:
+            response.headers["X-Classroom-Status"] = "missing_token"
         return []
 
     cache_key = (current_user.email or "").lower()
-    user_cache = _DEADLINES_CACHE.get(cache_key)
-    if user_cache and (time.time() - user_cache[0] < CACHE_TTL_SECONDS):
-        response.headers["X-Classroom-Status"] = "cached"
-        return user_cache[1]
+    if token:
+        user_cache = _DEADLINES_CACHE.get(cache_key)
+        if user_cache and (time.time() - user_cache[0] < CACHE_TTL_SECONDS):
+            if response is not None:
+                response.headers["X-Classroom-Status"] = "cached"
+            return user_cache[1]
 
-    headers = {"Authorization": f"Bearer {token}"}
     deadlines: list[ClassroomDeadlineResponse] = []
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            if not token and refresh_token:
+                refreshed = await refresh_classroom_access_token(current_user, db, client=client)
+                if not refreshed:
+                    if response is not None:
+                        response.headers["X-Classroom-Status"] = "permission_denied"
+                    return []
+                token = refreshed
+                if response is not None:
+                    response.headers["X-Classroom-Token-Refreshed"] = "true"
+
+            headers = {"Authorization": f"Bearer {token}"}
             courses_resp = await client.get(
                 "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
                 headers=headers,
                 timeout=6.0,
             )
+
+            if courses_resp.status_code == 401 and refresh_token:
+                refreshed = await refresh_classroom_access_token(current_user, db, client=client)
+                if refreshed:
+                    token = refreshed
+                    headers = {"Authorization": f"Bearer {token}"}
+                    if response is not None:
+                        response.headers["X-Classroom-Token-Refreshed"] = "true"
+                    courses_resp = await client.get(
+                        "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
+                        headers=headers,
+                        timeout=6.0,
+                    )
+
             if courses_resp.status_code in (401, 403):
-                response.headers["X-Classroom-Status"] = "permission_denied"
+                if response is not None:
+                    response.headers["X-Classroom-Status"] = "permission_denied"
                 return []
             if courses_resp.status_code != 200:
-                response.headers["X-Classroom-Status"] = "api_error"
+                if response is not None:
+                    response.headers["X-Classroom-Status"] = "api_error"
                 return []
 
             courses_data = courses_resp.json()
             raw_courses = courses_data.get("courses") if isinstance(courses_data, dict) else []
             courses = [c for c in (raw_courses or []) if isinstance(c, dict)]
             if not courses:
-                response.headers["X-Classroom-Status"] = "no_courses"
+                if response is not None:
+                    response.headers["X-Classroom-Status"] = "no_courses"
                 return []
 
             async def fetch_course_work(course: dict[str, Any]) -> list[ClassroomDeadlineResponse]:
@@ -192,7 +289,8 @@ async def get_classroom_deadlines(
                 if isinstance(res, list):
                     deadlines.extend(res)
 
-        response.headers["X-Classroom-Status"] = "active"
+        if response is not None:
+            response.headers["X-Classroom-Status"] = "active"
 
         def _deadline_sort_key(item: ClassroomDeadlineResponse) -> str:
             return item.due_date_formatted if item.due_date_formatted else "9999-99-99"
@@ -203,8 +301,32 @@ async def get_classroom_deadlines(
 
     except Exception as e:
         print(f"[Classroom Deadlines Sync Error] {e}")
-        response.headers["X-Classroom-Status"] = "network_error"
+        if response is not None:
+            response.headers["X-Classroom-Status"] = "network_error"
         return []
+
+
+@router.get(
+    "/deadlines",
+    response_model=list[ClassroomDeadlineResponse],
+    summary="Obtener entregas y plazos academicos de Google Classroom",
+    responses={
+        401: {
+            "model": ErrorResponse,
+            "description": "Token JWT ausente, invalido o expirado",
+        }
+    },
+)
+async def get_classroom_deadlines(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ClassroomDeadlineResponse]:
+    """
+    Sincroniza tareas y plazos academicos de Google Classroom para el usuario autenticado.
+    Incluye renovacion automatica del token de Classroom en caso de expiracion (HTTP 401).
+    """
+    return await fetch_user_classroom_deadlines(current_user=current_user, db=db, response=response)
 
 
 @router.get(
@@ -221,31 +343,54 @@ async def get_classroom_deadlines(
 async def get_classroom_courses(
     response: Response,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> list[ClassroomCourseResponse]:
     """
     Retorna la lista de cursos activos de Google Classroom para el usuario autenticado.
-    Garantiza objetos tipados sin campos nulos.
+    Incluye renovacion automatica del token OAuth en caso de HTTP 401.
     """
     token = (current_user.classroom_token or "").strip()
-    if not token:
+    refresh_token = (getattr(current_user, "classroom_refresh_token", None) or "").strip()
+    if not token and not refresh_token:
         response.headers["X-Classroom-Status"] = "missing_token"
         return []
 
     cache_key = (current_user.email or "").lower()
-    user_cache = _COURSES_CACHE.get(cache_key)
-    if user_cache and (time.time() - user_cache[0] < CACHE_TTL_SECONDS):
-        response.headers["X-Classroom-Status"] = "cached"
-        return user_cache[1]
-
-    headers = {"Authorization": f"Bearer {token}"}
+    if token:
+        user_cache = _COURSES_CACHE.get(cache_key)
+        if user_cache and (time.time() - user_cache[0] < CACHE_TTL_SECONDS):
+            response.headers["X-Classroom-Status"] = "cached"
+            return user_cache[1]
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            if not token and refresh_token:
+                refreshed = await refresh_classroom_access_token(current_user, db, client=client)
+                if not refreshed:
+                    response.headers["X-Classroom-Status"] = "permission_denied"
+                    return []
+                token = refreshed
+                response.headers["X-Classroom-Token-Refreshed"] = "true"
+
+            headers = {"Authorization": f"Bearer {token}"}
             courses_resp = await client.get(
                 "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
                 headers=headers,
                 timeout=10.0,
             )
+
+            if courses_resp.status_code == 401 and refresh_token:
+                refreshed = await refresh_classroom_access_token(current_user, db, client=client)
+                if refreshed:
+                    token = refreshed
+                    headers = {"Authorization": f"Bearer {token}"}
+                    response.headers["X-Classroom-Token-Refreshed"] = "true"
+                    courses_resp = await client.get(
+                        "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
+                        headers=headers,
+                        timeout=10.0,
+                    )
+
             if courses_resp.status_code in (401, 403):
                 response.headers["X-Classroom-Status"] = "permission_denied"
                 return []

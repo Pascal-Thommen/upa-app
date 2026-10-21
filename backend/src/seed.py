@@ -1,15 +1,32 @@
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
 from .models import Post, User
 
 
+def ensure_schema_columns(bind_engine=engine) -> None:
+    """Garantiza que las columnas nuevas existan en tablas preexistentes."""
+    try:
+        inspector = inspect(bind_engine)
+        if "users" in inspector.get_table_names():
+            existing_cols = {col["name"] for col in inspector.get_columns("users")}
+            with bind_engine.begin() as conn:
+                if "classroom_refresh_token" not in existing_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN classroom_refresh_token TEXT"))
+                if "device_token" not in existing_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN device_token VARCHAR(512)"))
+    except Exception as exc:
+        print(f"[Schema Sync Notice] {exc}")
+
+
 def seed_database():
     """Idempotentes Seeding mit echten Campus-Daten aus Instagram und internen Vorlesungen."""
     # Tabellen sicherstellen
     Base.metadata.create_all(bind=engine)
+    ensure_schema_columns(engine)
     
     db: Session = SessionLocal()
     try:

@@ -190,3 +190,158 @@ def test_classroom_parse_due_date_and_null_hardening():
     dumped = item.model_dump()
     assert all(v is not None for v in dumped.values())
 
+
+def test_classroom_auto_refresh_on_http_401_for_deadlines_and_courses(monkeypatch):
+    import httpx
+    from src.api.classroom import clear_classroom_cache
+
+    clear_classroom_cache()
+    db = TestingSessionLocal()
+    student = db.query(User).filter(User.id == 102).first()
+    student.classroom_token = "ya29.expired_60min_token"
+    student.classroom_refresh_token = "1//0g_valid_refresh_token_upa"
+    db.commit()
+    db.close()
+
+    real_async_client = httpx.AsyncClient
+    call_log: list[tuple[str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        auth_header = request.headers.get("Authorization", "")
+        call_log.append((request.method, url, auth_header))
+
+        if "oauth2.googleapis.com/token" in url:
+            body_text = request.content.decode("utf-8")
+            assert "grant_type=refresh_token" in body_text
+            assert "1%2F%2F0g_valid_refresh_token_upa" in body_text or "1//0g_valid_refresh_token_upa" in body_text
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "ya29.refreshed_live_token_2026",
+                    "expires_in": 3600,
+                    "token_type": "Bearer",
+                },
+            )
+
+        if "classroom.googleapis.com/v1/courses?" in url:
+            if auth_header == "Bearer ya29.expired_60min_token":
+                return httpx.Response(401, json={"error": {"code": 401, "message": "Unauthenticated"}})
+            if auth_header == "Bearer ya29.refreshed_live_token_2026":
+                return httpx.Response(
+                    200,
+                    json={
+                        "courses": [
+                            {
+                                "id": "course_tie_4",
+                                "name": "Ingenieria de Software II",
+                                "section": "Semestre 4",
+                                "alternateLink": "https://classroom.google.com/c/course_tie_4",
+                                "room": "Aula 204",
+                            }
+                        ]
+                    },
+                )
+
+        if "courseWork" in url:
+            if auth_header == "Bearer ya29.refreshed_live_token_2026":
+                return httpx.Response(
+                    200,
+                    json={
+                        "courseWork": [
+                            {
+                                "id": "work_900",
+                                "title": "Proyecto Integrador Final",
+                                "description": "Entrega de API REST y App Movil",
+                                "dueDate": {"year": 2026, "month": 11, "day": 15},
+                                "dueTime": {"hours": 23, "minutes": 59},
+                                "alternateLink": "https://classroom.google.com/c/course_tie_4/a/work_900",
+                                "maxPoints": 100,
+                            }
+                        ]
+                    },
+                )
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: real_async_client(transport=transport, timeout=kwargs.get("timeout", 10.0)),
+    )
+
+    jwt_token = create_access_token(data={"sub": "102", "email": "estudiante2@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
+    # 1. Consultar deadlines: debe detectar 401, refrescar token contra Google OAuth y retornar la tarea
+    resp = client.get("/api/classroom/deadlines", headers=headers)
+    assert resp.status_code == 200
+    assert resp.headers.get("X-Classroom-Status") == "active"
+    assert resp.headers.get("X-Classroom-Token-Refreshed") == "true"
+    deadlines = resp.json()
+    assert len(deadlines) == 1
+    assert deadlines[0]["id"] == "work_900"
+    assert deadlines[0]["title"] == "Proyecto Integrador Final"
+    assert deadlines[0]["course_name"] == "Ingenieria de Software II"
+    assert deadlines[0]["due_date_formatted"] == "2026-11-15 23:59"
+
+    # 2. Verificar que el nuevo access_token quedo persistido en la base de datos
+    db_verify = TestingSessionLocal()
+    updated_student = db_verify.query(User).filter(User.id == 102).first()
+    assert updated_student.classroom_token == "ya29.refreshed_live_token_2026"
+    db_verify.close()
+
+    # 3. Forzar expiracion nuevamente y probar auto-refresh en /api/classroom/courses
+    clear_classroom_cache()
+    db_exp = TestingSessionLocal()
+    s2 = db_exp.query(User).filter(User.id == 102).first()
+    s2.classroom_token = "ya29.expired_60min_token"
+    db_exp.commit()
+    db_exp.close()
+
+    courses_resp = client.get("/api/classroom/courses", headers=headers)
+    assert courses_resp.status_code == 200
+    assert courses_resp.headers.get("X-Classroom-Status") == "active"
+    assert courses_resp.headers.get("X-Classroom-Token-Refreshed") == "true"
+    courses = courses_resp.json()
+    assert len(courses) == 1
+    assert courses[0]["id"] == "course_tie_4"
+    assert courses[0]["name"] == "Ingenieria de Software II"
+
+
+def test_classroom_auto_refresh_handles_revoked_refresh_token_gracefully(monkeypatch):
+    import httpx
+    from src.api.classroom import clear_classroom_cache
+
+    clear_classroom_cache()
+    db = TestingSessionLocal()
+    student = db.query(User).filter(User.id == 102).first()
+    student.classroom_token = "ya29.expired_token"
+    student.classroom_refresh_token = "1//0g_revoked_refresh_token"
+    db.commit()
+    db.close()
+
+    real_async_client = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "oauth2.googleapis.com/token" in url:
+            return httpx.Response(400, json={"error": "invalid_grant"})
+        return httpx.Response(401, json={"error": {"code": 401, "message": "Unauthenticated"}})
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: real_async_client(transport=transport, timeout=kwargs.get("timeout", 10.0)),
+    )
+
+    jwt_token = create_access_token(data={"sub": "102", "email": "estudiante2@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
+    resp = client.get("/api/classroom/deadlines", headers=headers)
+    assert resp.status_code == 200
+    assert resp.headers.get("X-Classroom-Status") == "permission_denied"
+    assert resp.json() == []
+
+

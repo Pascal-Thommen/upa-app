@@ -30,6 +30,7 @@ class GoogleLoginRequest(BaseModel):
             "example": {
                 "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEifQ...",
                 "classroom_token": "ya29.a0AfH6SM...",
+                "classroom_refresh_token": "1//0gSampleRefreshToken...",
             }
         }
     )
@@ -37,6 +38,10 @@ class GoogleLoginRequest(BaseModel):
     id_token: str = Field(..., description="Google ID Token emitido por Google Sign-In")
     classroom_token: str | None = Field(
         default=None, description="Token OAuth 2.0 opcional para Google Classroom"
+    )
+    classroom_refresh_token: str | None = Field(
+        default=None,
+        description="Refresh Token OAuth 2.0 opcional para renovacion automatica de Classroom",
     )
 
 
@@ -61,6 +66,10 @@ class DevLoginRequest(BaseModel):
     classroom_token: str | None = Field(
         default=None,
         description="Token OAuth opcional para sincronizacion con Google Classroom",
+    )
+    classroom_refresh_token: str | None = Field(
+        default=None,
+        description="Refresh Token OAuth 2.0 opcional para auto-refresh de Google Classroom",
     )
 
 
@@ -127,11 +136,16 @@ class ClassroomTokenRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "classroom_token": "ya29.a0AfH6SM_sample_classroom_oauth_token",
+                "classroom_refresh_token": "1//0gSampleRefreshToken...",
             }
         }
     )
 
     classroom_token: str = Field(..., description="Token OAuth de acceso a Google Classroom")
+    classroom_refresh_token: str | None = Field(
+        default=None,
+        description="Refresh Token OAuth 2.0 opcional para auto-refresh de Google Classroom",
+    )
 
 
 class AuthResponse(BaseModel):
@@ -225,6 +239,10 @@ def _build_user_response(user: User) -> UserResponse:
     clean_email = (user.email or "").strip().lower()
     clean_name = (user.full_name or "").strip() or _derive_full_name(clean_email)
     clean_role = (user.role or "user").strip() or "user"
+    has_token = bool(
+        (user.classroom_token and str(user.classroom_token).strip())
+        or (getattr(user, "classroom_refresh_token", None) and str(user.classroom_refresh_token).strip())
+    )
     return UserResponse(
         id=int(user.id),
         email=clean_email,
@@ -232,7 +250,7 @@ def _build_user_response(user: User) -> UserResponse:
         role=clean_role,
         groups=_filter_user_groups_for_privacy(clean_email, user.groups),
         google_groups=_filter_google_groups_for_privacy(clean_email, user.google_groups),
-        has_classroom_token=bool(user.classroom_token and str(user.classroom_token).strip()),
+        has_classroom_token=has_token,
     )
 
 
@@ -293,6 +311,7 @@ async def google_callback(
     token_data = token_resp.json()
     id_token = token_data.get("id_token")
     access_token = token_data.get("access_token")
+    refresh_token = token_data.get("refresh_token")
 
     if not id_token:
         return RedirectResponse("/dashboard/?auth_error=missing_id_token")
@@ -321,6 +340,7 @@ async def google_callback(
             groups=mapped_tags,
             google_groups=raw_google_groups,
             classroom_token=access_token,
+            classroom_refresh_token=refresh_token.strip() if refresh_token and str(refresh_token).strip() else None,
         )
         db.add(user)
     else:
@@ -330,6 +350,8 @@ async def google_callback(
         if access_token:
             user.classroom_token = access_token
             clear_classroom_cache(email)
+        if refresh_token and str(refresh_token).strip():
+            user.classroom_refresh_token = str(refresh_token).strip()
 
     db.commit()
     db.refresh(user)
@@ -373,7 +395,12 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
             role=initial_role,
             groups=mapped_tags,
             google_groups=raw_google_groups,
-            classroom_token=payload.classroom_token.strip() if payload.classroom_token else None,
+            classroom_token=payload.classroom_token.strip() if payload.classroom_token and payload.classroom_token.strip() else None,
+            classroom_refresh_token=(
+                payload.classroom_refresh_token.strip()
+                if payload.classroom_refresh_token and payload.classroom_refresh_token.strip()
+                else None
+            ),
         )
         db.add(user)
     else:
@@ -383,6 +410,8 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
         if payload.classroom_token and payload.classroom_token.strip():
             user.classroom_token = payload.classroom_token.strip()
             clear_classroom_cache(email)
+        if payload.classroom_refresh_token and payload.classroom_refresh_token.strip():
+            user.classroom_refresh_token = payload.classroom_refresh_token.strip()
 
     db.commit()
     db.refresh(user)
@@ -445,6 +474,11 @@ async def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> 
                 if payload.classroom_token and payload.classroom_token.strip()
                 else None
             ),
+            classroom_refresh_token=(
+                payload.classroom_refresh_token.strip()
+                if payload.classroom_refresh_token and payload.classroom_refresh_token.strip()
+                else None
+            ),
         )
         db.add(user)
     else:
@@ -464,6 +498,8 @@ async def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> 
         if payload.classroom_token and payload.classroom_token.strip():
             user.classroom_token = payload.classroom_token.strip()
             clear_classroom_cache(email)
+        if payload.classroom_refresh_token and payload.classroom_refresh_token.strip():
+            user.classroom_refresh_token = payload.classroom_refresh_token.strip()
 
     db.commit()
     db.refresh(user)
@@ -517,6 +553,10 @@ def update_classroom_token(
             detail="El token de Google Classroom no puede estar vacio.",
         )
     current_user.classroom_token = cleaned_token
+    if payload.classroom_refresh_token is not None:
+        cleaned_refresh = payload.classroom_refresh_token.strip()
+        if cleaned_refresh:
+            current_user.classroom_refresh_token = cleaned_refresh
     db.commit()
     db.refresh(current_user)
     clear_classroom_cache(current_user.email)
