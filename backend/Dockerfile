@@ -3,7 +3,8 @@ FROM python:3.12-slim
 # Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    UPLOAD_DIR=/app/uploads
 
 WORKDIR /app
 
@@ -24,6 +25,9 @@ COPY src/ ./src
 COPY tests/ ./tests
 COPY alembic/ ./alembic
 COPY alembic.ini .
+
+# Persistent upload directory (mount a volume here to survive container recreation)
+RUN mkdir -p /app/uploads
 
 # Change ownership to the non-root user
 RUN chown -R appuser:appgroup /app

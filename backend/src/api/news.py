@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, status
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,12 @@ from ..schemas.post import (
     user_can_access_post,
 )
 from ..services.instagram import instagram_service
+from ..services.push import (
+    EMERGENCY_BANNER,
+    build_emergency_message,
+    collect_recipient_tokens,
+    dispatch_emergency_push,
+)
 
 router = APIRouter(prefix="/api/news", tags=["News"])
 
@@ -117,6 +123,7 @@ def get_news_by_id(
 )
 def create_news(
     payload: PostCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> NewsResponse:
@@ -167,8 +174,28 @@ def create_news(
         author_id=admin.id,
     )
     db.add(new_post)
+    db.flush()
+
+    push_tokens: list[str] = []
+    if clean_type == EMERGENCY_BANNER:
+        push_tokens = collect_recipient_tokens(db, new_post.target_groups)
+        db.add(
+            AdminAuditLog(
+                admin_id=admin.id,
+                action="TRIGGER_PUSH",
+                target_type="post",
+                target_id=new_post.id,
+                details={"post_type": EMERGENCY_BANNER, "recipients": len(push_tokens)},
+            )
+        )
+
     db.commit()
     db.refresh(new_post)
+
+    if clean_type == EMERGENCY_BANNER:
+        title, body, data = build_emergency_message(new_post)
+        background_tasks.add_task(dispatch_emergency_push, push_tokens, title, body, data)
+
     return NewsResponse.from_orm_post(new_post)
 
 

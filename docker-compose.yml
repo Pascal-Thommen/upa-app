@@ -42,6 +42,7 @@ services:
       - "8085:8000"
     volumes:
       - ./backend/secrets:/app/secrets:ro
+      - uploads_data:/app/uploads
     networks:
       - upa-network
 
@@ -51,4 +52,6 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  uploads_data:
     driver: local

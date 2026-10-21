@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     FEED_SYNC_INTERVAL_MINUTES: int = 60
     FEED_SYNC_ENABLED: bool = True
 
+    # Medien-Upload (Plakate, Banner, Dokumente)
+    UPLOAD_DIR: str = "uploads"  # Im Container: /app/uploads (WORKDIR /app), persistent per Volume
+    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
+    PUBLIC_BASE_URL: str = ""  # Optional, z. B. https://api.upa.edu.py (sonst Basis-URL des Requests)
+
+    # Push-Benachrichtigungen (Firebase Cloud Messaging HTTP v1)
+    FCM_SERVICE_ACCOUNT_FILE: str = "./secrets/fcm-service-account.json"
+    FCM_PROJECT_ID: str = ""  # Optional, sonst project_id aus der Service Account Datei
+    FCM_TIMEOUT_SECONDS: float = 10.0
+    FCM_API_BASE_URL: str = "https://fcm.googleapis.com"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
