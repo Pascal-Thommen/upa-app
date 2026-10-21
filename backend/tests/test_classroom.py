@@ -148,3 +148,45 @@ def test_root_redirects_to_dashboard():
     assert response.status_code in (307, 200)
     if response.status_code == 307:
         assert response.headers["location"] == "/dashboard/"
+
+
+def test_classroom_parse_due_date_and_null_hardening():
+    from src.api.classroom import _parse_due_date_and_time
+    from src.schemas.classroom import ClassroomDeadlineResponse
+
+    # Caso 1: due_date y due_time en None
+    due_date_obj, due_time_obj, formatted = _parse_due_date_and_time(None, None)
+    assert due_date_obj.year == 0
+    assert due_time_obj.hours == 23
+    assert formatted == ""
+
+    # Caso 2: due_date diccionario con valores validos y due_time valido
+    d2, t2, fmt2 = _parse_due_date_and_time(
+        {"year": 2026, "month": 11, "day": 5},
+        {"hours": 18, "minutes": 30},
+    )
+    assert d2.year == 2026
+    assert d2.month == 11
+    assert d2.day == 5
+    assert t2.hours == 18
+    assert t2.minutes == 30
+    assert fmt2 == "2026-11-05 18:30"
+
+    # Caso 3: Verificacion de esquema sin nulos
+    item = ClassroomDeadlineResponse(
+        id="100",
+        assignment_id="100",
+        course_id="200",
+        course="Ingenieria de Software",
+        course_name="Ingenieria de Software",
+        title="Proyecto Final",
+        description="",
+        due_date=d2,
+        due_time=t2,
+        due_date_formatted=fmt2,
+        alternate_link="https://classroom.google.com/c/200",
+        max_points=100.0,
+    )
+    dumped = item.model_dump()
+    assert all(v is not None for v in dumped.values())
+

@@ -161,3 +161,133 @@ def test_google_callback_error_param_redirects():
     location = response.headers.get("location", "")
     assert "/dashboard/?auth_error=access_denied" in location
 
+
+def test_dev_login_admin_pascal_returns_full_jwt_session():
+    response = client.post(
+        "/api/auth/dev-login",
+        json={"email": "pascal.thommen@upa.edu.py"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data["access_token"], str)
+    assert len(data["access_token"]) > 20
+    assert data["token_type"] == "bearer"
+
+    user = data["user"]
+    assert user["id"] == 30
+    assert user["email"] == "pascal.thommen@upa.edu.py"
+    assert user["full_name"] == "Pascal Thommen"
+    assert user["role"] == "admin"
+    assert "ALL" in user["groups"]
+    assert "TIE" in user["groups"]
+    assert isinstance(user["google_groups"], list)
+    assert user["has_classroom_token"] is False
+
+    # Verificar que el token generado funciona inmediatamente en /api/auth/me
+    me_resp = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {data['access_token']}"},
+    )
+    assert me_resp.status_code == 200
+    me_data = me_resp.json()
+    assert me_data["email"] == "pascal.thommen@upa.edu.py"
+    assert me_data["role"] == "admin"
+    assert "TIE" in me_data["groups"]
+
+
+def test_dev_login_creates_new_student_with_strict_privacy():
+    response = client.post(
+        "/api/auth/dev-login",
+        json={"email": "  Maria.Gomez@upa.edu.py  "},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["token_type"] == "bearer"
+    user = data["user"]
+    assert user["email"] == "maria.gomez@upa.edu.py"
+    assert user["full_name"] == "Maria Gomez"
+    assert user["role"] == "user"
+    # Estudiante regular no visualiza listas de distribucion internas
+    assert user["groups"] == []
+    assert user["google_groups"] == []
+    assert user["has_classroom_token"] is False
+
+
+def test_dev_login_rejects_invalid_email_formats_400():
+    invalid_emails = [
+        "",
+        "   ",
+        "sin_arroba.upa.edu.py",
+        "@upa.edu.py",
+        "doble@@upa.edu.py",
+        "con espacio@upa.edu.py",
+        "usuario@dominio_sin_punto",
+    ]
+    for bad_email in invalid_emails:
+        resp = client.post("/api/auth/dev-login", json={"email": bad_email})
+        assert resp.status_code == 400, f"Expected 400 for {bad_email!r}, got {resp.status_code}"
+        assert "detail" in resp.json()
+
+
+def test_dev_login_rejects_non_upa_domain_403():
+    forbidden_emails = [
+        "externo@gmail.com",
+        "usuario@outlook.com",
+        "falso@upa.edu.py.attacker.com",
+        "estudiante@fakeupa.edu.py",
+    ]
+    for ext_email in forbidden_emails:
+        resp = client.post("/api/auth/dev-login", json={"email": ext_email})
+        assert resp.status_code == 403, f"Expected 403 for {ext_email!r}, got {resp.status_code}"
+        assert "upa.edu.py" in resp.json()["detail"]
+
+
+def test_google_login_empty_token_returns_400():
+    resp = client.post("/api/auth/google", json={"id_token": "   "})
+    assert resp.status_code == 400
+    assert "detail" in resp.json()
+
+
+def test_classroom_token_empty_returns_400():
+    token = create_access_token(data={"sub": "10", "email": "student@upa.edu.py", "role": "user"})
+    resp = client.post(
+        "/api/auth/classroom-token",
+        json={"classroom_token": "   "},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+    assert "detail" in resp.json()
+
+
+def test_get_me_invalid_token_returns_401():
+    resp = client.get(
+        "/api/auth/me",
+        headers={"Authorization": "Bearer token.invalido.manipulado"},
+    )
+    assert resp.status_code == 401
+    assert "detail" in resp.json()
+
+
+def test_get_me_sanitizes_null_google_group_fields():
+    db = TestingSessionLocal()
+    pascal = db.query(User).filter(User.email == "pascal.thommen@upa.edu.py").first()
+    pascal.google_groups = [
+        {"id": None, "name": None, "email": "tie@upa.edu.py", "description": None}
+    ]
+    db.commit()
+    db.close()
+
+    token = create_access_token(
+        data={"sub": "30", "email": "pascal.thommen@upa.edu.py", "role": "admin"}
+    )
+    resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["google_groups"]) == 1
+    grp = data["google_groups"][0]
+    assert grp["id"] == ""
+    assert grp["name"] == ""
+    assert grp["email"] == "tie@upa.edu.py"
+    assert grp["description"] == ""
+
+

@@ -637,6 +637,27 @@ async function handleLoginSubmit(event) {
   showLoginAlert("Autenticando con el servidor institucional...", "info");
 
   try {
+    if (token.includes("@")) {
+      const devLoginResp = await fetch("/api/auth/dev-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: token,
+          classroom_token: classroomToken || null,
+        }),
+      });
+      if (devLoginResp.ok) {
+        const authData = await devLoginResp.json();
+        setStoredToken(authData.access_token);
+        showLoginAlert("Inicio de sesion exitoso.", "success");
+        await refreshDashboard();
+        return;
+      }
+      const err = await devLoginResp.json().catch(() => ({}));
+      showLoginAlert(err.detail || "Correo institucional no autorizado.", "error");
+      return;
+    }
+
     const googleLoginResp = await fetch("/api/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
