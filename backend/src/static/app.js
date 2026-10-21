@@ -86,6 +86,7 @@ function setStoredToken(token) {
 function logout() {
   setStoredToken(null);
   state.currentUser = null;
+  document.documentElement.classList.remove("has-auth");
   showLoginView();
   showLoginAlert("Sesión finalizada correctamente.", "info");
 }
@@ -107,6 +108,7 @@ function showLoginAlert(message, type = "error") {
 }
 
 function showLoginView() {
+  document.documentElement.classList.remove("has-auth");
   DOM_ELEMENTS.viewLogin.classList.remove("hidden");
   DOM_ELEMENTS.viewDashboard.classList.add("hidden");
   DOM_ELEMENTS.authActions.innerHTML = "";
@@ -873,6 +875,8 @@ async function init() {
   if (tokenFromUrl) {
     setStoredToken(tokenFromUrl);
     window.history.replaceState({}, document.title, window.location.pathname);
+    DOM_ELEMENTS.viewLogin.classList.add("hidden");
+    DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
     await refreshDashboard();
     return;
   }
@@ -883,7 +887,9 @@ async function init() {
 
   const existingToken = getStoredToken();
   if (existingToken) {
-    refreshDashboard();
+    DOM_ELEMENTS.viewLogin.classList.add("hidden");
+    DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
+    await refreshDashboard();
   } else {
     showLoginView();
   }

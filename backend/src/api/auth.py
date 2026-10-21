@@ -67,7 +67,7 @@ def login_google():
         "response_type": "code",
         "scope": "openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly",
         "access_type": "offline",
-        "prompt": "consent",
+        "prompt": "select_account",
         "hd": settings.ALLOWED_EMAIL_DOMAIN,
     })
     return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")

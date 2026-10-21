@@ -116,15 +116,47 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
             if groups_resp.status_code == 200:
                 data = groups_resp.json()
                 raw_groups = data.get("groups", [])
-                parsed_groups: list[dict[str, str]] = []
+
+                # Hierarchische / verschachtelte Gruppen rekursiv auflösen
+                all_groups_map: dict[str, dict[str, str]] = {}
+                queue: list[str] = []
                 for g in raw_groups:
-                    parsed_groups.append({
-                        "id": g.get("id", ""),
-                        "name": g.get("name", ""),
-                        "email": g.get("email", ""),
-                        "description": g.get("description", "") or "",
-                    })
-                return parsed_groups
+                    gemail = g.get("email", "")
+                    if gemail:
+                        item = {
+                            "id": g.get("id", ""),
+                            "name": g.get("name", ""),
+                            "email": gemail,
+                            "description": g.get("description", "") or "",
+                        }
+                        all_groups_map[gemail.lower()] = item
+                        queue.append(gemail)
+
+                visited: set[str] = set(all_groups_map.keys())
+                while queue:
+                    current_key = queue.pop(0)
+                    parent_url = f"https://admin.googleapis.com/admin/directory/v1/groups?userKey={current_key}"
+                    try:
+                        p_resp = await client.get(
+                            parent_url,
+                            headers={"Authorization": f"Bearer {access_token}"},
+                        )
+                        if p_resp.status_code == 200:
+                            for pg in p_resp.json().get("groups", []):
+                                p_email = pg.get("email", "")
+                                if p_email and p_email.lower() not in visited:
+                                    visited.add(p_email.lower())
+                                    queue.append(p_email)
+                                    all_groups_map[p_email.lower()] = {
+                                        "id": pg.get("id", ""),
+                                        "name": pg.get("name", ""),
+                                        "email": p_email,
+                                        "description": pg.get("description", "") or "",
+                                    }
+                    except Exception as err:
+                        logger.debug("Fehler beim Abrufen der Elterngruppe fuer %s: %s", current_key, err)
+
+                return list(all_groups_map.values())
             elif groups_resp.status_code == 403:
                 logger.info("Delegierter User %s nicht autorisiert für Directory API, versuche nächsten...", delegated_user)
                 continue

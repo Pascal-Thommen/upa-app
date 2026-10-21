@@ -28,7 +28,15 @@
   </script>
   
   <link rel="stylesheet" href="/dashboard/style.css">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    if (localStorage.getItem("upa_auth_token") || window.location.search.includes("token=")) {
+      document.documentElement.classList.add("has-auth");
+    }
+  </script>
+  <style>
+    html.has-auth #section-login { display: none !important; }
+    html.has-auth #section-dashboard { display: block !important; }
+  </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
 
