@@ -680,7 +680,7 @@ async function handleLoginSubmit(event) {
   }
 }
 
-const GOOGLE_CLIENT_ID = "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = "567912225771-7cf17vkfujmhb4itu2lri0ttssavfmcg.apps.googleusercontent.com";
 const CLASSROOM_SCOPES = [
   "https://www.googleapis.com/auth/classroom.courses.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
