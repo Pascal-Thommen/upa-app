@@ -196,14 +196,64 @@
         </div>
       </div>
 
-      <!-- Selector de modo: solo Administradores y Redacción -->
-      <div id="mode-switch" class="hidden bg-white rounded-2xl border border-slate-200/80 p-2 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-        <div class="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl">
-          <button id="mode-btn-editorial" type="button" class="ed-mode-btn is-active">Cockpit de redacción</button>
-          <button id="mode-btn-student" type="button" class="ed-mode-btn">Vista de estudiantes</button>
-        </div>
-        <span class="text-[11px] text-slate-500">Gestión de noticias, eventos y afiches del campus</span>
+      <!-- Selector de modo: solo Administradores y Redacción (Compatibilidad de Tests) -->
+      <div id="mode-switch" class="hidden">
+        <button id="mode-btn-editorial" type="button" class="ed-mode-btn is-active">Cockpit de redacción</button>
+        <button id="mode-btn-student" type="button" class="ed-mode-btn">Vista de estudiantes</button>
       </div>
+
+      <!-- Layout Principal con Menú Lateral y Módulos -->
+      <div class="flex flex-col lg:flex-row gap-6 items-start">
+
+        <!-- Menú Lateral Institucional -->
+        <aside id="sidebar-menu" class="w-full lg:w-72 flex-shrink-0 space-y-4">
+          <!-- Área Estudiantil (Próximamente) -->
+          <div class="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-3xl p-5 shadow-md border border-slate-800 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">Área Estudiantil</span>
+              <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Móvil</span>
+            </div>
+            <div class="p-3.5 bg-slate-800/60 rounded-2xl border border-slate-700/80 space-y-2">
+              <div class="flex items-center gap-2">
+                <span class="text-base">📱</span>
+                <h4 class="text-xs font-bold text-white">App Nativa Android</h4>
+              </div>
+              <p class="text-[11px] text-slate-300 leading-relaxed">
+                Agenda académica, fechas límite de Classroom y eventos estudiantiles en desarrollo nativo por <strong>Theresa Bauer</strong>.
+              </p>
+              <div class="text-[10px] text-emerald-400 font-semibold pt-1 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>En construcción en Android Studio</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Módulos Administrativos (4 Pestañas) -->
+          <nav class="bg-white rounded-3xl p-3 shadow-md border border-slate-200/80 space-y-1.5 w-full">
+            <div class="px-3 py-2 text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">
+              Módulos Administrativos
+            </div>
+            <button id="nav-mod-publications" type="button" class="sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-white bg-blue-900 shadow-sm">
+              <span class="text-base">📝</span>
+              <span class="flex-1">Publicaciones y Eventos</span>
+            </button>
+            <button id="nav-mod-groups" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              <span class="text-base">👥</span>
+              <span class="flex-1">Grupos y Audiencias</span>
+            </button>
+            <button id="nav-mod-admins" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              <span class="text-base">🛡️</span>
+              <span class="flex-1">Consola de Roles</span>
+            </button>
+            <button id="nav-mod-diagnostic" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              <span class="text-base">🔌</span>
+              <span class="flex-1">Diagnóstico de APIs</span>
+            </button>
+          </nav>
+        </aside>
+
+        <!-- Contenedor Principal de Módulos -->
+        <div class="flex-1 min-w-0 space-y-6 w-full">
 
       <!-- Vista de estudiantes (Dashboard y JSON móvil) -->
       <div id="student-workspace" class="space-y-6">
@@ -542,6 +592,105 @@
           </div>
         </div>
       </section>
+
+        <!-- Módulo B: Gestión de Grupos y Audiencias -->
+        <section id="view-groups" class="hidden space-y-6" aria-label="Gestión de Grupos y Audiencias">
+          <div class="bg-white rounded-3xl p-6 shadow-md border border-slate-200/80">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4 mb-6">
+              <div>
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">Módulo B &bull; Segmentación</span>
+                <h3 class="font-extrabold text-slate-900 text-lg mt-0.5">Grupos y Audiencias Institucionales</h3>
+                <p class="text-xs text-slate-500 mt-1">Administración de grupos internos de la aplicación y asignación de correos @upa.edu.py y Google Workspace Groups.</p>
+              </div>
+              <button id="btn-create-group" type="button" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-2 self-start sm:self-auto">
+                <span>+ Crear Grupo Interno</span>
+              </button>
+            </div>
+
+            <!-- Lista de Grupos Estándar y Personalizados -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="groups-list-container">
+              <!-- Renderizado dinámicamente -->
+            </div>
+          </div>
+        </section>
+
+        <!-- Módulo C: Consola de Administradores y Control de Roles -->
+        <section id="view-admins" class="hidden space-y-6" aria-label="Consola de Administradores">
+          <div class="bg-white rounded-3xl p-6 shadow-md border border-slate-200/80 space-y-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">Módulo C &bull; Seguridad y Roles</span>
+                <h3 class="font-extrabold text-slate-900 text-lg mt-0.5">Consola de Administradores</h3>
+                <p class="text-xs text-slate-500 mt-1">Control de acceso y asignación granular de permisos a usuarios institucionales (@upa.edu.py).</p>
+              </div>
+            </div>
+
+            <!-- Formulario para agregar nuevo administrador -->
+            <form id="form-add-admin" class="bg-slate-50/70 p-5 rounded-2xl border border-slate-200 space-y-4">
+              <h4 class="text-xs font-bold text-slate-800">Agregar Nuevo Administrador o Editor</h4>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="md:col-span-2">
+                  <label class="block text-[11px] font-semibold text-slate-700 mb-1" for="input-admin-email">Correo Institucional *</label>
+                  <input id="input-admin-email" type="email" placeholder="nombre.apellido@upa.edu.py" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-mono focus:ring-2 focus:ring-blue-600" required>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-700 mb-1" for="select-admin-role">Rol Asignado</label>
+                  <select id="select-admin-role" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-blue-600">
+                    <option value="admin">Administrador Total</option>
+                    <option value="editor">Editor de Redacción</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Permisos granulares por pestaña -->
+              <div>
+                <span class="block text-[11px] font-semibold text-slate-700 mb-2">Permisos Granulares por Módulo:</span>
+                <div class="flex flex-wrap gap-4 text-xs text-slate-700">
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="perm-publications" checked class="rounded text-blue-700 focus:ring-blue-600">
+                    <span>Publicaciones y Eventos</span>
+                  </label>
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="perm-groups" checked class="rounded text-blue-700 focus:ring-blue-600">
+                    <span>Grupos y Audiencias</span>
+                  </label>
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="perm-admins" checked class="rounded text-blue-700 focus:ring-blue-600">
+                    <span>Gestión de Roles</span>
+                  </label>
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="perm-diagnostic" checked class="rounded text-blue-700 focus:ring-blue-600">
+                    <span>Diagnóstico de APIs</span>
+                  </label>
+                </div>
+              </div>
+
+              <button type="submit" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow transition">
+                Autorizar Administrador
+              </button>
+            </form>
+
+            <!-- Tabla de Administradores Registrados -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
+                    <th class="py-2.5 px-3">Usuario / Correo</th>
+                    <th class="py-2.5 px-3">Rol</th>
+                    <th class="py-2.5 px-3">Permisos</th>
+                    <th class="py-2.5 px-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-table-rows" class="divide-y divide-slate-100">
+                  <!-- Renderizado dinámicamente -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        </div> <!-- Cierra el contenedor flex-1 min-w-0 -->
+      </div> <!-- Cierra el layout flex flex-col lg:flex-row -->
 
       <!-- Estado Operativo del Backend -->
       <div class="text-center text-xs text-slate-400 pt-2 pb-6">

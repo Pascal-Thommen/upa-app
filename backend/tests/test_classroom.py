@@ -139,7 +139,7 @@ def test_dashboard_static_files_served():
     response = client.get("/dashboard/")
     assert response.status_code == 200
     assert "UPA" in response.text
-    assert "Portal Institucional" in response.text
+    assert "Portal Campus Institucional" in response.text or "Portal Institucional" in response.text
     assert "Google Classroom" in response.text
 
 

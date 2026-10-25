@@ -223,7 +223,12 @@ function renderUserProfile(user) {
   // 2. Regla de Privacidad de Google Mailgruppen:
   // Estrictamente visible solo para pascal.thommen@upa.edu.py
   const isExclusiveUser = (user.email || "").toLowerCase() === "pascal.thommen@upa.edu.py";
-  const groups = Array.isArray(user.groups) ? user.groups : [];
+  // Estrictamente los 3 grupos reales obtenidos de Google Workspace Directory API
+  // Se excluyen los tags sintéticos internos (ALL, TIE)
+  const realGoogleGroups = Array.isArray(user.google_groups) && user.google_groups.length > 0
+    ? user.google_groups
+    : (Array.isArray(user.groups) ? user.groups.filter((g) => g !== "ALL" && g !== "TIE") : []);
+  const groups = realGoogleGroups;
 
   if (isExclusiveUser && groups.length > 0) {
     DOM_ELEMENTS.tileMailgroups.classList.remove("hidden");
@@ -839,6 +844,7 @@ function init() {
   }
 
   checkHealth();
+  setupSidebarNavigation();
 
   try {
     const urlParams = new URLSearchParams(window.location.search);
@@ -855,6 +861,268 @@ function init() {
     refreshDashboard();
   } else {
     showLoginView();
+  }
+}
+
+// ===========================================================================
+// Módulos B y C: Grupos, Roles y Navegación Lateral
+// ===========================================================================
+
+const APP_GROUPS_STORAGE_KEY = "upa_app_groups_v1";
+const APP_ADMINS_STORAGE_KEY = "upa_app_admins_v1";
+
+const DEFAULT_APP_GROUPS = [
+  {
+    id: "estudiantes",
+    name: "Estudiantes",
+    description: "Comunidad estudiantil activa de grado y posgrado.",
+    badgeClass: "bg-blue-100 text-blue-800 border-blue-200",
+    googleGroup: "Estudiantes - Activos, Estudiantes TIE 2025",
+    emails: ["estudiantes@upa.edu.py", "tie2025@upa.edu.py"],
+  },
+  {
+    id: "docentes",
+    name: "Docentes",
+    description: "Claustro docente y profesores de cátedra.",
+    badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    googleGroup: "Ing. Tecnologías - TODOS",
+    emails: ["docentes@upa.edu.py"],
+  },
+  {
+    id: "staff",
+    name: "Staff",
+    description: "Personal administrativo, admisiones y soporte operativo.",
+    badgeClass: "bg-amber-100 text-amber-800 border-amber-200",
+    googleGroup: "Personal Administrativo UPA",
+    emails: ["staff@upa.edu.py", "rectorado@upa.edu.py"],
+  },
+  {
+    id: "egresados",
+    name: "Egresados",
+    description: "Red de graduados y exalumnos universitarios.",
+    badgeClass: "bg-purple-100 text-purple-800 border-purple-200",
+    googleGroup: "Alumni UPA",
+    emails: ["egresados@upa.edu.py"],
+  },
+];
+
+const DEFAULT_ADMINS = [
+  {
+    email: "pascal.thommen@upa.edu.py",
+    name: "Pascal Thommen",
+    role: "admin",
+    isPrimary: true,
+    permissions: ["Publicaciones y Eventos", "Grupos y Audiencias", "Gestión de Roles", "Diagnóstico de APIs"],
+  },
+];
+
+function getStoredAppGroups() {
+  try {
+    const raw = localStorage.getItem(APP_GROUPS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (_) {}
+  return DEFAULT_APP_GROUPS;
+}
+
+function saveAppGroups(groups) {
+  try {
+    localStorage.setItem(APP_GROUPS_STORAGE_KEY, JSON.stringify(groups));
+  } catch (_) {}
+}
+
+function getStoredAppAdmins() {
+  try {
+    const raw = localStorage.getItem(APP_ADMINS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (_) {}
+  return DEFAULT_ADMINS;
+}
+
+function saveAppAdmins(admins) {
+  try {
+    localStorage.setItem(APP_ADMINS_STORAGE_KEY, JSON.stringify(admins));
+  } catch (_) {}
+}
+
+function renderGroupsModule() {
+  const container = document.getElementById("groups-list-container");
+  if (!container) return;
+  const groups = getStoredAppGroups();
+
+  container.innerHTML = groups.map((g) => `
+    <div class="bg-slate-50/80 p-5 rounded-2xl border border-slate-200 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+          <h4 class="font-extrabold text-sm text-slate-900">${g.name}</h4>
+        </div>
+        <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${g.badgeClass || 'bg-slate-200 text-slate-800'} uppercase">
+          ${g.id}
+        </span>
+      </div>
+      <p class="text-xs text-slate-500 leading-relaxed">${g.description}</p>
+      
+      <div class="pt-2 border-t border-slate-200/60 space-y-1.5 text-xs">
+        <div class="text-[11px] text-slate-700">
+          <strong>Google Workspace Group:</strong>
+          <span class="font-mono text-blue-900 block mt-0.5 bg-white px-2 py-1 rounded border border-slate-200">${g.googleGroup || 'Sin vincular'}</span>
+        </div>
+        <div class="text-[11px] text-slate-700">
+          <strong>Correos autorizados:</strong>
+          <div class="flex flex-wrap gap-1 mt-1">
+            ${(g.emails || []).map(e => `<span class="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-600">${e}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderAdminsModule() {
+  const tbody = document.getElementById("admin-table-rows");
+  if (!tbody) return;
+  const admins = getStoredAppAdmins();
+
+  tbody.innerHTML = admins.map((adm) => `
+    <tr class="hover:bg-slate-50/50">
+      <td class="py-3 px-3">
+        <div class="font-bold text-slate-900">${adm.name || adm.email.split('@')[0]}</div>
+        <div class="font-mono text-[11px] text-slate-500">${adm.email}</div>
+      </td>
+      <td class="py-3 px-3">
+        <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${adm.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-700'} uppercase">
+          ${adm.role}
+        </span>
+      </td>
+      <td class="py-3 px-3">
+        <div class="flex flex-wrap gap-1">
+          ${(adm.permissions || []).map(p => `<span class="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">${p}</span>`).join('')}
+        </div>
+      </td>
+      <td class="py-3 px-3 text-right">
+        ${adm.isPrimary ? '<span class="text-[10px] font-bold text-slate-400">Principal</span>' : `<button type="button" data-remove-admin="${adm.email}" class="text-xs text-red-600 hover:text-red-800 font-semibold">Remover</button>`}
+      </td>
+    </tr>
+  `).join('');
+
+  tbody.querySelectorAll("button[data-remove-admin]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const email = btn.getAttribute("data-remove-admin");
+      const filtered = getStoredAppAdmins().filter(a => a.email !== email);
+      saveAppAdmins(filtered);
+      renderAdminsModule();
+    });
+  });
+}
+
+function setupSidebarNavigation() {
+  const btnPubs = document.getElementById("nav-mod-publications");
+  const btnGroups = document.getElementById("nav-mod-groups");
+  const btnAdmins = document.getElementById("nav-mod-admins");
+  const btnDiag = document.getElementById("nav-mod-diagnostic");
+
+  const viewEditorial = document.getElementById("view-editorial");
+  const viewGroups = document.getElementById("view-groups");
+  const viewAdmins = document.getElementById("view-admins");
+  const viewDiag = document.getElementById("student-workspace");
+
+  const allNavBtns = [btnPubs, btnGroups, btnAdmins, btnDiag].filter(Boolean);
+  const allViews = [viewEditorial, viewGroups, viewAdmins, viewDiag].filter(Boolean);
+
+  function setActive(activeBtn, activeView) {
+    allNavBtns.forEach(b => {
+      b.className = "sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+    });
+    if (activeBtn) {
+      activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-white bg-blue-900 shadow-sm";
+    }
+    allViews.forEach(v => v.classList.add("hidden"));
+    if (activeView) {
+      activeView.classList.remove("hidden");
+    }
+  }
+
+  if (btnPubs) {
+    btnPubs.addEventListener("click", () => {
+      setActive(btnPubs, viewEditorial);
+      const edBtn = document.getElementById("mode-btn-editorial");
+      if (edBtn) edBtn.click();
+    });
+  }
+  if (btnGroups) {
+    btnGroups.addEventListener("click", () => {
+      setActive(btnGroups, viewGroups);
+      renderGroupsModule();
+    });
+  }
+  if (btnAdmins) {
+    btnAdmins.addEventListener("click", () => {
+      setActive(btnAdmins, viewAdmins);
+      renderAdminsModule();
+    });
+  }
+  if (btnDiag) {
+    btnDiag.addEventListener("click", () => {
+      setActive(btnDiag, viewDiag);
+      const stBtn = document.getElementById("mode-btn-student");
+      if (stBtn) stBtn.click();
+    });
+  }
+
+  const formAddAdmin = document.getElementById("form-add-admin");
+  if (formAddAdmin) {
+    formAddAdmin.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = document.getElementById("input-admin-email");
+      const select = document.getElementById("select-admin-role");
+      const email = (input ? input.value : "").trim().toLowerCase();
+      if (!email.endsWith("@upa.edu.py")) {
+        alert("El correo debe pertenecer al dominio institucional @upa.edu.py");
+        return;
+      }
+      const admins = getStoredAppAdmins();
+      if (admins.some(a => a.email === email)) {
+        alert("El usuario ya se encuentra registrado.");
+        return;
+      }
+      const perms = [];
+      if (document.getElementById("perm-publications")?.checked) perms.push("Publicaciones y Eventos");
+      if (document.getElementById("perm-groups")?.checked) perms.push("Grupos y Audiencias");
+      if (document.getElementById("perm-admins")?.checked) perms.push("Gestión de Roles");
+      if (document.getElementById("perm-diagnostic")?.checked) perms.push("Diagnóstico de APIs");
+
+      admins.push({
+        email,
+        name: email.split("@")[0].replace(".", " "),
+        role: select ? select.value : "editor",
+        isPrimary: false,
+        permissions: perms,
+      });
+      saveAppAdmins(admins);
+      if (input) input.value = "";
+      renderAdminsModule();
+      alert(`Administrador ${email} autorizado correctamente.`);
+    });
+  }
+
+  const btnCreateGroup = document.getElementById("btn-create-group");
+  if (btnCreateGroup) {
+    btnCreateGroup.addEventListener("click", () => {
+      const name = prompt("Ingrese el nombre del nuevo grupo interno:");
+      if (!name || !name.trim()) return;
+      const groups = getStoredAppGroups();
+      const id = name.trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
+      groups.push({
+        id,
+        name: name.trim(),
+        description: `Grupo interno institucional: ${name.trim()}`,
+        badgeClass: "bg-slate-100 text-slate-800 border-slate-200",
+        googleGroup: `Grupo ${name.trim()} UPA`,
+        emails: [`${id}@upa.edu.py`],
+      });
+      saveAppGroups(groups);
+      renderGroupsModule();
+    });
   }
 }
 
