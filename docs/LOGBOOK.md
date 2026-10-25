@@ -2,7 +2,7 @@
 ## Proyecto: UPA App &bull; Plataforma Digital Universitaria
 **Universidad Paraguayo Alemana (UPA)**  
 **Repositorio Oficial:** https://github.com/Pascal-Thommen/upa-app  
-**Equipo:** Pascal Thommen (Backend & Infraestructura), Theresa Bauer (Frontend Móvil Android), Natasha Kolman  
+**Equipo:** Pascal Thommen (Backend & Infraestructura), Equipo de Desarrollo Móvil (Frontend Móvil Android), Natasha Kolman  
 
 ---
 
@@ -32,7 +32,7 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
 * **Identidad y Acceso:** Inicio de sesión exclusivo con Google OAuth 2.0 (`@upa.edu.py`) y emisión de tokens JWT.
 * **Integraciones Externas:** Feed de Instagram mediante SociableKIT, consulta de grupos de Google Workspace Admin Directory API y sincronización inicial de cursos de Google Classroom.
 * **Contenido y Eventos:** Endpoints CRUD para noticias y eventos, sistema de confirmación de asistencia (RSVP) y subida de archivos multimedia hasta 10 MB en `/api/media/upload`.
-* **App Móvil (Theresa):** Proyecto base estructurado en Android Studio con Kotlin y Compose listo para consumir la API REST.
+* **App Móvil (Android Nativo):** Proyecto base estructurado en Android Studio con Kotlin y Compose listo para consumir la API REST.
 
 ---
 
@@ -44,7 +44,7 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
 
 ### Decisiones y Modificaciones Técnicas en Curso:
 1. **Reestructuración de la Interfaz Web con Menú Lateral:**  
-   * **Sección Estudiantil (Próximamente):** Panel reservado sin botones simulados, indicando el desarrollo de la app móvil nativa por Theresa.  
+   * **Sección Estudiantil (Próximamente):** Panel reservado sin botones simulados, indicando el desarrollo de la app móvil nativa en curso.  
    * **Módulo A (Publicaciones y Eventos):** Consolidación unificada de noticias y eventos con insignias distintivas (`Noticia`, `Evento`, `Noticia + Evento`), carga de afiches hasta 10 MB y tabla en vivo de participantes confirmados (RSVP).  
    * **Módulo B (Grupos y Audiencias):** Gestión de grupos internos (`Estudiantes`, `Docentes`, `Staff`, `Egresados`) y asignación de correos `@upa.edu.py` o grupos de Google Workspace Admin Console.  
    * **Módulo C (Consola de Administradores):** Gestión granular de permisos por correo para las herramientas administrativas.  

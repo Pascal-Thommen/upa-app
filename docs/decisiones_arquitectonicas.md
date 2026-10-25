@@ -1,7 +1,7 @@
 # UPA App: Especificación de Alcance, Usuarios y Matriz de Decisiones Arquitectónicas (Versión v2 / v3)
 
 Documento Técnico y Estratégico de Ingeniería de Sistemas | Universidad Paraguayo Alemana (UPA)  
-Autores: Pascal Thommen, Theresa Bauer, Natasha Kolman  
+Autores: Pascal Thommen, Equipo de Ingeniería Móvil, Natasha Kolman  
 Actualización: 25 de Octubre de 2026  
 
 ---
@@ -44,12 +44,12 @@ El objetivo de la plataforma UPA App es consolidar en un punto único de acceso 
 * **Fundamentación:** Eliminación del riesgo de gestionar contraseñas locales y sincronización automática de permisos basada en los grupos de Google Workspace Admin Directory API.
 
 ### 3.6. Portal Web-Admin y Cockpit Editorial (En preparación para Documento v3)
-* **Decisión:** Arquitectura modular con menú lateral institucional que separa el espacio futuro de los estudiantes (aplicación móvil de Theresa) de los cuatro módulos de gestión administrativa (Publicaciones y Eventos, Grupos y Audiencias, Consola de Administradores, Diagnóstico Técnico de APIs).
+* **Decisión:** Arquitectura modular con menú lateral institucional que separa el espacio futuro de los estudiantes (aplicación móvil nativa en desarrollo) de los cuatro módulos de gestión administrativa (Publicaciones y Eventos, Grupos y Audiencias, Consola de Administradores, Diagnóstico Técnico de APIs).
 
 ---
 
 ## 4. Modelo Operativo del Equipo
 * **Pascal Thommen:** Product Owner, Arquitectura de Integración, Backend (FastAPI, PostgreSQL) e Infraestructura de Servidor (NetBird, Docker).
-* **Theresa Bauer:** Desarrollo del Frontend Móvil Nativo Android (Kotlin, Jetpack Compose, Room/SQLite).
+* **Equipo de Desarrollo Móvil:** Desarrollo del Frontend Móvil Nativo Android (Kotlin, Jetpack Compose, Room/SQLite).
 * **Natasha Kolman:** Soporte de proyecto y coordinación institucional.
 * **Mika (Chief of Staff &bull; IA):** Coordinación técnica, bitácora de avances, especificaciones Zero-Mock y control de calidad CI/CD.
