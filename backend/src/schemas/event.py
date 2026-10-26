@@ -39,9 +39,7 @@ class EventResponse(BaseModel):
     location: str = Field(default="Campus UPA", description="Ubicacion del evento (nunca nulo)")
     has_registration: bool = Field(default=False, description="Indica si permite registro de asistencia")
     is_pinned: bool = Field(default=False, description="Indica si el evento esta destacado")
-    target_groups: list[str] = Field(
-        default_factory=lambda: ["ALL"], description="Grupos destinatarios del evento"
-    )
+    target_groups: list[str] = Field(default_factory=lambda: ["ALL"], description="Grupos destinatarios del evento")
     image_url: str = Field(default="", description="URL de imagen del evento (cadena vacia si no aplica)")
     permalink: str = Field(default="", description="Enlace externo del evento (cadena vacia si no aplica)")
     created_at: datetime = Field(..., description="Fecha de creacion del registro en ISO-8601 UTC")
@@ -61,11 +59,7 @@ class EventResponse(BaseModel):
         raw_caption = (getattr(post, "caption", None) or "").strip()
         raw_content = (getattr(post, "content", None) or "").strip()
         desc = raw_content or raw_caption
-        summary = (
-            raw_caption
-            if raw_caption
-            else (desc[:150] + "..." if len(desc) > 150 else desc)
-        )
+        summary = raw_caption if raw_caption else (desc[:150] + "..." if len(desc) > 150 else desc)
         created = ensure_utc_datetime(getattr(post, "created_at", None))
         start_dt = ensure_utc_datetime(getattr(post, "event_start", None), fallback=created)
         raw_end = getattr(post, "event_end", None)
@@ -76,18 +70,11 @@ class EventResponse(BaseModel):
         img = (getattr(post, "media_url", None) or "").strip()
 
         raw_regs = getattr(post, "registrations", None) or []
-        attending_regs = [
-            r
-            for r in raw_regs
-            if (getattr(r, "status", "attending") or "attending") == "attending"
-        ]
+        attending_regs = [r for r in raw_regs if (getattr(r, "status", "attending") or "attending") == "attending"]
         reg_count = len(attending_regs)
         is_reg = False
         if current_user_id is not None:
-            is_reg = any(
-                int(getattr(r, "user_id", 0) or 0) == int(current_user_id)
-                for r in attending_regs
-            )
+            is_reg = any(int(getattr(r, "user_id", 0) or 0) == int(current_user_id) for r in attending_regs)
 
         return cls(
             id=int(getattr(post, "id", 0) or 0),

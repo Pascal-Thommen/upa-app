@@ -13,12 +13,9 @@ from src.models import Post, User
 # SQLite In-Memory Engine mit StaticPool für gemeinsamen Speicher aller Connections
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool
-)
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 def override_get_db():
     db = TestingSessionLocal()
@@ -27,20 +24,22 @@ def override_get_db():
     finally:
         db.close()
 
+
 client = TestClient(app)
+
 
 @pytest.fixture(autouse=True)
 def setup_database():
     app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
-    
+
     # User anlegen
     user = User(email="test@upa.edu.py", full_name="Test User", role="admin", groups=["TIE"])
     db.add(user)
     db.commit()
     db.refresh(user)
-    
+
     # 1 News Post (Instagram)
     news = Post(
         title="Búsqueda Laboral: Recepcionista",
@@ -51,10 +50,10 @@ def setup_database():
         is_event=False,
         is_pinned=False,
         target_groups=["ALL"],
-        author_id=user.id
+        author_id=user.id,
     )
     db.add(news)
-    
+
     # 1 Event Post (Charla IA)
     tomorrow = datetime.now(UTC) + timedelta(days=1)
     event = Post(
@@ -68,14 +67,15 @@ def setup_database():
         location="Auditorio Edificio 1",
         has_registration=True,
         target_groups=["ALL", "TIE"],
-        author_id=user.id
+        author_id=user.id,
     )
     db.add(event)
     db.commit()
-    
+
     yield
     Base.metadata.drop_all(bind=engine)
     app.dependency_overrides.pop(get_db, None)
+
 
 def test_get_news_endpoint_requires_auth():
     # Ohne Authentifizierung -> 401
@@ -92,6 +92,7 @@ def test_get_news_endpoint_requires_auth():
     assert data[0]["title"] == "¿Qué significa seguir siendo humanos en la era de la IA?"
     assert data[1]["title"] == "Búsqueda Laboral: Recepcionista"
 
+
 def test_get_events_endpoint_requires_auth():
     # Ohne Authentifizierung -> 401
     response = client.get("/api/events")
@@ -106,6 +107,7 @@ def test_get_events_endpoint_requires_auth():
     assert data[0]["title"] == "¿Qué significa seguir siendo humanos en la era de la IA?"
     assert data[0]["location"] == "Auditorio Edificio 1"
     assert data[0]["has_registration"] is True
+
 
 def test_filter_by_group():
     token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
@@ -199,9 +201,7 @@ def test_rbac_group_isolation_on_news_events_and_app_state():
     db.commit()
     db.close()
 
-    student_token = create_access_token(
-        {"sub": "50", "email": "alumno.tie@upa.edu.py", "role": "user"}
-    )
+    student_token = create_access_token({"sub": "50", "email": "alumno.tie@upa.edu.py", "role": "user"})
     student_headers = {"Authorization": f"Bearer {student_token}"}
 
     # 1. El estudiante no recibe el post exclusivo de PROF en /api/news ni forzando ?group=PROF
@@ -222,9 +222,7 @@ def test_rbac_group_isolation_on_news_events_and_app_state():
     assert event_detail_forbidden.status_code == 403
 
     # 3. En cambio, un administrador tiene acceso completo (200 OK)
-    admin_token = create_access_token(
-        {"sub": "1", "email": "test@upa.edu.py", "role": "admin"}
-    )
+    admin_token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
     admin_detail = client.get("/api/news/500", headers=admin_headers)
     assert admin_detail.status_code == 200
@@ -240,9 +238,7 @@ def test_rbac_group_isolation_on_news_events_and_app_state():
 
 
 def test_not_found_404_and_bad_request_400_errors():
-    admin_token = create_access_token(
-        {"sub": "1", "email": "test@upa.edu.py", "role": "admin"}
-    )
+    admin_token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
     headers = {"Authorization": f"Bearer {admin_token}"}
 
     # 404 en noticia y evento inexistentes
@@ -318,9 +314,15 @@ def test_event_rsvp_register_unregister_idempotency_and_errors():
     db.commit()
     db.close()
 
-    h1 = {"Authorization": f"Bearer {create_access_token({'sub': '61', 'email': 'alumno1.tie@upa.edu.py', 'role': 'user'})}"}
-    h2 = {"Authorization": f"Bearer {create_access_token({'sub': '62', 'email': 'alumno2.tie@upa.edu.py', 'role': 'user'})}"}
-    h_out = {"Authorization": f"Bearer {create_access_token({'sub': '63', 'email': 'externo.admin@upa.edu.py', 'role': 'user'})}"}
+    h1 = {
+        "Authorization": f"Bearer {create_access_token({'sub': '61', 'email': 'alumno1.tie@upa.edu.py', 'role': 'user'})}"
+    }
+    h2 = {
+        "Authorization": f"Bearer {create_access_token({'sub': '62', 'email': 'alumno2.tie@upa.edu.py', 'role': 'user'})}"
+    }
+    h_out = {
+        "Authorization": f"Bearer {create_access_token({'sub': '63', 'email': 'externo.admin@upa.edu.py', 'role': 'user'})}"
+    }
 
     # 1. Estado inicial antes de inscripcion
     init_detail = client.get("/api/events/700", headers=h1)
@@ -606,5 +608,3 @@ def test_openapi_docs_and_integration_guide_completeness():
         "/api/classroom/deadlines",
     ]:
         assert expected_snippet in guide_text, f"Missing {expected_snippet} in FRONTEND_INTEGRATION_GUIDE.md"
-
-

@@ -27,10 +27,14 @@ def generate_rsa_keypair() -> tuple[str, str]:
         serialization.PrivateFormat.PKCS8,
         serialization.NoEncryption(),
     ).decode()
-    public_pem = key.public_key().public_bytes(
-        serialization.Encoding.PEM,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode()
+    public_pem = (
+        key.public_key()
+        .public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
     return private_pem, public_pem
 
 
@@ -95,7 +99,10 @@ class FcmProtocolServer:
         except jwt.PyJWTError as exc:
             handler._reply(400, {"error": "invalid_grant", "error_description": str(exc)})
             return
-        if claims.get("iss") != CLIENT_EMAIL or claims.get("scope") != "https://www.googleapis.com/auth/firebase.messaging":
+        if (
+            claims.get("iss") != CLIENT_EMAIL
+            or claims.get("scope") != "https://www.googleapis.com/auth/firebase.messaging"
+        ):
             handler._reply(400, {"error": "invalid_grant", "error_description": "claims incorrectos"})
             return
         with self._lock:

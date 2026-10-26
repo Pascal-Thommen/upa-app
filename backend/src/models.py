@@ -36,7 +36,7 @@ class Post(Base):
     content = Column(Text, nullable=True)
     post_type = Column(String(50), default="MANUAL", nullable=False)  # "INSTAGRAM", "MANUAL", "EMERGENCY_BANNER"
     category = Column(String(50), nullable=True)  # Redaktionelle Kategorie, z. B. "MELDUNG", "ANKUENDIGUNG"
-    
+
     # Sichtbarkeit & Priorität
     is_news = Column(Boolean, default=True, nullable=False)
     is_event = Column(Boolean, default=False, nullable=False)
@@ -84,9 +84,7 @@ class EventRegistration(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("post_id", "user_id", name="uq_post_user_registration"),
-    )
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_user_registration"),)
 
     post = relationship("Post", back_populates="registrations")
     user = relationship("User", back_populates="registrations")
@@ -100,9 +98,7 @@ class PostView(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     viewed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("post_id", "user_id", name="uq_post_user_view"),
-    )
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_user_view"),)
 
     post = relationship("Post", back_populates="views")
     user = relationship("User", back_populates="post_views")
@@ -132,8 +128,33 @@ class DeviceToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "device_token", name="uq_user_device_token"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "device_token", name="uq_user_device_token"),)
 
     user = relationship("User", back_populates="device_tokens")
+
+
+class AudienceGroup(Base):
+    __tablename__ = "audience_groups"
+
+    id = Column(String(50), primary_key=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    badge_class = Column(String(100), nullable=False, default="bg-slate-100 text-slate-800 border-slate-200")
+    google_group = Column(String(255), nullable=True)
+    emails = Column(JSON, default=list, nullable=False)
+    is_system = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    role = Column(String(50), default="editor", nullable=False)  # "admin" oder "editor"
+    permissions = Column(JSON, default=list, nullable=False)
+    is_primary = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)

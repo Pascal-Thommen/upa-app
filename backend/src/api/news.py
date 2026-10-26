@@ -228,11 +228,7 @@ def update_news(
     Actualiza una publicacion o noticia institucional existente.
     Protegido: Solo administradores autorizados.
     """
-    post = (
-        db.query(Post)
-        .filter(Post.id == post_id, Post.is_news.is_(True))
-        .first()
-    )
+    post = db.query(Post).filter(Post.id == post_id, Post.is_news.is_(True)).first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -343,11 +339,7 @@ def delete_news(
     Elimina permanentemente una publicacion de noticias del sistema.
     Protegido: Solo administradores autorizados.
     """
-    post = (
-        db.query(Post)
-        .filter(Post.id == post_id, Post.is_news.is_(True))
-        .first()
-    )
+    post = db.query(Post).filter(Post.id == post_id, Post.is_news.is_(True)).first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

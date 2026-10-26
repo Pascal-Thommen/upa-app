@@ -75,7 +75,12 @@ def register_device_token(
     asociado al usuario autenticado para el envio de notificaciones push.
     """
     cleaned_token = (payload.device_token or "").strip()
-    if not cleaned_token or len(cleaned_token) < 8 or len(cleaned_token) > 512 or any(c.isspace() for c in cleaned_token):
+    if (
+        not cleaned_token
+        or len(cleaned_token) < 8
+        or len(cleaned_token) > 512
+        or any(c.isspace() for c in cleaned_token)
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El token de dispositivo (device_token) es invalido o esta vacio.",

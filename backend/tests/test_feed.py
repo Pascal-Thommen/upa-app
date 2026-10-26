@@ -15,11 +15,7 @@ from src.models import Post, User
 # In-Memory SQLite Engine für isolierte Feed-Tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool
-)
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -62,7 +58,7 @@ def setup_feed_database():
         media_url="https://upa.edu.py/static/images/recepcionista.png",
         permalink="https://www.instagram.com/p/test123/",
         author_id=admin.id,
-        created_at=datetime.now(UTC) - timedelta(hours=2)
+        created_at=datetime.now(UTC) - timedelta(hours=2),
     )
 
     # 2. Campus Event
@@ -81,7 +77,7 @@ def setup_feed_database():
         has_registration=True,
         target_groups=["TIE"],
         author_id=admin.id,
-        created_at=datetime.now(UTC) - timedelta(hours=1)
+        created_at=datetime.now(UTC) - timedelta(hours=1),
     )
 
     # 3. Emergency Banner (aktiv)
@@ -97,7 +93,7 @@ def setup_feed_database():
         expires_at=datetime.now(UTC) + timedelta(hours=5),
         target_groups=["ALL"],
         author_id=admin.id,
-        created_at=datetime.now(UTC)
+        created_at=datetime.now(UTC),
     )
 
     # 4. Emergency Banner (abgelaufen)
@@ -112,7 +108,7 @@ def setup_feed_database():
         expires_at=datetime.now(UTC) - timedelta(hours=1),
         target_groups=["ALL"],
         author_id=admin.id,
-        created_at=datetime.now(UTC) - timedelta(days=1)
+        created_at=datetime.now(UTC) - timedelta(days=1),
     )
 
     db.add_all([insta, event, banner_active, banner_expired])
@@ -225,18 +221,12 @@ def test_feed_sync_requires_admin_auth():
 
     # Als normaler Student
     student_token = create_access_token({"sub": "2", "email": "student@upa.edu.py", "role": "user"})
-    res_forbidden = client.post(
-        "/api/v1/feed/sync",
-        headers={"Authorization": f"Bearer {student_token}"}
-    )
+    res_forbidden = client.post("/api/v1/feed/sync", headers={"Authorization": f"Bearer {student_token}"})
     assert res_forbidden.status_code == 403
 
     # Als Admin
     admin_token = create_access_token({"sub": "1", "email": "admin@upa.edu.py", "role": "admin"})
-    res_admin = client.post(
-        "/api/v1/feed/sync",
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
+    res_admin = client.post("/api/v1/feed/sync", headers={"Authorization": f"Bearer {admin_token}"})
     assert res_admin.status_code == 200
     data = res_admin.json()
     assert "status" in data

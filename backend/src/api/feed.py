@@ -62,9 +62,7 @@ def get_feed(
     if user is None:
         posts_query = posts_query.filter(Post.post_type == "INSTAGRAM")
     else:
-        posts_query = posts_query.filter(
-            or_(Post.is_news.is_(True), Post.is_event.is_(True))
-        )
+        posts_query = posts_query.filter(or_(Post.is_news.is_(True), Post.is_event.is_(True)))
 
     posts_query = posts_query.order_by(desc(Post.is_pinned), desc(Post.created_at))
 

@@ -188,7 +188,9 @@ class PushDispatcher:
 
         error_code = _extract_fcm_error_code(response)
         if response.status_code == 404 or error_code in ("UNREGISTERED", "INVALID_ARGUMENT"):
-            logger.warning("[Push] Device token invalido o dado de baja (HTTP %s, %s)", response.status_code, error_code)
+            logger.warning(
+                "[Push] Device token invalido o dado de baja (HTTP %s, %s)", response.status_code, error_code
+            )
             result.invalid_tokens.append(device_token)
         else:
             logger.error("[Push] FCM respondio HTTP %s (%s)", response.status_code, error_code)

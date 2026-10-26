@@ -96,7 +96,12 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
                 continue
 
             if token_resp.status_code != 200:
-                logger.warning("Token Exchange für %s fehlgeschlagen (%d): %s", delegated_user, token_resp.status_code, token_resp.text)
+                logger.warning(
+                    "Token Exchange für %s fehlgeschlagen (%d): %s",
+                    delegated_user,
+                    token_resp.status_code,
+                    token_resp.text,
+                )
                 continue
 
             token_data = token_resp.json()
@@ -161,10 +166,14 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
 
                 return list(all_groups_map.values())
             elif groups_resp.status_code == 403:
-                logger.info("Delegierter User %s nicht autorisiert für Directory API, versuche nächsten...", delegated_user)
+                logger.info(
+                    "Delegierter User %s nicht autorisiert für Directory API, versuche nächsten...", delegated_user
+                )
                 continue
             else:
-                logger.warning("Directory API Status %d für %s mit Admin %s", groups_resp.status_code, user_email, delegated_user)
+                logger.warning(
+                    "Directory API Status %d für %s mit Admin %s", groups_resp.status_code, user_email, delegated_user
+                )
 
     return []
 
