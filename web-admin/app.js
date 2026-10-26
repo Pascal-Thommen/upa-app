@@ -618,6 +618,9 @@ async function refreshDashboard() {
     if (window.UpaCockpit) window.UpaCockpit.onUserLoaded(user);
     await Promise.all([loadClassroomCourses(), loadClassroomDeadlines(), loadCampusFeed()]);
     updateJsonView();
+    if (window.location.pathname && window.location.pathname.startsWith("/dashboard")) {
+      navigateTo(window.location.pathname, false);
+    }
   }
 }
 
@@ -1092,81 +1095,111 @@ function renderAdminsModule() {
   });
 }
 
+const ROUTES = {
+  "/dashboard/publicaciones": { navBtnId: "nav-mod-publications", viewId: "view-editorial", mode: "editorial" },
+  "/dashboard/grupos": { navBtnId: "nav-mod-groups", viewId: "view-groups", mode: "editorial", onEnter: renderGroupsModule },
+  "/dashboard/roles": { navBtnId: "nav-mod-admins", viewId: "view-admins", mode: "editorial", onEnter: renderAdminsModule },
+  "/dashboard/diagnostico": { navBtnId: "nav-mod-diagnostic", viewId: "view-diagnostic", mode: "editorial", onEnter: updateJsonView },
+  "/dashboard/estudiantes": { navBtnId: null, viewId: "student-workspace", mode: "student" },
+};
+
+function navigateTo(path, updateHistory = true) {
+  let cleanPath = (path || "/dashboard").replace(/\/+$/, "") || "/dashboard";
+  if (cleanPath === "/dashboard") {
+    cleanPath = "/dashboard/publicaciones";
+  }
+
+  const route = ROUTES[cleanPath] || ROUTES["/dashboard/publicaciones"];
+
+  if (updateHistory && window.location.pathname !== cleanPath) {
+    try {
+      window.history.pushState({ path: cleanPath }, "", cleanPath);
+    } catch (_) {}
+  }
+
+  const allNavBtns = [
+    document.getElementById("nav-mod-publications"),
+    document.getElementById("nav-mod-groups"),
+    document.getElementById("nav-mod-admins"),
+    document.getElementById("nav-mod-diagnostic"),
+  ].filter(Boolean);
+
+  const allViews = [
+    document.getElementById("view-editorial"),
+    document.getElementById("view-groups"),
+    document.getElementById("view-admins"),
+    document.getElementById("view-diagnostic"),
+    document.getElementById("student-workspace"),
+  ].filter(Boolean);
+
+  allNavBtns.forEach((b) => {
+    b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+  });
+
+  if (route.navBtnId) {
+    const activeBtn = document.getElementById(route.navBtnId);
+    if (activeBtn) {
+      activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
+    }
+  }
+
+  allViews.forEach((v) => v.classList.add("hidden"));
+  const activeView = document.getElementById(route.viewId);
+  if (activeView) activeView.classList.remove("hidden");
+
+  const modeBtnEditorial = document.getElementById("mode-btn-editorial");
+  const modeBtnStudent = document.getElementById("mode-btn-student");
+  if (modeBtnEditorial && modeBtnStudent) {
+    if (route.mode === "student") {
+      modeBtnStudent.classList.add("is-active");
+      modeBtnEditorial.classList.remove("is-active");
+    } else {
+      modeBtnEditorial.classList.add("is-active");
+      modeBtnStudent.classList.remove("is-active");
+    }
+  }
+
+  if (typeof route.onEnter === "function") {
+    route.onEnter();
+  }
+}
+
 function setupSidebarNavigation() {
   const btnPubs = document.getElementById("nav-mod-publications");
   const btnGroups = document.getElementById("nav-mod-groups");
   const btnAdmins = document.getElementById("nav-mod-admins");
   const btnDiag = document.getElementById("nav-mod-diagnostic");
 
-  const viewEditorial = document.getElementById("view-editorial");
-  const viewGroups = document.getElementById("view-groups");
-  const viewAdmins = document.getElementById("view-admins");
-  const viewDiag = document.getElementById("view-diagnostic");
-  const studentWorkspace = document.getElementById("student-workspace");
-
-  const allNavBtns = [btnPubs, btnGroups, btnAdmins, btnDiag].filter(Boolean);
-  const allViews = [viewEditorial, viewGroups, viewAdmins, viewDiag, studentWorkspace].filter(Boolean);
-
-  function setActive(activeBtn, activeView) {
-    allNavBtns.forEach(b => {
-      b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
-    });
-    if (activeBtn) {
-      activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
-    }
-    allViews.forEach(v => v.classList.add("hidden"));
-    if (activeView) {
-      activeView.classList.remove("hidden");
-    }
-  }
-
   if (btnPubs) {
-    btnPubs.addEventListener("click", () => {
-      setActive(btnPubs, viewEditorial);
-      const edBtn = document.getElementById("mode-btn-editorial");
-      if (edBtn) edBtn.click();
-    });
+    btnPubs.addEventListener("click", () => navigateTo("/dashboard/publicaciones"));
   }
   if (btnGroups) {
-    btnGroups.addEventListener("click", () => {
-      setActive(btnGroups, viewGroups);
-      renderGroupsModule();
-    });
+    btnGroups.addEventListener("click", () => navigateTo("/dashboard/grupos"));
   }
   if (btnAdmins) {
-    btnAdmins.addEventListener("click", () => {
-      setActive(btnAdmins, viewAdmins);
-      renderAdminsModule();
-    });
+    btnAdmins.addEventListener("click", () => navigateTo("/dashboard/roles"));
   }
   if (btnDiag) {
-    btnDiag.addEventListener("click", () => {
-      setActive(btnDiag, viewDiag);
-      updateJsonView();
-    });
+    btnDiag.addEventListener("click", () => navigateTo("/dashboard/diagnostico"));
   }
 
   const modeBtnStudent = document.getElementById("mode-btn-student");
   if (modeBtnStudent) {
-    modeBtnStudent.addEventListener("click", () => {
-      allNavBtns.forEach(b => {
-        b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
-      });
-      [viewGroups, viewAdmins, viewDiag].forEach(v => v && v.classList.add("hidden"));
-    });
+    modeBtnStudent.addEventListener("click", () => navigateTo("/dashboard/estudiantes"));
   }
 
   const modeBtnEditorial = document.getElementById("mode-btn-editorial");
   if (modeBtnEditorial) {
-    modeBtnEditorial.addEventListener("click", () => {
-      if (btnPubs) {
-        allNavBtns.forEach(b => {
-          b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
-        });
-        btnPubs.className = "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
-      }
-      [viewGroups, viewAdmins, viewDiag].forEach(v => v && v.classList.add("hidden"));
-    });
+    modeBtnEditorial.addEventListener("click", () => navigateTo("/dashboard/publicaciones"));
+  }
+
+  window.addEventListener("popstate", () => {
+    navigateTo(window.location.pathname, false);
+  });
+
+  // Ruta inicial basada en la URL del navegador
+  if (window.location.pathname && window.location.pathname.startsWith("/dashboard")) {
+    navigateTo(window.location.pathname, false);
   }
 
   const formAddAdmin = document.getElementById("form-add-admin");
