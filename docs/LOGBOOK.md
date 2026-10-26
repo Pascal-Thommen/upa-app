@@ -65,3 +65,9 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
    * Optimización del flujo Google OAuth: cambio de `prompt=consent select_account` a `prompt=select_account`, eliminando la solicitud repetitiva de permisos cuando el usuario ya autorizó el acceso, preservando el `refresh_token` offline en PostgreSQL.
    * Eliminación del parpadeo de inicio de sesión mediante detección inmediata de token en `localStorage`, cargando la interfaz administrativa de forma instantánea.
    * Supresión radical de textos artificiales o marketing accesorio, adoptando un diseño minimalista y profesional.
+6. **Purga Radical de AI Slop, Separación de Diagnóstico y Alineación Visual con App UPA (SRV-153):**  
+   * Eliminación completa de artefactos de depuración del encabezado (insignias técnicas de APIs y etiqueta 'En Vivo').
+   * Supresión de la tarjeta publicitaria sobre Kotlin y Jetpack Compose en la barra lateral.
+   * Traslado estricto del volcado de datos JSON y herramientas de prueba al Módulo D (Diagnóstico Técnico de APIs), liberando el área administrativa de usuarios.
+   * Rediseño de la agenda de entregas de Google Classroom adoptando el formato idéntico de tarjetas con fecha de la app móvil nativa (ej. VIE 16, LUN 9).
+   * Configuración de cabeceras HTTP de no-caché en Nginx y versionado de assets estáticos (?v=3.0) para garantizar la carga inmediata de código actualizado.

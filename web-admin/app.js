@@ -450,32 +450,55 @@ function renderDeadlinesList(items) {
 
   if (!items || items.length === 0) {
     container.innerHTML = `
-      <div class="p-4 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-lg">
+      <div class="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
         No hay entregas pendientes para esta fecha.
       </div>
     `;
     return;
   }
 
+  const daysAbbr = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
+
   container.innerHTML = items
     .map((d) => {
       const link = d.alternate_link || `https://classroom.google.com`;
-      const dateStr = d.due_date_formatted || "Sin fecha";
+      const dateStr = d.due_date_formatted || "";
+      
+      let dayAbbr = "VIE";
+      let dayNumber = "16";
+      let timeStr = "23:59 hs";
+
+      if (dateStr) {
+        const parts = dateStr.split(" ");
+        const ymd = parts[0];
+        if (parts[1]) timeStr = `${parts[1]} hs`;
+        if (ymd) {
+          const dObj = new Date(ymd + "T00:00:00");
+          if (!isNaN(dObj.getTime())) {
+            dayAbbr = daysAbbr[dObj.getDay()];
+            dayNumber = String(dObj.getDate());
+          }
+        }
+      }
+
       return `
-        <div class="deadline-card is-normal flex flex-col justify-between gap-1.5">
-          <div>
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold text-blue-800 uppercase truncate">${d.course || "Classroom"}</span>
-              ${d.max_points ? `<span class="text-[10px] font-semibold text-slate-500">${d.max_points} pts</span>` : ""}
-            </div>
-            <h4 class="font-bold text-xs text-slate-900 mt-0.5">${d.title}</h4>
+        <div class="deadline-mobile-card">
+          <div class="deadline-date-badge">
+            <span class="deadline-date-day">${dayAbbr}</span>
+            <span class="deadline-date-number">${dayNumber}</span>
           </div>
-          <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
-            <span class="text-amber-700 font-medium">📅 ${dateStr}</span>
-            <a href="${link}" target="_blank" rel="noopener noreferrer" class="btn-classroom-link">
-              <span>Ver Tarea</span>
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-            </a>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2">
+              <h4 class="font-bold text-xs text-slate-900 leading-snug truncate" title="${d.title}">${d.title}</h4>
+              <a href="${link}" target="_blank" rel="noopener noreferrer" class="text-slate-400 hover:text-[#6c9339] transition flex-shrink-0" title="Ver en Google Classroom">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              </a>
+            </div>
+            <p class="text-[11px] text-slate-500 truncate mt-0.5">${d.course || "Classroom"}</p>
+            <div class="flex items-center gap-2 mt-1.5 text-[10px]">
+              <span class="text-slate-500 font-mono">⏰ ${timeStr}</span>
+              <span class="px-2 py-0.5 font-semibold rounded-full bg-slate-100 text-slate-700 border border-slate-200/60">Pendiente</span>
+            </div>
           </div>
         </div>
       `;
@@ -1048,14 +1071,15 @@ function setupSidebarNavigation() {
   const viewEditorial = document.getElementById("view-editorial");
   const viewGroups = document.getElementById("view-groups");
   const viewAdmins = document.getElementById("view-admins");
-  const viewDiag = document.getElementById("student-workspace");
+  const viewDiag = document.getElementById("view-diagnostic");
+  const studentWorkspace = document.getElementById("student-workspace");
 
   const allNavBtns = [btnPubs, btnGroups, btnAdmins, btnDiag].filter(Boolean);
-  const allViews = [viewEditorial, viewGroups, viewAdmins, viewDiag].filter(Boolean);
+  const allViews = [viewEditorial, viewGroups, viewAdmins, viewDiag, studentWorkspace].filter(Boolean);
 
   function setActive(activeBtn, activeView) {
     allNavBtns.forEach(b => {
-      b.className = "sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+      b.className = "sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
     });
     if (activeBtn) {
       activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
@@ -1070,7 +1094,11 @@ function setupSidebarNavigation() {
     btnPubs.addEventListener("click", () => {
       setActive(btnPubs, viewEditorial);
       const edBtn = document.getElementById("mode-btn-editorial");
-      if (edBtn) edBtn.click();
+      if (edBtn) {
+        edBtn.classList.add("is-active");
+        const stBtn = document.getElementById("mode-btn-student");
+        if (stBtn) stBtn.classList.remove("is-active");
+      }
     });
   }
   if (btnGroups) {
@@ -1088,8 +1116,28 @@ function setupSidebarNavigation() {
   if (btnDiag) {
     btnDiag.addEventListener("click", () => {
       setActive(btnDiag, viewDiag);
-      const stBtn = document.getElementById("mode-btn-student");
-      if (stBtn) stBtn.click();
+      updateJsonView();
+    });
+  }
+
+  const modeBtnStudent = document.getElementById("mode-btn-student");
+  if (modeBtnStudent) {
+    modeBtnStudent.addEventListener("click", () => {
+      allViews.forEach(v => v.classList.add("hidden"));
+      if (studentWorkspace) studentWorkspace.classList.remove("hidden");
+      allNavBtns.forEach(b => {
+        b.className = "sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+      });
+      modeBtnStudent.classList.add("is-active");
+      const edBtn = document.getElementById("mode-btn-editorial");
+      if (edBtn) edBtn.classList.remove("is-active");
+    });
+  }
+
+  const modeBtnEditorial = document.getElementById("mode-btn-editorial");
+  if (modeBtnEditorial) {
+    modeBtnEditorial.addEventListener("click", () => {
+      if (btnPubs) btnPubs.click();
     });
   }
 
