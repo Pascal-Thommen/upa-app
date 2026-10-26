@@ -203,7 +203,7 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones") {
     },
     Blob: class {},
     URL: { createObjectURL: () => "" },
-    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    fetch: async () => ({ ok: true, json: async () => [] }),
     renderGroupsModule: () => {},
     renderAdminsModule: () => {},
     updateJsonView: () => {},

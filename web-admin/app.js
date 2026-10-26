@@ -969,15 +969,18 @@ async function fetchAppGroups() {
   try {
     const res = await apiRequest("/api/groups");
     if (res.ok) {
-      appGroupsCache = await res.json();
-      if (window.UPAEditorialCore && Array.isArray(window.UPAEditorialCore.TARGET_GROUPS)) {
-        appGroupsCache.forEach((g) => {
-          if (!window.UPAEditorialCore.TARGET_GROUPS.some((tg) => tg.value === g.id.toUpperCase() || tg.value === g.id)) {
-            window.UPAEditorialCore.TARGET_GROUPS.push({ value: g.id.toUpperCase(), label: g.name });
-          }
-        });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        appGroupsCache = data;
+        if (window.UPAEditorialCore && Array.isArray(window.UPAEditorialCore.TARGET_GROUPS)) {
+          appGroupsCache.forEach((g) => {
+            if (!window.UPAEditorialCore.TARGET_GROUPS.some((tg) => tg.value === g.id.toUpperCase() || tg.value === g.id)) {
+              window.UPAEditorialCore.TARGET_GROUPS.push({ value: g.id.toUpperCase(), label: g.name });
+            }
+          });
+        }
+        return appGroupsCache;
       }
-      return appGroupsCache;
     }
   } catch (err) {
     console.error("Error cargando grupos desde PostgreSQL:", err);
@@ -989,8 +992,11 @@ async function fetchAppAdmins() {
   try {
     const res = await apiRequest("/api/roles");
     if (res.ok) {
-      appAdminsCache = await res.json();
-      return appAdminsCache;
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        appAdminsCache = data;
+        return appAdminsCache;
+      }
     }
   } catch (err) {
     console.error("Error cargando roles desde PostgreSQL:", err);
@@ -1004,7 +1010,7 @@ async function renderGroupsModule() {
   container.innerHTML = `<div class="col-span-full p-8 text-center text-xs text-slate-500 font-medium">Cargando grupos institucionales desde base de datos...</div>`;
   const groups = await fetchAppGroups();
 
-  if (!groups || groups.length === 0) {
+  if (!Array.isArray(groups) || groups.length === 0) {
     container.innerHTML = `<div class="col-span-full p-8 text-center text-xs text-slate-400">No hay grupos institucionales registrados.</div>`;
     return;
   }
@@ -1065,7 +1071,7 @@ async function renderAdminsModule() {
   tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-xs text-slate-400">Cargando administradores desde PostgreSQL...</td></tr>`;
   const admins = await fetchAppAdmins();
 
-  if (!admins || admins.length === 0) {
+  if (!Array.isArray(admins) || admins.length === 0) {
     tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-xs text-slate-400">No hay administradores registrados.</td></tr>`;
     return;
   }
