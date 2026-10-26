@@ -334,6 +334,8 @@
       const saved = id ? await getClient().updateNews(id, payload) : await getClient().createNews(payload);
       showNotice("success", id ? `Noticia #${saved.id} actualizada.` : `Noticia publicada (ID ${saved.id}).`);
       resetNewsForm();
+      const form = $("ed-form-news");
+      if (form) form.classList.add("hidden");
       await loadNews();
     } catch (error) {
       showNotice("error", Core.describeError(error));
@@ -359,6 +361,8 @@
     const item = state.news.find((n) => String(n.id) === String(id));
     if (!item) return;
     fillNewsForm(Core.newsToFormValues(item), item.id);
+    const form = $("ed-form-news");
+    if (form) form.classList.remove("hidden");
     $("ed-form-news").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -447,6 +451,8 @@
       const saved = id ? await getClient().updateEvent(id, payload) : await getClient().createEvent(payload);
       showNotice("success", id ? `Evento #${saved.id} actualizado.` : `Evento creado (ID ${saved.id}).`);
       resetEventForm();
+      const form = $("ed-form-event");
+      if (form) form.classList.add("hidden");
       await loadEvents();
       if (state.participantsEventId && String(state.participantsEventId) === String(saved.id)) {
         showParticipants(saved.id);
@@ -476,6 +482,8 @@
     const item = state.events.find((e) => String(e.id) === String(id));
     if (!item) return;
     fillEventForm(Core.eventToFormValues(item), item.id);
+    const form = $("ed-form-event");
+    if (form) form.classList.remove("hidden");
     $("ed-form-event").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -569,13 +577,53 @@
     $("ed-tab-news").addEventListener("click", () => applyPanel("news"));
     $("ed-tab-events").addEventListener("click", () => applyPanel("events"));
 
+    const btnToggleNews = $("btn-toggle-news-composer");
+    if (btnToggleNews) {
+      btnToggleNews.addEventListener("click", () => {
+        applyPanel("news");
+        const form = $("ed-form-news");
+        if (form) {
+          form.classList.toggle("hidden");
+          if (!form.classList.contains("hidden")) {
+            form.scrollIntoView({ behavior: "smooth", block: "start" });
+            const titleInput = $("ed-news-title");
+            if (titleInput) titleInput.focus();
+          }
+        }
+      });
+    }
+
+    const btnToggleEvent = $("btn-toggle-event-composer");
+    if (btnToggleEvent) {
+      btnToggleEvent.addEventListener("click", () => {
+        applyPanel("events");
+        const form = $("ed-form-event");
+        if (form) {
+          form.classList.toggle("hidden");
+          if (!form.classList.contains("hidden")) {
+            form.scrollIntoView({ behavior: "smooth", block: "start" });
+            const titleInput = $("ed-event-title");
+            if (titleInput) titleInput.focus();
+          }
+        }
+      });
+    }
+
     $("ed-form-news").addEventListener("submit", submitNews);
-    $("ed-news-cancel").addEventListener("click", resetNewsForm);
+    $("ed-news-cancel").addEventListener("click", () => {
+      resetNewsForm();
+      const form = $("ed-form-news");
+      if (form) form.classList.add("hidden");
+    });
     $("ed-news-reload").addEventListener("click", loadNews);
     bindTableActions("ed-news-rows", { "edit-news": editNews, "delete-news": deleteNews });
 
     $("ed-form-event").addEventListener("submit", submitEvent);
-    $("ed-event-cancel").addEventListener("click", resetEventForm);
+    $("ed-event-cancel").addEventListener("click", () => {
+      resetEventForm();
+      const form = $("ed-form-event");
+      if (form) form.classList.add("hidden");
+    });
     $("ed-events-reload").addEventListener("click", loadEvents);
     $("ed-events-include-past").addEventListener("change", loadEvents);
     bindTableActions("ed-event-rows", {
