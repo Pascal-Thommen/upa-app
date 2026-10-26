@@ -363,5 +363,3 @@ def test_classroom_auto_refresh_handles_revoked_refresh_token_gracefully(monkeyp
     assert resp.status_code == 200
     assert resp.headers.get("X-Classroom-Status") == "permission_denied"
     assert resp.json() == []
-
-

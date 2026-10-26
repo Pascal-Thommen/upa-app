@@ -27,9 +27,7 @@ def normalize_category(raw_category: Any) -> str | None:
     if not clean:
         return None
     if clean not in ALLOWED_CATEGORIES:
-        raise ValueError(
-            "Categoria invalida. Valores permitidos: " + ", ".join(sorted(ALLOWED_CATEGORIES)) + "."
-        )
+        raise ValueError("Categoria invalida. Valores permitidos: " + ", ".join(sorted(ALLOWED_CATEGORIES)) + ".")
     return clean
 
 
@@ -57,9 +55,7 @@ def user_can_access_post(user: Any, raw_groups: Any) -> bool:
     if getattr(user, "role", "user") in ("admin", "editor"):
         return True
     raw_user_groups = getattr(user, "groups", None) or []
-    user_groups = {"ALL"} | {
-        str(g).strip().upper() for g in raw_user_groups if g is not None and str(g).strip()
-    }
+    user_groups = {"ALL"} | {str(g).strip().upper() for g in raw_user_groups if g is not None and str(g).strip()}
     return bool(post_groups & user_groups)
 
 
@@ -87,9 +83,7 @@ class PostBase(BaseModel):
     is_news: bool = Field(default=True, description="Indica si se muestra en la seccion de noticias")
     is_event: bool = Field(default=False, description="Indica si es un evento de calendario")
     is_pinned: bool = Field(default=False, description="Fija la publicacion en la parte superior")
-    expires_at: datetime | None = Field(
-        default=None, description="Fecha de expiracion automatica para avisos urgentes"
-    )
+    expires_at: datetime | None = Field(default=None, description="Fecha de expiracion automatica para avisos urgentes")
     target_groups: list[str] = Field(
         default_factory=lambda: ["ALL"],
         description="Grupos destinatarios (ej. ALL, TIE, TI, PROF)",
@@ -99,12 +93,8 @@ class PostBase(BaseModel):
     event_start: datetime | None = Field(default=None, description="Fecha y hora de inicio del evento")
     event_end: datetime | None = Field(default=None, description="Fecha y hora de finalizacion del evento")
     location: str | None = Field(default=None, description="Ubicacion fisica o virtual del evento")
-    has_registration: bool = Field(
-        default=False, description="Habilita confirmacion de asistencia al evento"
-    )
-    reminder_minutes_before: int | None = Field(
-        default=30, description="Minutos previos para recordatorio automatico"
-    )
+    has_registration: bool = Field(default=False, description="Habilita confirmacion de asistencia al evento")
+    reminder_minutes_before: int | None = Field(default=30, description="Minutos previos para recordatorio automatico")
 
     # Campos de Instagram
     instagram_id: str | None = Field(default=None, description="ID unico del post en Instagram")
@@ -239,9 +229,7 @@ class NewsResponse(BaseModel):
         raw_content = (getattr(post, "content", None) or "").strip()
         full_content = raw_content or raw_caption
         summary_text = (
-            raw_caption
-            if raw_caption
-            else (full_content[:150] + "..." if len(full_content) > 150 else full_content)
+            raw_caption if raw_caption else (full_content[:150] + "..." if len(full_content) > 150 else full_content)
         )
         img = (getattr(post, "media_url", None) or "").strip()
         pub_date = ensure_utc_datetime(getattr(post, "created_at", None))

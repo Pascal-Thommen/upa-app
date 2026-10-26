@@ -16,11 +16,7 @@ from src.services.instagram import InstagramSyncService, NormalizedSocialPost
 # In-Memory SQLite Engine für isolierte Tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool
-)
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -79,7 +75,7 @@ def test_parse_graph_api_item():
         "media_type": "CAROUSEL_ALBUM",
         "media_url": "https://instagram.com/p/media123.jpg",
         "permalink": "https://www.instagram.com/p/Cxyz123/",
-        "timestamp": "2026-10-20T10:00:00+0000"
+        "timestamp": "2026-10-20T10:00:00+0000",
     }
 
     parsed = service.parse_graph_api_item(raw)
@@ -99,7 +95,7 @@ def test_parse_sociablekit_item():
         "media_type": "VIDEO",
         "picture": "https://sociablekit.com/images/robotica.jpg",
         "link": "https://instagram.com/p/sk999/",
-        "date": "2026-10-20T11:30:00+00:00"
+        "date": "2026-10-20T11:30:00+00:00",
     }
 
     parsed = service.parse_sociablekit_item(raw)
@@ -120,7 +116,7 @@ def test_sync_posts_persistence_and_idempotence():
         media_type="IMAGE",
         media_url="https://upa.edu.py/static/heidelberg.jpg",
         permalink="https://instagram.com/p/fresh42/",
-        timestamp=datetime.now(UTC)
+        timestamp=datetime.now(UTC),
     )
 
     # 1. Erster Sync: Erstellt den Post
@@ -146,7 +142,7 @@ def test_sync_posts_persistence_and_idempotence():
         media_type="CAROUSEL_ALBUM",
         media_url="https://upa.edu.py/static/heidelberg_v2.jpg",
         permalink="https://instagram.com/p/fresh42_v2/",
-        timestamp=datetime.now(UTC)
+        timestamp=datetime.now(UTC),
     )
 
     res2 = service.sync_posts(db, [updated_item], author_id=1)
@@ -169,6 +165,7 @@ def test_sync_instagram_skipped_without_credentials():
 
     # Wenn keine Credentials gesetzt sind
     import src.config
+
     old_token = src.config.settings.INSTAGRAM_ACCESS_TOKEN
     old_embed = src.config.settings.SOCIABLEKIT_EMBED_ID
     src.config.settings.INSTAGRAM_ACCESS_TOKEN = ""
@@ -176,6 +173,7 @@ def test_sync_instagram_skipped_without_credentials():
 
     try:
         import asyncio
+
         loop = asyncio.new_event_loop()
         res = loop.run_until_complete(service.sync_instagram(db))
         loop.close()
@@ -195,18 +193,12 @@ def test_admin_news_sync_endpoint_auth():
 
     # Normaler Student darf nicht synchronisieren (403)
     student_token = create_access_token({"sub": "2", "email": "student@upa.edu.py", "role": "user"})
-    res_forbidden = client.post(
-        "/api/news/sync-instagram",
-        headers={"Authorization": f"Bearer {student_token}"}
-    )
+    res_forbidden = client.post("/api/news/sync-instagram", headers={"Authorization": f"Bearer {student_token}"})
     assert res_forbidden.status_code == 403
 
     # Admin darf synchronisieren
     admin_token = create_access_token({"sub": "1", "email": "admin@upa.edu.py", "role": "admin"})
-    res_admin = client.post(
-        "/api/news/sync-instagram",
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
+    res_admin = client.post("/api/news/sync-instagram", headers={"Authorization": f"Bearer {admin_token}"})
     assert res_admin.status_code == 200
     data = res_admin.json()
     assert "status" in data

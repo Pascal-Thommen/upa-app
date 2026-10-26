@@ -671,12 +671,26 @@ function getAppJsonData() {
   };
 }
 
-function updateJsonView() {
+async function updateJsonView() {
   const rawJsonOutput = document.getElementById("raw-json-output");
-  if (rawJsonOutput) {
-    const data = getAppJsonData();
-    rawJsonOutput.textContent = JSON.stringify(data, null, 2);
+  if (!rawJsonOutput) return;
+  rawJsonOutput.textContent = "Consultando telemetría del sistema en tiempo real...";
+  try {
+    const res = await apiRequest("/api/system/diagnostics");
+    if (res.ok) {
+      const diagData = await res.json();
+      const combined = {
+        diagnostico_sistema_postgresql: diagData,
+        contexto_aplicacion_movil: getAppJsonData(),
+      };
+      rawJsonOutput.textContent = JSON.stringify(combined, null, 2);
+      return;
+    }
+  } catch (err) {
+    console.error("Error consultando diagnósticos:", err);
   }
+  const data = getAppJsonData();
+  rawJsonOutput.textContent = JSON.stringify(data, null, 2);
 }
 
 /**
@@ -948,104 +962,73 @@ function init() {
 // Módulos B y C: Grupos, Roles y Navegación Lateral
 // ===========================================================================
 
-const APP_GROUPS_STORAGE_KEY = "upa_app_groups_v1";
-const APP_ADMINS_STORAGE_KEY = "upa_app_admins_v1";
+let appGroupsCache = [];
+let appAdminsCache = [];
 
-const DEFAULT_APP_GROUPS = [
-  {
-    id: "estudiantes",
-    name: "Estudiantes",
-    description: "Comunidad estudiantil activa de grado y posgrado.",
-    badgeClass: "bg-blue-100 text-blue-800 border-blue-200",
-    googleGroup: "Estudiantes - Activos, Estudiantes TIE 2025",
-    emails: ["estudiantes@upa.edu.py", "tie2025@upa.edu.py"],
-  },
-  {
-    id: "docentes",
-    name: "Docentes",
-    description: "Claustro docente y profesores de cátedra.",
-    badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    googleGroup: "Ing. Tecnologías - TODOS",
-    emails: ["docentes@upa.edu.py"],
-  },
-  {
-    id: "staff",
-    name: "Staff",
-    description: "Personal administrativo, admisiones y soporte operativo.",
-    badgeClass: "bg-amber-100 text-amber-800 border-amber-200",
-    googleGroup: "Personal Administrativo UPA",
-    emails: ["staff@upa.edu.py", "rectorado@upa.edu.py"],
-  },
-  {
-    id: "egresados",
-    name: "Egresados",
-    description: "Red de graduados y exalumnos universitarios.",
-    badgeClass: "bg-purple-100 text-purple-800 border-purple-200",
-    googleGroup: "Alumni UPA",
-    emails: ["egresados@upa.edu.py"],
-  },
-];
-
-const DEFAULT_ADMINS = [
-  {
-    email: "pascal.thommen@upa.edu.py",
-    name: "Pascal Thommen",
-    role: "admin",
-    isPrimary: true,
-    permissions: ["Publicaciones y Eventos", "Grupos y Audiencias", "Gestión de Roles", "Diagnóstico de APIs"],
-  },
-];
-
-function getStoredAppGroups() {
+async function fetchAppGroups() {
   try {
-    const raw = localStorage.getItem(APP_GROUPS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (_) {}
-  return DEFAULT_APP_GROUPS;
+    const res = await apiRequest("/api/groups");
+    if (res.ok) {
+      appGroupsCache = await res.json();
+      if (window.UPAEditorialCore && Array.isArray(window.UPAEditorialCore.TARGET_GROUPS)) {
+        appGroupsCache.forEach((g) => {
+          if (!window.UPAEditorialCore.TARGET_GROUPS.some((tg) => tg.value === g.id.toUpperCase() || tg.value === g.id)) {
+            window.UPAEditorialCore.TARGET_GROUPS.push({ value: g.id.toUpperCase(), label: g.name });
+          }
+        });
+      }
+      return appGroupsCache;
+    }
+  } catch (err) {
+    console.error("Error cargando grupos desde PostgreSQL:", err);
+  }
+  return appGroupsCache;
 }
 
-function saveAppGroups(groups) {
+async function fetchAppAdmins() {
   try {
-    localStorage.setItem(APP_GROUPS_STORAGE_KEY, JSON.stringify(groups));
-  } catch (_) {}
+    const res = await apiRequest("/api/roles");
+    if (res.ok) {
+      appAdminsCache = await res.json();
+      return appAdminsCache;
+    }
+  } catch (err) {
+    console.error("Error cargando roles desde PostgreSQL:", err);
+  }
+  return appAdminsCache;
 }
 
-function getStoredAppAdmins() {
-  try {
-    const raw = localStorage.getItem(APP_ADMINS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (_) {}
-  return DEFAULT_ADMINS;
-}
-
-function saveAppAdmins(admins) {
-  try {
-    localStorage.setItem(APP_ADMINS_STORAGE_KEY, JSON.stringify(admins));
-  } catch (_) {}
-}
-
-function renderGroupsModule() {
+async function renderGroupsModule() {
   const container = document.getElementById("groups-list-container");
   if (!container) return;
-  const groups = getStoredAppGroups();
+  container.innerHTML = `<div class="col-span-full p-8 text-center text-xs text-slate-500 font-medium">Cargando grupos institucionales desde base de datos...</div>`;
+  const groups = await fetchAppGroups();
+
+  if (!groups || groups.length === 0) {
+    container.innerHTML = `<div class="col-span-full p-8 text-center text-xs text-slate-400">No hay grupos institucionales registrados.</div>`;
+    return;
+  }
 
   container.innerHTML = groups.map((g) => `
     <div class="bg-slate-50/80 p-5 rounded-2xl border border-slate-200 space-y-3">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+          <span class="w-2.5 h-2.5 rounded-full ${g.is_system ? 'bg-[#6c9339]' : 'bg-blue-600'}"></span>
           <h4 class="font-extrabold text-sm text-slate-900">${g.name}</h4>
         </div>
-        <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${g.badgeClass || 'bg-slate-200 text-slate-800'} uppercase">
-          ${g.id}
-        </span>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${g.badge_class || 'bg-slate-200 text-slate-800'} uppercase">
+            ${g.id}
+          </span>
+          ${!g.is_system ? `<button type="button" data-delete-group="${g.id}" title="Eliminar grupo" class="w-5 h-5 flex items-center justify-center text-xs text-red-600 hover:text-white hover:bg-red-600 rounded-full border border-red-200 transition font-bold">✕</button>` : ''}
+        </div>
       </div>
-      <p class="text-xs text-slate-500 leading-relaxed">${g.description}</p>
+      <p class="text-xs text-slate-500 leading-relaxed">${g.description || 'Sin descripción'}</p>
       
       <div class="pt-2 border-t border-slate-200/60 space-y-1.5 text-xs">
         <div class="text-[11px] text-slate-700">
           <strong>Google Workspace Group:</strong>
-          <span class="font-mono text-blue-900 block mt-0.5 bg-white px-2 py-1 rounded border border-slate-200">${g.googleGroup || 'Sin vincular'}</span>
+          <span class="font-mono text-blue-900 block mt-0.5 bg-white px-2 py-1 rounded border border-slate-200">${g.google_group || 'Sin vincular'}</span>
         </div>
         <div class="text-[11px] text-slate-700">
           <strong>Correos autorizados:</strong>
@@ -1056,12 +1039,36 @@ function renderGroupsModule() {
       </div>
     </div>
   `).join('');
+
+  container.querySelectorAll("button[data-delete-group]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-delete-group");
+      if (!confirm(`¿Desea eliminar el grupo '${id}' permanentemente?`)) return;
+      try {
+        const res = await apiRequest(`/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || "Error al eliminar el grupo.");
+          return;
+        }
+        await renderGroupsModule();
+      } catch (e) {
+        alert("Error de conexión al eliminar grupo.");
+      }
+    });
+  });
 }
 
-function renderAdminsModule() {
+async function renderAdminsModule() {
   const tbody = document.getElementById("admin-table-rows");
   if (!tbody) return;
-  const admins = getStoredAppAdmins();
+  tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-xs text-slate-400">Cargando administradores desde PostgreSQL...</td></tr>`;
+  const admins = await fetchAppAdmins();
+
+  if (!admins || admins.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-xs text-slate-400">No hay administradores registrados.</td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = admins.map((adm) => `
     <tr class="hover:bg-slate-50/50">
@@ -1080,17 +1087,26 @@ function renderAdminsModule() {
         </div>
       </td>
       <td class="py-3 px-3 text-right">
-        ${adm.isPrimary ? '<span class="text-[10px] font-bold text-slate-400">Principal</span>' : `<button type="button" data-remove-admin="${adm.email}" class="text-xs text-red-600 hover:text-red-800 font-semibold">Remover</button>`}
+        ${adm.is_primary ? '<span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Principal</span>' : `<button type="button" data-remove-admin="${adm.email}" class="text-xs text-red-600 hover:text-red-800 font-semibold">Remover</button>`}
       </td>
     </tr>
   `).join('');
 
   tbody.querySelectorAll("button[data-remove-admin]").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const email = btn.getAttribute("data-remove-admin");
-      const filtered = getStoredAppAdmins().filter(a => a.email !== email);
-      saveAppAdmins(filtered);
-      renderAdminsModule();
+      if (!confirm(`¿Desea revocar el rol para ${email}?`)) return;
+      try {
+        const res = await apiRequest(`/api/roles/${encodeURIComponent(email)}`, { method: "DELETE" });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || "Error al revocar rol.");
+          return;
+        }
+        await renderAdminsModule();
+      } catch (e) {
+        alert("Error de conexión al revocar rol.");
+      }
     });
   });
 }
@@ -1331,7 +1347,7 @@ function setupSidebarNavigation() {
 
   const formAddAdmin = document.getElementById("form-add-admin");
   if (formAddAdmin) {
-    formAddAdmin.addEventListener("submit", (e) => {
+    formAddAdmin.addEventListener("submit", async (e) => {
       e.preventDefault();
       const input = document.getElementById("input-admin-email");
       const select = document.getElementById("select-admin-role");
@@ -1340,48 +1356,65 @@ function setupSidebarNavigation() {
         alert("El correo debe pertenecer al dominio institucional @upa.edu.py");
         return;
       }
-      const admins = getStoredAppAdmins();
-      if (admins.some(a => a.email === email)) {
-        alert("El usuario ya se encuentra registrado.");
-        return;
-      }
       const perms = [];
       if (document.getElementById("perm-publications")?.checked) perms.push("Publicaciones y Eventos");
       if (document.getElementById("perm-groups")?.checked) perms.push("Grupos y Audiencias");
       if (document.getElementById("perm-admins")?.checked) perms.push("Gestión de Roles");
       if (document.getElementById("perm-diagnostic")?.checked) perms.push("Diagnóstico de APIs");
 
-      admins.push({
-        email,
-        name: email.split("@")[0].replace(".", " "),
-        role: select ? select.value : "editor",
-        isPrimary: false,
-        permissions: perms,
-      });
-      saveAppAdmins(admins);
-      if (input) input.value = "";
-      renderAdminsModule();
-      alert(`Administrador ${email} autorizado correctamente.`);
+      try {
+        const res = await apiRequest("/api/roles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            name: email.split("@")[0].replace(".", " ").replace(/\b\w/g, l => l.toUpperCase()),
+            role: select ? select.value : "editor",
+            permissions: perms,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || "Error al autorizar administrador.");
+          return;
+        }
+        if (input) input.value = "";
+        await renderAdminsModule();
+        alert(`Administrador ${email} autorizado correctamente en PostgreSQL.`);
+      } catch (err) {
+        alert("Error de conexión al autorizar administrador.");
+      }
     });
   }
 
   const btnCreateGroup = document.getElementById("btn-create-group");
   if (btnCreateGroup) {
-    btnCreateGroup.addEventListener("click", () => {
-      const name = prompt("Ingrese el nombre del nuevo grupo interno:");
+    btnCreateGroup.addEventListener("click", async () => {
+      const name = prompt("Ingrese el nombre del nuevo grupo institucional:");
       if (!name || !name.trim()) return;
-      const groups = getStoredAppGroups();
-      const id = name.trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
-      groups.push({
-        id,
-        name: name.trim(),
-        description: `Grupo interno institucional: ${name.trim()}`,
-        badgeClass: "bg-slate-100 text-slate-800 border-slate-200",
-        googleGroup: `Grupo ${name.trim()} UPA`,
-        emails: [`${id}@upa.edu.py`],
-      });
-      saveAppGroups(groups);
-      renderGroupsModule();
+      const desc = prompt("Descripción breve del grupo (opcional):") || "";
+      const googleGrp = prompt("Nombre de Google Workspace Group vinculado (opcional):") || "";
+
+      try {
+        const res = await apiRequest("/api/groups", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name.trim(),
+            description: desc.trim() || undefined,
+            google_group: googleGrp.trim() || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || "Error creando grupo.");
+          return;
+        }
+        await renderGroupsModule();
+        alert(`Grupo '${name.trim()}' creado exitosamente en PostgreSQL.`);
+      } catch (err) {
+        alert("Error de conexión al crear grupo.");
+      }
     });
   }
 }

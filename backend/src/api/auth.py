@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..auth import create_access_token, get_current_user, verify_google_id_token
 from ..config import settings
 from ..database import get_db
-from ..models import User
+from ..models import User, UserRole
 from ..schemas.feed import ErrorResponse
 from ..services.google_groups import get_google_groups_for_user, map_groups_to_logical_tags
 from .classroom import clear_classroom_cache
@@ -22,6 +22,17 @@ ADMIN_EMAILS = {
     "soporte.ti@upa.edu.py",
     "admin@upa.edu.py",
 }
+
+
+def _resolve_user_role(db: Session, email: str, existing_user: User | None = None) -> str:
+    assigned_role = db.query(UserRole).filter(UserRole.email == email).first()
+    if assigned_role:
+        return assigned_role.role
+    if existing_user and existing_user.role in ("admin", "editor"):
+        return existing_user.role
+    if email in ADMIN_EMAILS:
+        return "admin"
+    return "user"
 
 
 class GoogleLoginRequest(BaseModel):
@@ -36,9 +47,7 @@ class GoogleLoginRequest(BaseModel):
     )
 
     id_token: str = Field(..., description="Google ID Token emitido por Google Sign-In")
-    classroom_token: str | None = Field(
-        default=None, description="Token OAuth 2.0 opcional para Google Classroom"
-    )
+    classroom_token: str | None = Field(default=None, description="Token OAuth 2.0 opcional para Google Classroom")
     classroom_refresh_token: str | None = Field(
         default=None,
         description="Refresh Token OAuth 2.0 opcional para renovacion automatica de Classroom",
@@ -183,9 +192,7 @@ def _filter_user_groups_for_privacy(email: str, groups: list[Any] | None) -> lis
     return []
 
 
-def _filter_google_groups_for_privacy(
-    email: str, google_groups: list[Any] | None
-) -> list[GoogleGroupDetail]:
+def _filter_google_groups_for_privacy(email: str, google_groups: list[Any] | None) -> list[GoogleGroupDetail]:
     """Garantiza visibilidad exclusiva de Google Groups para pascal.thommen@upa.edu.py sin valores nulos."""
     if (email or "").strip().lower() != "pascal.thommen@upa.edu.py":
         return []
@@ -332,12 +339,12 @@ async def google_callback(
     mapped_tags = map_groups_to_logical_tags(raw_google_groups)
 
     user = db.query(User).filter(User.email == email).first()
+    resolved_role = _resolve_user_role(db, email, existing_user=user)
     if not user:
-        initial_role = "admin" if email in ADMIN_EMAILS else "user"
         user = User(
             email=email,
             full_name=full_name,
-            role=initial_role,
+            role=resolved_role,
             groups=mapped_tags,
             google_groups=raw_google_groups,
             classroom_token=access_token,
@@ -346,6 +353,7 @@ async def google_callback(
         db.add(user)
     else:
         user.full_name = full_name
+        user.role = resolved_role
         user.groups = mapped_tags
         user.google_groups = raw_google_groups
         if access_token:
@@ -357,9 +365,7 @@ async def google_callback(
     db.commit()
     db.refresh(user)
 
-    session_token = create_access_token(
-        data={"sub": str(user.id), "email": user.email, "role": user.role}
-    )
+    session_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
     return RedirectResponse(f"/dashboard/?token={session_token}")
 
 
@@ -388,15 +394,17 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
     mapped_tags = map_groups_to_logical_tags(raw_google_groups)
 
     user = db.query(User).filter(User.email == email).first()
+    resolved_role = _resolve_user_role(db, email, existing_user=user)
     if not user:
-        initial_role = "admin" if email in ADMIN_EMAILS else "user"
         user = User(
             email=email,
             full_name=full_name,
-            role=initial_role,
+            role=resolved_role,
             groups=mapped_tags,
             google_groups=raw_google_groups,
-            classroom_token=payload.classroom_token.strip() if payload.classroom_token and payload.classroom_token.strip() else None,
+            classroom_token=payload.classroom_token.strip()
+            if payload.classroom_token and payload.classroom_token.strip()
+            else None,
             classroom_refresh_token=(
                 payload.classroom_refresh_token.strip()
                 if payload.classroom_refresh_token and payload.classroom_refresh_token.strip()
@@ -406,6 +414,7 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
         db.add(user)
     else:
         user.full_name = full_name
+        user.role = resolved_role
         user.groups = mapped_tags
         user.google_groups = raw_google_groups
         if payload.classroom_token and payload.classroom_token.strip():
@@ -417,9 +426,7 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
     db.commit()
     db.refresh(user)
 
-    session_token = create_access_token(
-        data={"sub": str(user.id), "email": user.email, "role": user.role}
-    )
+    session_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
 
     return AuthResponse(
         access_token=session_token,
@@ -461,19 +468,17 @@ async def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> 
         default_tags = ["ALL", "Semester_4", "TIE"] if email == "pascal.thommen@upa.edu.py" else ["ALL"]
         mapped_tags = sorted(set(default_tags))
 
+    resolved_role = _resolve_user_role(db, email, existing_user=user)
     if not user:
-        initial_role = "admin" if email in ADMIN_EMAILS else "user"
         full_name = _derive_full_name(email, payload.full_name)
         user = User(
             email=email,
             full_name=full_name,
-            role=initial_role,
+            role=resolved_role,
             groups=mapped_tags,
             google_groups=raw_google_groups,
             classroom_token=(
-                payload.classroom_token.strip()
-                if payload.classroom_token and payload.classroom_token.strip()
-                else None
+                payload.classroom_token.strip() if payload.classroom_token and payload.classroom_token.strip() else None
             ),
             classroom_refresh_token=(
                 payload.classroom_refresh_token.strip()
@@ -487,10 +492,7 @@ async def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> 
             user.full_name = payload.full_name.strip()
         elif not user.full_name or not user.full_name.strip():
             user.full_name = _derive_full_name(email)
-        if email in ADMIN_EMAILS:
-            user.role = "admin"
-        elif not user.role:
-            user.role = "user"
+        user.role = resolved_role
         user.groups = mapped_tags
         if raw_google_groups:
             user.google_groups = raw_google_groups
@@ -505,9 +507,7 @@ async def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> 
     db.commit()
     db.refresh(user)
 
-    session_token = create_access_token(
-        data={"sub": str(user.id), "email": user.email, "role": user.role}
-    )
+    session_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
 
     return AuthResponse(
         access_token=session_token,

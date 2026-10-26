@@ -65,9 +65,7 @@ class FeedItemResponse(BaseModel):
     event_end: datetime | None = Field(default=None, description="Fin del evento opcional")
     location: str = Field(default="", description="Ubicacion del evento (nunca nulo)")
     has_registration: bool = Field(default=False, description="Indica si admite registro")
-    target_groups: list[str] = Field(
-        default_factory=lambda: ["ALL"], description="Grupos destinatarios"
-    )
+    target_groups: list[str] = Field(default_factory=lambda: ["ALL"], description="Grupos destinatarios")
     instagram_id: str = Field(default="", description="ID de Instagram (cadena vacia si no aplica)")
     media_type: str = Field(default="", description="Tipo multimedia (cadena vacia si no aplica)")
     media_url: str = Field(default="", description="URL multimedia (cadena vacia si no aplica)")
@@ -83,13 +81,7 @@ class FeedItemResponse(BaseModel):
         raw_content = (getattr(post, "content", None) or "").strip()
         full_content = raw_content or raw_caption
         summary_text = (
-            raw_caption
-            if raw_caption
-            else (
-                full_content[:150] + "..."
-                if len(full_content) > 150
-                else full_content
-            )
+            raw_caption if raw_caption else (full_content[:150] + "..." if len(full_content) > 150 else full_content)
         )
         img = (getattr(post, "media_url", None) or "").strip()
         created = ensure_utc_datetime(getattr(post, "created_at", None))
@@ -191,9 +183,7 @@ class AppStateFeedItem(BaseModel):
     content: str = Field(default="", description="Contenido completo (nunca nulo)")
     post_type: str = Field(default="MANUAL", description="Tipo de publicacion")
     is_pinned: bool = Field(default=False, description="Indica si esta fijado arriba")
-    target_groups: list[str] = Field(
-        default_factory=lambda: ["ALL"], description="Grupos destinatarios"
-    )
+    target_groups: list[str] = Field(default_factory=lambda: ["ALL"], description="Grupos destinatarios")
     image_url: str = Field(default="", description="URL de imagen (cadena vacia si no tiene)")
     permalink: str = Field(default="", description="Enlace permanente (cadena vacia si no tiene)")
     published_at: str = Field(..., description="Fecha de publicacion en formato ISO-8601 UTC")

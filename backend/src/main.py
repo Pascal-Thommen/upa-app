@@ -21,11 +21,14 @@ from .api.auth import (
 )
 from .api.classroom import fetch_user_classroom_deadlines
 from .api.classroom import router as classroom_router
+from .api.diagnostics import router as diagnostics_router
 from .api.events import router as events_router
 from .api.feed import router as feed_router
+from .api.groups import router as groups_router
 from .api.media import UploadsStaticFiles, get_upload_dir
 from .api.media import router as media_router
 from .api.news import router as news_router
+from .api.roles import router as roles_router
 from .api.users import router as users_router
 from .auth import get_current_user_optional
 from .config import settings
@@ -93,6 +96,9 @@ app.include_router(events_router)
 app.include_router(classroom_router)
 app.include_router(feed_router)
 app.include_router(media_router)
+app.include_router(groups_router)
+app.include_router(roles_router)
+app.include_router(diagnostics_router)
 
 
 @app.get(
@@ -233,9 +239,7 @@ async def get_app_state(
     """
     now = datetime.now(UTC)
 
-    query = db.query(Post).filter(
-        or_(Post.expires_at.is_(None), Post.expires_at > now)
-    )
+    query = db.query(Post).filter(or_(Post.expires_at.is_(None), Post.expires_at > now))
     if current_user is None:
         query = query.filter(Post.post_type == "INSTAGRAM")
 
@@ -284,8 +288,7 @@ async def get_app_state(
             role=clean_role,
             groups=_filter_user_groups_for_privacy(clean_email, current_user.groups),
             google_groups=[
-                g.model_dump()
-                for g in _filter_google_groups_for_privacy(clean_email, current_user.google_groups)
+                g.model_dump() for g in _filter_google_groups_for_privacy(clean_email, current_user.google_groups)
             ],
             has_classroom_token=has_token,
         )

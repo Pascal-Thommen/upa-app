@@ -254,8 +254,7 @@ async def fetch_user_classroom_deadlines(
                             work.get("dueTime"),
                         )
                         alt_link = (
-                            str(work.get("alternateLink") or "").strip()
-                            or f"https://classroom.google.com/c/{c_id}"
+                            str(work.get("alternateLink") or "").strip() or f"https://classroom.google.com/c/{c_id}"
                         )
                         raw_points = work.get("maxPoints")
                         try:
@@ -408,10 +407,7 @@ async def get_classroom_courses(
                 c_id = str(c.get("id") or f"course_{idx}").strip()
                 c_name = str(c.get("name") or "Curso sin nombre").strip() or "Curso sin nombre"
                 section = str(c.get("section") or "").strip()
-                alt_link = (
-                    str(c.get("alternateLink") or "").strip()
-                    or f"https://classroom.google.com/c/{c_id}"
-                )
+                alt_link = str(c.get("alternateLink") or "").strip() or f"https://classroom.google.com/c/{c_id}"
                 room = str(c.get("room") or "").strip()
                 result.append(
                     ClassroomCourseResponse(

@@ -5,6 +5,7 @@ Revises: 003_add_refresh_and_device_tokens
 Create Date: 2026-10-21 20:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

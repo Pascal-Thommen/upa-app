@@ -238,8 +238,14 @@ def db_session():
     db.add_all(
         [
             User(id=1, email="admin@upa.edu.py", full_name="Admin", role="admin", groups=["ALL"]),
-            User(id=2, email="tie@upa.edu.py", full_name="Estudiante TIE", role="user", groups=["TIE"],
-                 device_token="legacy-token-tie"),
+            User(
+                id=2,
+                email="tie@upa.edu.py",
+                full_name="Estudiante TIE",
+                role="user",
+                groups=["TIE"],
+                device_token="legacy-token-tie",
+            ),
             User(id=3, email="prof@upa.edu.py", full_name="Profesor", role="user", groups=["PROF"]),
             User(id=4, email="sintoken@upa.edu.py", full_name="Sin Token", role="user", groups=["TIE"]),
         ]

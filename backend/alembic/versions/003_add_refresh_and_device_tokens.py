@@ -5,6 +5,7 @@ Revises: 002_add_classroom_token
 Create Date: 2026-10-21 17:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

@@ -7,10 +7,7 @@ client = TestClient(app)
 
 
 def test_cors_headers_allowed_origin():
-    response = client.get(
-        "/health",
-        headers={"Origin": "http://localhost:3000"}
-    )
+    response = client.get("/health", headers={"Origin": "http://localhost:3000"})
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
@@ -21,7 +18,7 @@ def test_cors_preflight_request():
         headers={
             "Origin": "http://localhost:3000",
             "Access-Control-Request-Method": "GET",
-        }
+        },
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"

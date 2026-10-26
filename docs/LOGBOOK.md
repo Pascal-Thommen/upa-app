@@ -1,69 +1,31 @@
-# Bitácora de Desarrollo, Decisiones y Avances (Logbook)
-## Proyecto: UPA App &bull; Plataforma Digital Universitaria
-**Universidad Paraguayo Alemana (UPA)**  
-**Repositorio Oficial:** https://github.com/Pascal-Thommen/upa-app  
-**Equipo:** Pascal Thommen (Backend & Infraestructura), Equipo de Desarrollo Móvil (Frontend Móvil Android), Natasha Kolman  
+# Bitácora de Decisiones Arquitectónicas y Evolución Técnica (LOGBOOK)
+
+Este documento constituye el registro maestro cronológico de la evolución técnica, decisiones arquitectónicas, estándares de desarrollo y modificaciones críticas de la plataforma **UPA App** de la Universidad Paraguayo Alemana.
 
 ---
 
-## 1. Propósito de este Logbook
-Este documento constituye el registro maestro cronológico de la plataforma UPA App. Su finalidad es documentar de forma continua:
-* Las decisiones arquitectónicas y técnicas acordadas por el equipo.
-* Los avances implementados y verificados en el código.
-* La base de hechos para los informes semanales de avance y la actualización progresiva del documento de especificación formal (de v2 a v3).
+### Registro Cronológico de Hitos y Decisiones
 
----
-
-## 2. Registro Histórico: Semana 1 (Cierre Viernes 23 de Octubre 2026 &bull; Versión v2)
-*Documentación presentada oficialmente: `Avances Semanal 10.23.pdf` y `UPA-App v2.pdf`.*
-
-### Decisiones Arquitectónicas Formalizadas:
-1. **Frontend Móvil Nativo Android en lugar de PWA:**  
-   Se determinó de forma definitiva desarrollar la solución móvil como aplicación nativa Android utilizando Kotlin, Jetpack Compose y almacenamiento local con Room/SQLite, descartando la alternativa de Progressive Web App (PWA).
-2. **Modelo de Persistencia Dual:**  
-   PostgreSQL actúa como base de datos relacional central en el servidor para concurrencia y consistencia global, mientras que SQLite/Room opera como motor local en el dispositivo móvil para soporte offline y caché rápido.
-3. **Desacoplamiento de Contenedores:**  
-   Se definió independizar el frontend web en su propio contenedor de staging y producción, separando la capa estática del núcleo de la API en FastAPI.
-4. **Seguridad y Red Zero-Trust:**  
-   Infraestructura conectada mediante la red privada mallada NetBird (`upa.eu1.netbird.services`), blindando el acceso administrativo.
-
-### Hitos Implementados y Verificados (Semana 1):
-* **Backend y Base de Datos:** PostgreSQL en contenedor Docker, esquemas SQLAlchemy, migraciones versionadas con Alembic y API REST FastAPI con Swagger interactivo en `/docs`.
-* **Identidad y Acceso:** Inicio de sesión exclusivo con Google OAuth 2.0 (`@upa.edu.py`) y emisión de tokens JWT.
-* **Integraciones Externas:** Feed de Instagram mediante SociableKIT, consulta de grupos de Google Workspace Admin Directory API y sincronización inicial de cursos de Google Classroom.
-* **Contenido y Eventos:** Endpoints CRUD para noticias y eventos, sistema de confirmación de asistencia (RSVP) y subida de archivos multimedia hasta 10 MB en `/api/media/upload`.
-* **App Móvil (Android Nativo):** Proyecto base estructurado en Android Studio con Kotlin y Compose listo para consumir la API REST.
-
----
-
-## 3. Registro Actual: Semana 2 (Hacia la Entrega Viernes 30 de Octubre 2026 &bull; Versión v3)
-
-### Tarea Especial / Pendiente de Documentación:
-* **Inclusión del Portal Web-Admin:**  
-  La implementación del Portal Web-Admin y Cockpit Editorial (gestión de contenidos, afiches, eventos y diagnóstico de APIs) no formó parte del informe del 23 de octubre. Queda formalmente registrada para su inclusión completa en el informe semanal del 30 de octubre y en el documento de arquitectura v3.
-
-### Decisiones y Modificaciones Técnicas en Curso:
-1. **Reestructuración de la Interfaz Web con Menú Lateral:**  
-   * **Sección Estudiantil (Próximamente):** Panel reservado sin botones simulados, indicando el desarrollo de la app móvil nativa en curso.  
-   * **Módulo A (Publicaciones y Eventos):** Consolidación unificada de noticias y eventos con insignias distintivas (`Noticia`, `Evento`, `Noticia + Evento`), carga de afiches hasta 10 MB y tabla en vivo de participantes confirmados (RSVP).  
-   * **Módulo B (Grupos y Audiencias):** Gestión de grupos internos (`Estudiantes`, `Docentes`, `Staff`, `Egresados`) y asignación de correos `@upa.edu.py` o grupos de Google Workspace Admin Console.  
-   * **Módulo C (Consola de Administradores):** Gestión granular de permisos por correo para las herramientas administrativas.  
-   * **Módulo D (Diagnóstico de APIs para Desarrolladores):** Panel técnico restaurado para pruebas de backend.
-2. **Corrección de Diagnóstico de Grupos de Google:**  
-   * Eliminación de las etiquetas sintéticas (`ALL`, `TIE`) en el panel de desarrollador de Google Mailgruppen.  
-   * Visualización fidedigna y estricta de los 3 grupos reales obtenidos de Google Workspace Directory API (`user.google_groups`: *Estudiantes - Activos*, *Estudiantes TIE 2025*, *Ing. Tecnologías - TODOS*).
-3. **Persistencia y Renovación Continua de Google Classroom:**  
-   * Actualización del flujo OAuth de Google en `/api/auth/login-google` incorporando `prompt=consent select_account` y `access_type=offline`. Esto asegura la entrega persistente del `refresh_token` y previene errores 401 en la lectura de tareas y fechas límite.
-4. **Desacoplamiento Integral de Contenedores (SRV-150):**  
-   * Separación física del frontend web en su propio contenedor independiente `upa-frontend` (Nginx Alpine) eliminando archivos estáticos de la imagen de producción de FastAPI.
-   * Configuración de Nginx como Reverse Proxy en el puerto `8085` de la red NetBird: sirve el portal `/dashboard/` de manera estática y reenvía transparentemente el tráfico de `/api/`, `/health`, `/docs` y `/uploads/` hacia `http://backend:8000`.
-   * Preservación intacta del flujo de autenticación Google OAuth 2.0 y su URI de redirección (`https://upa.eu1.netbird.services/api/auth/google`).
+1. **Arquitectura Base y Conexión OAuth 2.0 (Google Workspace / OIDC):**  
+   * Establecimiento del protocolo de autenticación federada con Google Workspace mediante OAuth 2.0 para el dominio institucional `@upa.edu.py`.  
+   * Configuración de la Service Account delegada para consulta de grupos (`admin.directory.group.readonly`).  
+   * Separación de roles: `admin` (gestión institucional y redacción) y `user` (estudiantes/docentes).
+2. **Sincronización Asíncrona con Google Classroom:**  
+   * Integración de la API de Google Classroom (`courses.readonly`, `coursework.me.readonly`) con tokens offline delegados.  
+   * Implementación de sincronización periódica en segundo plano para entrega de tareas y plazos académicos (`deadlines`) directamente agregados en la vista móvil.
+3. **Módulo Editorial y Feed Institucional:**  
+   * Rediseño del panel de redacción para creación de noticias y eventos universitarios con soporte de RSVP.  
+   * Sincronización automática de publicaciones desde Instagram Graph API (`instagram_service.py`).
+4. **Desacoplamiento en Microservicios y Contenedor Frontend Dedicado Nginx (SRV-150):**  
+   * Desacoplamiento de la arquitectura monolítica original (donde FastAPI servía directamente los archivos estáticos de la interfaz web) hacia una arquitectura moderna de 3 capas.  
+   * Contenedor Nginx Alpine optimizado para servir exclusivamente el portal administrativo (`web-admin`) y actuar como reverse proxy hacia el backend FastAPI (`http://backend:8000`).  
+   * Preservación intacta del flujo de autenticación Google OAuth 2.0 y su URI de redirección (`https://upa.eu1.netbird.services/api/auth/google`).  
    * Infraestructura final en 3 contenedores productivos: `upa-postgres`, `upa-backend` y `upa-frontend`.
 5. **Hardening de Producción y Rediseño Institucional UPA (SRV-152):**  
-   * Incorporación del logotipo oficial de la UPA (Heidelberg - Asunción) y paleta institucional en verde oliva (#6c9339) en concordancia visual con la aplicación móvil.
-   * Corrección definitiva del bug de renderizado en API 2 (Google Mailgruppen), extrayendo propiedades de nombre y correo para eliminar el formato `[object Object]`.
-   * Optimización del flujo Google OAuth: cambio de `prompt=consent select_account` a `prompt=select_account`, eliminando la solicitud repetitiva de permisos cuando el usuario ya autorizó el acceso, preservando el `refresh_token` offline en PostgreSQL.
-   * Eliminación del parpadeo de inicio de sesión mediante detección inmediata de token en `localStorage`, cargando la interfaz administrativa de forma instantánea.
+   * Incorporación del logotipo oficial de la UPA (Heidelberg - Asunción) y paleta institucional en verde oliva (#6c9339) en concordancia visual con la aplicación móvil.  
+   * Corrección definitiva del bug de renderizado en API 2 (Google Mailgruppen), extrayendo propiedades de nombre y correo para eliminar el formato `[object Object]`.  
+   * Optimización del flujo Google OAuth: cambio de `prompt=consent select_account` a `prompt=select_account`, eliminando la solicitud repetitiva de permisos cuando el usuario ya autorizó el acceso, preservando el `refresh_token` offline en PostgreSQL.  
+   * Eliminación del parpadeo de inicio de sesión mediante detección inmediata de token en `localStorage`, cargando la interfaz administrativa de forma instantánea.  
    * Supresión radical de textos artificiales o marketing accesorio, adoptando un diseño minimalista y profesional.
 6. **Purga Radical de AI Slop, Separación de Diagnóstico y Alineación Visual con App UPA (SRV-153):**  
    * **Encabezado institucional:** Eliminación definitiva de insignias de estado de APIs y etiquetas "EN VIVO", conservando logotipo oficial, título institucional y avatar con acción de logout.  
@@ -74,4 +36,9 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
 7. **Enrutamiento URL Dedicado por Módulo y Persistencia de Subrutas (SRV-155):**  
    * **Enrutador History API:** Direcciones dedicadas para cada módulo (`/dashboard/publicaciones`, `/dashboard/grupos`, `/dashboard/roles`, `/dashboard/diagnostico`, `/dashboard/estudiantes`).  
    * **Navegación nativa:** Actualización fluida de la barra del navegador, historial de navegación (`popstate`) y persistencia del módulo activo tras recarga (F5).  
-   * **Compatibilidad de enlaces directos (Deep Linking):** Soporte en Nginx y backend FastAPI (`SPAStaticFiles`) para resolver y cargar directamente cualquier pestaña solicitada sin error 404, redirigiendo rutas no reconocidas a `/dashboard/publicaciones`.
+   * **Compatibilidad de enlaces directos (Deep Linking):** Soporte en Nginx y backend FastAPI para resolver y cargar directamente cualquier pestaña solicitada sin error 404, redirigiendo rutas no reconocidas a `/dashboard/publicaciones`.
+8. **Persistencia Real en PostgreSQL para Grupos, Roles y Diagnóstico Técnico (SRV-157 - Zero Facade):**  
+   * **Eliminación total de fachadas mock:** Supresión definitiva de llaves simuladas en `localStorage` (`upa_app_groups_v1` y `upa_app_admins_v1`).  
+   * **Modelos relacionales en PostgreSQL:** Creación de tablas `audience_groups` y `user_roles` con inicialización semilla (seed) para grupos de sistema (`estudiantes`, `docentes`, `staff`, `egresados`) y administrador primario (`pascal.thommen@upa.edu.py`).  
+   * **Endpoints REST en FastAPI:** Controladores `/api/groups` (GET, POST, DELETE), `/api/roles` (GET, POST, DELETE) con validación de dominios `@upa.edu.py` y protección de entidades críticas de sistema, junto con `/api/system/diagnostics` para telemetría en vivo del pool de base de datos y APIs externas.  
+   * **Integración asíncrona en cliente web:** Sincronización transparente de grupos y roles contra backend real y vinculación dinámica en el formulario de redacción editorial.

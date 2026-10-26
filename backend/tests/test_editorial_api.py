@@ -195,9 +195,7 @@ def test_news_category_is_normalized_validated_and_clearable():
     assert db.query(Post).filter(Post.id == created.json()["id"]).one().category == "ANKUENDIGUNG"
     db.close()
 
-    invalid = client.post(
-        "/api/news", json={"title": "X", "category": "OTRA"}, headers=auth(ADMIN, "admin")
-    )
+    invalid = client.post("/api/news", json={"title": "X", "category": "OTRA"}, headers=auth(ADMIN, "admin"))
     assert invalid.status_code == 400
     assert "Categoria invalida" in invalid.json()["detail"]
 
@@ -234,13 +232,19 @@ def test_editor_role_manages_content_but_user_role_cannot():
     assert client.get(f"/api/news/{nid}", headers=auth(EDITOR, "editor")).status_code == 200
     assert client.get(f"/api/news/{nid}", headers=auth(STUDENT, "user")).status_code == 403
 
-    assert client.put(f"/api/news/{nid}", json={"title": "Nota 2"}, headers=auth(EDITOR, "editor")).json()["title"] == "Nota 2"
+    assert (
+        client.put(f"/api/news/{nid}", json={"title": "Nota 2"}, headers=auth(EDITOR, "editor")).json()["title"]
+        == "Nota 2"
+    )
     assert client.put(f"/api/news/{nid}", json={"title": "Hack"}, headers=auth(STUDENT, "user")).status_code == 403
 
     event = client.post("/api/events", json=_event_payload(), headers=auth(EDITOR, "editor"))
     assert event.status_code == 201
     eid = event.json()["id"]
-    assert client.put(f"/api/events/{eid}", json={"location": "Aula 5"}, headers=auth(EDITOR, "editor")).json()["location"] == "Aula 5"
+    assert (
+        client.put(f"/api/events/{eid}", json={"location": "Aula 5"}, headers=auth(EDITOR, "editor")).json()["location"]
+        == "Aula 5"
+    )
     assert client.delete(f"/api/events/{eid}", headers=auth(STUDENT, "user")).status_code == 403
     assert client.delete(f"/api/events/{eid}", headers=auth(EDITOR, "editor")).json()["status"] == "deleted"
     assert client.delete(f"/api/news/{nid}", headers=auth(EDITOR, "editor")).json()["status"] == "deleted"

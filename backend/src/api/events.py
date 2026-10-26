@@ -374,11 +374,7 @@ def update_event(
     Actualiza los campos de un evento institucional existente.
     Protegido: Exclusivo para administradores autorizados.
     """
-    post = (
-        db.query(Post)
-        .filter(Post.id == event_id, Post.is_event.is_(True))
-        .first()
-    )
+    post = db.query(Post).filter(Post.id == event_id, Post.is_event.is_(True)).first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -471,11 +467,7 @@ def delete_event(
     Elimina permanentemente un evento del calendario y sus inscripciones asociadas.
     Protegido: Exclusivo para administradores autorizados.
     """
-    post = (
-        db.query(Post)
-        .filter(Post.id == event_id, Post.is_event.is_(True))
-        .first()
-    )
+    post = db.query(Post).filter(Post.id == event_id, Post.is_event.is_(True)).first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
