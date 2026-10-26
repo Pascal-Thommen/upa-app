@@ -112,14 +112,23 @@ function showLoginView() {
 }
 
 function showDashboardView(user) {
+  document.documentElement.classList.add("has-auth");
   DOM_ELEMENTS.viewLogin.classList.add("hidden");
   DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
 
+  const email = (user && user.email) || "";
+  const initials = email ? email.substring(0, 2).toUpperCase() : "PT";
+
   DOM_ELEMENTS.authActions.innerHTML = `
-    <span class="text-xs text-slate-300 hidden sm:inline font-mono truncate max-w-xs">${user.email}</span>
-    <button id="btn-logout" class="px-3 py-1 text-xs font-medium bg-red-600 hover:bg-red-700 text-white rounded-md shadow transition">
-      Salir
-    </button>
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-full bg-[#6c9339] text-white flex items-center justify-center font-bold text-[11px] shadow-2xs">
+        ${initials}
+      </div>
+      <span class="text-xs text-slate-600 hidden sm:inline font-mono truncate max-w-xs">${email}</span>
+      <button id="btn-logout" class="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-red-700 hover:bg-red-50 rounded-lg border border-slate-200 transition">
+        Cerrar sesión
+      </button>
+    </div>
   `;
 
   document.getElementById("btn-logout").addEventListener("click", logout);
@@ -235,12 +244,22 @@ function renderUserProfile(user) {
     DOM_ELEMENTS.groupsCount.textContent = `${groups.length} grupos`;
     DOM_ELEMENTS.userGroupsContainer.innerHTML = groups
       .map((grp) => {
-        const label = GROUP_LABELS[grp] || grp;
+        let name = "";
+        let email = "";
+        if (typeof grp === "object" && grp !== null) {
+          name = grp.name || grp.email || grp.id || "";
+          email = grp.email || "";
+        } else {
+          name = String(grp);
+        }
         return `
-          <span class="group-badge group-badge-all" title="${label}">
-            <span>${grp}</span>
-            <span class="ml-1 text-[10px] opacity-75 font-normal">&bull; ${label}</span>
-          </span>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2 shadow-2xs">
+            <div class="min-w-0">
+              <span class="text-xs font-semibold text-slate-800 block truncate">${name}</span>
+              ${email ? `<span class="text-[11px] text-slate-500 font-mono block truncate">${email}</span>` : ""}
+            </div>
+            <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex-shrink-0">Oficial</span>
+          </div>
         `;
       })
       .join("");
@@ -852,14 +871,19 @@ function init() {
     if (tokenFromUrl) {
       setStoredToken(tokenFromUrl);
       localStorage.setItem("upa_auth_token", tokenFromUrl);
+      document.documentElement.classList.add("has-auth");
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   } catch (_) {}
 
   const existingToken = getStoredToken();
   if (existingToken) {
+    document.documentElement.classList.add("has-auth");
+    DOM_ELEMENTS.viewLogin.classList.add("hidden");
+    DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
     refreshDashboard();
   } else {
+    document.documentElement.classList.remove("has-auth");
     showLoginView();
   }
 }
@@ -1034,7 +1058,7 @@ function setupSidebarNavigation() {
       b.className = "sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
     });
     if (activeBtn) {
-      activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-white bg-blue-900 shadow-sm";
+      activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
     }
     allViews.forEach(v => v.classList.add("hidden"));
     if (activeView) {

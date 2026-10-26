@@ -35,46 +35,47 @@
     }
   </script>
   <style>
-    html.has-auth #section-login { display: none !important; }
-    html.has-auth #section-dashboard { display: block !important; }
+    html.has-auth #view-login { display: none !important; }
+    html.has-auth #view-dashboard { display: block !important; }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
+<body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
 
-  <!-- Encabezado Principal -->
-  <header class="bg-[#0a192f] text-white shadow-lg border-b border-slate-800 sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+  <!-- Encabezado Principal Institucional UPA -->
+  <header class="bg-white text-slate-900 shadow-xs border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
       <div class="flex items-center space-x-3.5">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-lime-600 to-emerald-700 flex items-center justify-center font-extrabold text-xl tracking-wider text-white shadow-md">
-          UPA
-        </div>
+        <a href="/dashboard/" class="flex items-center gap-3">
+          <img src="/dashboard/upa-logo.png" alt="Universidad Paraguayo Alemana" class="h-10 w-auto object-contain">
+        </a>
+        <div class="h-7 w-px bg-slate-200 hidden sm:block"></div>
         <div>
-          <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+          <h1 class="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2">
             Portal Campus Institucional
-            <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
-              Live APIs
+            <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase tracking-wider">
+              En Vivo
             </span>
           </h1>
-          <p class="text-xs text-slate-400">Universidad Paraguayo Alemana &bull; San Lorenzo</p>
+          <p class="text-[11px] text-slate-500">Administración y Diagnóstico &bull; UPA Heidelberg - Asunción</p>
         </div>
       </div>
 
       <!-- Barra de estado de 4 APIs del Backend -->
       <div class="flex items-center flex-wrap gap-2 text-[11px]">
-        <div class="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 text-slate-200">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" id="badge-api-oauth"></span>
+        <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" id="badge-api-oauth"></span>
           <span>1. OAuth 2.0</span>
         </div>
-        <div class="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 text-slate-200">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" id="badge-api-groups"></span>
+        <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" id="badge-api-groups"></span>
           <span>2. Mailgruppen</span>
         </div>
-        <div class="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 text-slate-200">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" id="badge-api-classroom"></span>
-          <span>3. Classroom</span>
+        <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" id="badge-api-classroom"></span>
+          <span>3. Google Classroom</span>
         </div>
-        <div class="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 text-slate-200">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" id="badge-api-feed"></span>
+        <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" id="badge-api-feed"></span>
           <span>4. Instagram Feed</span>
         </div>
 
@@ -89,15 +90,13 @@
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
     <!-- Vista 1: Formulario de Autenticación Moderno -->
-    <section id="view-login" class="max-w-md mx-auto my-8 bg-white rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden transition-all">
+    <section id="view-login" class="max-w-md mx-auto my-12 bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden">
       <div class="p-8 sm:p-10">
-        <div class="text-center mb-8">
-          <div class="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-tr from-lime-500 to-emerald-600 items-center justify-center text-white font-black text-2xl shadow-lg shadow-emerald-500/20 mb-4">
-            UPA
-          </div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">Acceso Institucional</h2>
-          <p class="text-xs text-slate-500 mt-1.5">
-            Inicio de sesión seguro para la comunidad <span class="font-bold text-blue-700">@upa.edu.py</span>
+        <div class="text-center mb-6">
+          <img src="/dashboard/upa-logo.png" alt="Universidad Paraguayo Alemana" class="h-16 w-auto mx-auto mb-4 object-contain">
+          <h2 class="text-xl font-bold text-slate-900 tracking-tight">Acceso Institucional</h2>
+          <p class="text-xs text-slate-500 mt-1">
+            Portal administrativo para la comunidad <span class="font-bold text-slate-700">@upa.edu.py</span>
           </p>
         </div>
 
@@ -107,7 +106,7 @@
         <div class="mb-6 flex flex-col items-center">
           <a href="/api/auth/login-google"
              id="btn-login-google-direct"
-             class="w-full max-w-[320px] flex items-center justify-center gap-3 px-4 py-3 bg-white border border-slate-300 rounded-full shadow-sm hover:bg-slate-50 hover:border-slate-400 transition text-slate-700 font-semibold text-sm">
+             class="w-full max-w-[320px] flex items-center justify-center gap-3 px-4 py-3 bg-white border border-slate-300 rounded-xl shadow-2xs hover:bg-slate-50 hover:border-slate-400 transition text-slate-700 font-semibold text-sm">
             <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -116,13 +115,10 @@
             </svg>
             <span>Iniciar sesión con Google</span>
           </a>
-          <p class="text-[11px] text-slate-400 text-center mt-2">
-            Autenticación directa con tu cuenta oficial @upa.edu.py
-          </p>
           <button type="button"
                   id="btn-dev-admin-login"
-                  class="mt-3 w-full max-w-[320px] flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-800 hover:to-indigo-900 text-white rounded-full shadow transition text-xs font-bold">
-            <span>⚡ Acceso Rápido Admin (Pascal)</span>
+                  class="mt-3 w-full max-w-[320px] flex items-center justify-center gap-2 px-4 py-2.5 bg-[#6c9339] hover:bg-[#5a7b2e] text-white rounded-xl shadow-2xs transition text-xs font-bold">
+            <span>Acceso Rápido Administrador</span>
           </button>
         </div>
 
@@ -130,22 +126,22 @@
         <div class="pt-4 border-t border-slate-100">
           <details class="group text-xs">
             <summary class="cursor-pointer text-slate-400 hover:text-slate-600 font-medium list-none flex items-center justify-between py-1">
-              <span>Opciones avanzadas (Token manual)</span>
+              <span>Token manual (Desarrollo)</span>
               <span class="transition group-open:rotate-180">&darr;</span>
             </summary>
             <form id="form-login" class="space-y-3.5 pt-3">
               <div>
                 <label for="input-token" class="block text-[11px] font-semibold text-slate-700 mb-1">
-                  JWT de Sesión o Google ID Token
+                  JWT de Sesión
                 </label>
-                <textarea id="input-token" rows="2" placeholder="Pegue aquí el token..." class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:border-transparent font-mono bg-slate-50"></textarea>
+                <textarea id="input-token" rows="2" placeholder="Pegue aquí el token..." class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6c9339] font-mono bg-slate-50"></textarea>
               </div>
 
               <div>
                 <label for="input-classroom-token" class="block text-[11px] font-medium text-slate-600 mb-1">
                   Classroom Token (Opcional)
                 </label>
-                <input type="text" id="input-classroom-token" placeholder="ya29..." class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 font-mono bg-slate-50">
+                <input type="text" id="input-classroom-token" placeholder="ya29..." class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6c9339] font-mono bg-slate-50">
               </div>
 
               <button type="submit" id="btn-login" class="w-full py-2 px-4 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-xl text-xs shadow transition">
@@ -156,7 +152,7 @@
         </div>
 
         <div class="mt-8 text-center text-[11px] text-slate-400">
-          Universidad Paraguayo Alemana &bull; Arquitectura Zero-Mock
+          Universidad Paraguayo Alemana &bull; Campus San Lorenzo
         </div>
       </div>
     </section>
@@ -167,7 +163,7 @@
       <!-- Barra de Perfil e Identidad (API 1: Google OAuth) -->
       <div class="bg-white rounded-3xl shadow-md border border-slate-200/80 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div class="flex items-center gap-4">
-          <div id="user-avatar" class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-800 text-white font-bold text-xl flex items-center justify-center shadow-md shadow-blue-500/20">
+          <div id="user-avatar" class="w-12 h-12 rounded-full bg-[#6c9339] text-white font-bold text-lg flex items-center justify-center shadow-2xs">
             U
           </div>
           <div>
@@ -208,44 +204,40 @@
         <!-- Menú Lateral Institucional -->
         <aside id="sidebar-menu" class="w-full lg:w-72 flex-shrink-0 space-y-4">
           <!-- Área Estudiantil (Próximamente) -->
-          <div class="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-3xl p-5 shadow-md border border-slate-800 space-y-3">
+          <div class="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs space-y-2">
             <div class="flex items-center justify-between">
-              <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">Área Estudiantil</span>
-              <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Móvil</span>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Área Estudiantil</span>
+              <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">Móvil</span>
             </div>
-            <div class="p-3.5 bg-slate-800/60 rounded-2xl border border-slate-700/80 space-y-2">
-              <div class="flex items-center gap-2">
-                <span class="text-base">📱</span>
-                <h4 class="text-xs font-bold text-white">App Nativa Android</h4>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/70 space-y-1.5">
+              <div class="flex items-center gap-2 text-xs font-semibold text-slate-800">
+                <span>📱</span>
+                <span>App Nativa Android</span>
               </div>
-              <p class="text-[11px] text-slate-300 leading-relaxed">
-                Agenda académica, fechas límite de Classroom y eventos estudiantiles en desarrollo nativo por <strong>Theresa Bauer</strong>.
+              <p class="text-[11px] text-slate-500 leading-snug">
+                Agenda académica, plazos de Classroom y eventos estudiantiles en desarrollo nativo en Kotlin y Compose.
               </p>
-              <div class="text-[10px] text-emerald-400 font-semibold pt-1 flex items-center gap-1.5">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>En construcción en Android Studio</span>
-              </div>
             </div>
           </div>
 
           <!-- Módulos Administrativos (4 Pestañas) -->
-          <nav class="bg-white rounded-3xl p-3 shadow-md border border-slate-200/80 space-y-1.5 w-full">
-            <div class="px-3 py-2 text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">
+          <nav class="bg-white rounded-2xl p-3 shadow-2xs border border-slate-200/90 space-y-1.5 w-full">
+            <div class="px-3 py-2 text-[10px] font-bold uppercase text-slate-400 tracking-wider">
               Módulos Administrativos
             </div>
-            <button id="nav-mod-publications" type="button" class="sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-white bg-blue-900 shadow-sm">
-              <span class="text-base">📝</span>
+            <button id="nav-mod-publications" type="button" class="sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs">
+              <span class="text-base">📰</span>
               <span class="flex-1">Publicaciones y Eventos</span>
             </button>
-            <button id="nav-mod-groups" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+            <button id="nav-mod-groups" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
               <span class="text-base">👥</span>
               <span class="flex-1">Grupos y Audiencias</span>
             </button>
-            <button id="nav-mod-admins" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+            <button id="nav-mod-admins" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
               <span class="text-base">🛡️</span>
               <span class="flex-1">Consola de Roles</span>
             </button>
-            <button id="nav-mod-diagnostic" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+            <button id="nav-mod-diagnostic" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
               <span class="text-base">🔌</span>
               <span class="flex-1">Diagnóstico de APIs</span>
             </button>
@@ -294,26 +286,26 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           <!-- Kachel 1: Mailgruppen de Google (Exclusivo Pascal Thommen) -->
-          <article id="tile-mailgroups" class="bg-white rounded-3xl shadow-md border border-slate-200/80 overflow-hidden flex flex-col">
-            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <article id="tile-mailgroups" class="bg-white rounded-2xl shadow-2xs border border-slate-200/90 overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div>
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">API 2 &bull; Acceso Restringido</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">API 2 &bull; Acceso Restringido</span>
                 <h3 class="font-bold text-slate-900 text-sm">Google Mailgruppen</h3>
               </div>
-              <span id="groups-count" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">0 grupos</span>
+              <span id="groups-count" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">0 grupos</span>
             </div>
-            <div class="p-5 flex-1 flex flex-col justify-between space-y-4">
+            <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
               <div>
-                <p class="text-xs text-slate-500 mb-3">
-                  Grupos institucionales de Google Workspace autorizados para distribución y permisos de publicación:
+                <p class="text-xs text-slate-500 mb-2.5">
+                  Grupos de Google Workspace autorizados para distribución y permisos:
                 </p>
-                <div id="user-groups-container" class="flex flex-wrap gap-2">
+                <div id="user-groups-container" class="space-y-2">
                   <span class="text-xs text-slate-400">Consultando directorios de Google...</span>
                 </div>
               </div>
-              <div class="p-3 bg-blue-50/70 rounded-2xl border border-blue-100 text-[11px] text-blue-900 space-y-1">
-                <span class="font-bold block">Regla de Visibilidad:</span>
-                <span>Los grupos son visibles exclusivamente para el administrador central <span class="font-mono text-blue-950 font-bold">pascal.thommen@upa.edu.py</span>.</span>
+              <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70 text-[11px] text-slate-600">
+                <span class="font-semibold text-slate-800 block">Regla de Visibilidad:</span>
+                <span>Visibles para el administrador <span class="font-mono text-slate-900 font-bold">pascal.thommen@upa.edu.py</span>.</span>
               </div>
             </div>
           </article>
@@ -595,15 +587,15 @@
 
         <!-- Módulo B: Gestión de Grupos y Audiencias -->
         <section id="view-groups" class="hidden space-y-6" aria-label="Gestión de Grupos y Audiencias">
-          <div class="bg-white rounded-3xl p-6 shadow-md border border-slate-200/80">
+          <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4 mb-6">
               <div>
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">Módulo B &bull; Segmentación</span>
-                <h3 class="font-extrabold text-slate-900 text-lg mt-0.5">Grupos y Audiencias Institucionales</h3>
-                <p class="text-xs text-slate-500 mt-1">Administración de grupos internos de la aplicación y asignación de correos @upa.edu.py y Google Workspace Groups.</p>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Módulo B &bull; Segmentación</span>
+                <h3 class="font-bold text-slate-900 text-base mt-0.5">Grupos y Audiencias Institucionales</h3>
+                <p class="text-xs text-slate-500 mt-1">Grupos internos para distribución de noticias y eventos hacia cuentas @upa.edu.py y Google Groups.</p>
               </div>
-              <button id="btn-create-group" type="button" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-2 self-start sm:self-auto">
-                <span>+ Crear Grupo Interno</span>
+              <button id="btn-create-group" type="button" class="px-3.5 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 self-start sm:self-auto">
+                <span>+ Crear Grupo</span>
               </button>
             </div>
 
@@ -616,26 +608,26 @@
 
         <!-- Módulo C: Consola de Administradores y Control de Roles -->
         <section id="view-admins" class="hidden space-y-6" aria-label="Consola de Administradores">
-          <div class="bg-white rounded-3xl p-6 shadow-md border border-slate-200/80 space-y-6">
+          <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-6">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">Módulo C &bull; Seguridad y Roles</span>
-                <h3 class="font-extrabold text-slate-900 text-lg mt-0.5">Consola de Administradores</h3>
-                <p class="text-xs text-slate-500 mt-1">Control de acceso y asignación granular de permisos a usuarios institucionales (@upa.edu.py).</p>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Módulo C &bull; Permisos</span>
+                <h3 class="font-bold text-slate-900 text-base mt-0.5">Consola de Administradores</h3>
+                <p class="text-xs text-slate-500 mt-1">Gestión de accesos y asignación granular de permisos a cuentas @upa.edu.py.</p>
               </div>
             </div>
 
             <!-- Formulario para agregar nuevo administrador -->
-            <form id="form-add-admin" class="bg-slate-50/70 p-5 rounded-2xl border border-slate-200 space-y-4">
-              <h4 class="text-xs font-bold text-slate-800">Agregar Nuevo Administrador o Editor</h4>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <form id="form-add-admin" class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3.5">
+              <h4 class="text-xs font-bold text-slate-800">Autorizar Nuevo Administrador o Editor</h4>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div class="md:col-span-2">
                   <label class="block text-[11px] font-semibold text-slate-700 mb-1" for="input-admin-email">Correo Institucional *</label>
-                  <input id="input-admin-email" type="email" placeholder="nombre.apellido@upa.edu.py" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-mono focus:ring-2 focus:ring-blue-600" required>
+                  <input id="input-admin-email" type="email" placeholder="nombre.apellido@upa.edu.py" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-mono focus:ring-2 focus:ring-[#6c9339]" required>
                 </div>
                 <div>
                   <label class="block text-[11px] font-semibold text-slate-700 mb-1" for="select-admin-role">Rol Asignado</label>
-                  <select id="select-admin-role" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-blue-600">
+                  <select id="select-admin-role" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-[#6c9339]">
                     <option value="admin">Administrador Total</option>
                     <option value="editor">Editor de Redacción</option>
                   </select>
@@ -644,28 +636,28 @@
 
               <!-- Permisos granulares por pestaña -->
               <div>
-                <span class="block text-[11px] font-semibold text-slate-700 mb-2">Permisos Granulares por Módulo:</span>
+                <span class="block text-[11px] font-semibold text-slate-700 mb-2">Permisos por Módulo:</span>
                 <div class="flex flex-wrap gap-4 text-xs text-slate-700">
                   <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="perm-publications" checked class="rounded text-blue-700 focus:ring-blue-600">
+                    <input type="checkbox" id="perm-publications" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
                     <span>Publicaciones y Eventos</span>
                   </label>
                   <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="perm-groups" checked class="rounded text-blue-700 focus:ring-blue-600">
+                    <input type="checkbox" id="perm-groups" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
                     <span>Grupos y Audiencias</span>
                   </label>
                   <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="perm-admins" checked class="rounded text-blue-700 focus:ring-blue-600">
+                    <input type="checkbox" id="perm-admins" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
                     <span>Gestión de Roles</span>
                   </label>
                   <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="perm-diagnostic" checked class="rounded text-blue-700 focus:ring-blue-600">
+                    <input type="checkbox" id="perm-diagnostic" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
                     <span>Diagnóstico de APIs</span>
                   </label>
                 </div>
               </div>
 
-              <button type="submit" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow transition">
+              <button type="submit" class="px-4 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition">
                 Autorizar Administrador
               </button>
             </form>
