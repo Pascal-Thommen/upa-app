@@ -39,10 +39,27 @@ services:
       ALLOWED_EMAIL_DOMAIN: upa.edu.py
     ports:
       - "8000:8000"
-      - "8085:8000"
     volumes:
       - ./backend/secrets:/app/secrets:ro
       - uploads_data:/app/uploads
+    networks:
+      - upa-network
+
+  frontend:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+    container_name: upa-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8085:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/frontend-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - upa-network
 
