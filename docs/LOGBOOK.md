@@ -71,3 +71,7 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
    * **Separación de diagnóstico y títulos funcionales:** Reubicación de visores y botones de volcado JSON al módulo exclusivo de Diagnóstico de APIs. Reemplazo de títulos técnicos de backend por títulos orientados a la gestión académica y universitaria.  
    * **Agenda académica estilo app móvil:** Lista cronológica limpia con insignias de fecha (ej. VIE 16, VIE 23) idéntica a la interfaz nativa.  
    * **Control de caché:** Cabeceras HTTP `Cache-Control: no-cache, must-revalidate` en Nginx y versionado `?v=1.1.0` en scripts y estilos.
+7. **Enrutamiento URL Dedicado por Módulo y Persistencia de Subrutas (SRV-155):**  
+   * **Enrutador History API:** Direcciones dedicadas para cada módulo (`/dashboard/publicaciones`, `/dashboard/grupos`, `/dashboard/roles`, `/dashboard/diagnostico`, `/dashboard/estudiantes`).  
+   * **Navegación nativa:** Actualización fluida de la barra del navegador, historial de navegación (`popstate`) y persistencia del módulo activo tras recarga (F5).  
+   * **Compatibilidad de enlaces directos (Deep Linking):** Soporte en Nginx para resolver y cargar directamente cualquier pestaña solicitada sin error 404.
