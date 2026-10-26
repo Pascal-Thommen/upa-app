@@ -20,7 +20,7 @@ import jwt
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import DeviceToken, Post, User
+from ..models import DeviceToken, EventRegistration, Post, User
 from ..schemas.post import user_can_access_post
 
 logger = logging.getLogger(__name__)
@@ -264,11 +264,38 @@ def collect_recipient_tokens(db: Session, target_groups: Any) -> list[str]:
     return list(dict.fromkeys(t for t in tokens if t))
 
 
+def collect_event_reminder_tokens(db: Session, post_id: int, target_groups: Any) -> list[str]:
+    """
+    Reune los device tokens para recordatorios de un evento excluyendo explicitamente a las personas
+    que cancelaron o rechazaron su asistencia (status == 'declined').
+    """
+    declined_user_ids = {
+        int(uid)
+        for (uid,) in db.query(EventRegistration.user_id)
+        .filter(EventRegistration.post_id == post_id, EventRegistration.status == "declined")
+        .all()
+    }
+    tokens: list[str] = []
+    allowed_ids: set[int] = set()
+    for user in db.query(User).all():
+        uid = int(user.id)
+        if uid in declined_user_ids:
+            continue
+        if user_can_access_post(user, target_groups):
+            allowed_ids.add(uid)
+            if user.device_token:
+                tokens.append(user.device_token)
+    if allowed_ids:
+        rows = db.query(DeviceToken).filter(DeviceToken.user_id.in_(allowed_ids)).all()
+        tokens.extend(row.device_token for row in rows)
+    return list(dict.fromkeys(t for t in tokens if t))
+
+
 def build_emergency_message(post: Post) -> tuple[str, str, dict[str, str]]:
-    """Construye titulo, cuerpo y payload de datos para una Eilmeldung (EMERGENCY_BANNER)."""
-    title = (post.title or "").strip() or "Comunicado urgente UPA"
+    """Construye titulo, cuerpo y payload de datos para un aviso urgente o notificacion de publicacion."""
+    title = (post.title or "").strip() or "Comunicado UPA"
     body = (post.caption or post.content or "").strip() or title
-    data = {"type": EMERGENCY_BANNER, "post_id": str(post.id)}
+    data = {"type": post.post_type or EMERGENCY_BANNER, "post_id": str(post.id)}
     return title, body, data
 
 

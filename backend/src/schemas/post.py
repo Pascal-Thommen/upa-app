@@ -12,8 +12,13 @@ def ensure_utc_datetime(dt: datetime | None, fallback: datetime | None = None) -
     return target.astimezone(UTC)
 
 
-# Redaktionelle Kategorien des Redaktions-Cockpits (Code -> Anzeigename im Web-Admin)
+# Categorias editoriales del portal web-admin
 ALLOWED_CATEGORIES = {"MELDUNG", "ANKUENDIGUNG", "VERANSTALTUNG", "STELLENANGEBOT"}
+
+
+def effective_published_at(post: Any) -> datetime:
+    """Fecha efectiva de publicacion en UTC (usa published_at si existe, o created_at)."""
+    return ensure_utc_datetime(getattr(post, "published_at", None) or getattr(post, "created_at", None))
 
 
 def normalize_category(raw_category: Any) -> str | None:
@@ -37,6 +42,32 @@ def normalize_target_groups(raw_groups: Any) -> list[str]:
         return ["ALL"]
     cleaned = [str(g).strip() for g in raw_groups if g is not None and str(g).strip()]
     return cleaned if cleaned else ["ALL"]
+
+
+def effective_reminders(post: Any) -> list[int]:
+    """Minutos previos para recordatorios: usa la lista nueva o el campo historico individual."""
+    stored = getattr(post, "reminders", None)
+    if isinstance(stored, list):
+        return [int(m) for m in stored]
+    legacy = getattr(post, "reminder_minutes_before", None)
+    if getattr(post, "is_event", False) and legacy is not None:
+        return [int(legacy)]
+    return []
+
+
+def extra_detail_fields(post: Any) -> dict[str, str]:
+    """Campos adicionales de detalle para la app movil (nunca nulos): texto extra y boton de enlace."""
+    link_url = (getattr(post, "link_url", None) or "").strip()
+    if not link_url and (getattr(post, "post_type", None) or "") == "INSTAGRAM":
+        link_url = (getattr(post, "permalink", None) or "").strip()
+    link_label = (getattr(post, "link_label", None) or "").strip()
+    if link_url and not link_label and (getattr(post, "post_type", None) or "") == "INSTAGRAM":
+        link_label = "Ver en Instagram"
+    return {
+        "detail_text": (getattr(post, "detail_text", None) or "").strip(),
+        "link_url": link_url,
+        "link_label": link_label,
+    }
 
 
 def user_can_access_post(user: Any, raw_groups: Any) -> bool:
@@ -219,6 +250,9 @@ class NewsResponse(BaseModel):
     media_url: str = Field(default="", description="URL multimedia (cadena vacia si no tiene multimedia)")
     media_type: str = Field(default="", description="Tipo de medio: IMAGE, VIDEO, CAROUSEL_ALBUM o vacio")
     permalink: str = Field(default="", description="Enlace externo permanente (cadena vacia si no aplica)")
+    detail_text: str = Field(default="", description="Texto adicional exclusivo al abrir la publicacion en la app")
+    link_url: str = Field(default="", description="URL del boton de enlace opcional (cadena vacia si no aplica)")
+    link_label: str = Field(default="", description="Texto del boton de enlace opcional (cadena vacia si no aplica)")
     created_at: datetime = Field(..., description="Fecha de creacion en formato ISO-8601 UTC")
     published_at: datetime = Field(..., description="Fecha de publicacion en formato ISO-8601 UTC")
 
@@ -232,7 +266,8 @@ class NewsResponse(BaseModel):
             raw_caption if raw_caption else (full_content[:150] + "..." if len(full_content) > 150 else full_content)
         )
         img = (getattr(post, "media_url", None) or "").strip()
-        pub_date = ensure_utc_datetime(getattr(post, "created_at", None))
+        created_date = ensure_utc_datetime(getattr(post, "created_at", None))
+        pub_date = effective_published_at(post)
         return cls(
             id=int(getattr(post, "id", 0) or 0),
             title=raw_title,
@@ -248,6 +283,7 @@ class NewsResponse(BaseModel):
             media_url=img,
             media_type=(getattr(post, "media_type", None) or "").strip(),
             permalink=(getattr(post, "permalink", None) or "").strip(),
-            created_at=pub_date,
+            **extra_detail_fields(post),
+            created_at=created_date,
             published_at=pub_date,
         )

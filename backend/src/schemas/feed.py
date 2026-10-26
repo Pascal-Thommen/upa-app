@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .classroom import ClassroomDeadlineResponse
 from .event import EventResponse
-from .post import ensure_utc_datetime, normalize_target_groups
+from .post import effective_published_at, ensure_utc_datetime, extra_detail_fields, normalize_target_groups
 
 
 class ErrorResponse(BaseModel):
@@ -71,6 +71,9 @@ class FeedItemResponse(BaseModel):
     media_url: str = Field(default="", description="URL multimedia (cadena vacia si no aplica)")
     image_url: str = Field(default="", description="URL de imagen (cadena vacia si no aplica)")
     permalink: str = Field(default="", description="Enlace permanente externo (cadena vacia si no aplica)")
+    detail_text: str = Field(default="", description="Texto adicional exclusivo al abrir la publicacion en la app")
+    link_url: str = Field(default="", description="URL del boton de enlace opcional (cadena vacia si no aplica)")
+    link_label: str = Field(default="", description="Texto del boton de enlace opcional (cadena vacia si no aplica)")
     created_at: datetime = Field(..., description="Fecha de creacion en ISO-8601 UTC")
     published_at: datetime = Field(..., description="Fecha de publicacion en ISO-8601 UTC")
 
@@ -85,6 +88,7 @@ class FeedItemResponse(BaseModel):
         )
         img = (getattr(post, "media_url", None) or "").strip()
         created = ensure_utc_datetime(getattr(post, "created_at", None))
+        published = effective_published_at(post)
         raw_expires = getattr(post, "expires_at", None)
         raw_start = getattr(post, "event_start", None)
         raw_end = getattr(post, "event_end", None)
@@ -109,8 +113,9 @@ class FeedItemResponse(BaseModel):
             media_url=img,
             image_url=img,
             permalink=(getattr(post, "permalink", None) or "").strip(),
+            **extra_detail_fields(post),
             created_at=created,
-            published_at=created,
+            published_at=published,
         )
 
 
@@ -195,7 +200,7 @@ class AppStateFeedItem(BaseModel):
         raw_content = (getattr(post, "content", None) or "").strip()
         summary = raw_caption or raw_content
         content = raw_content or raw_caption
-        created = ensure_utc_datetime(getattr(post, "created_at", None))
+        published = effective_published_at(post)
         return cls(
             id=int(getattr(post, "id", 0) or 0),
             title=raw_title,
@@ -206,7 +211,7 @@ class AppStateFeedItem(BaseModel):
             target_groups=normalize_target_groups(getattr(post, "target_groups", None)),
             image_url=(getattr(post, "media_url", None) or "").strip(),
             permalink=(getattr(post, "permalink", None) or "").strip(),
-            published_at=created.isoformat(),
+            published_at=published.isoformat(),
         )
 
 

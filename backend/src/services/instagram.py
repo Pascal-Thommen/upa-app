@@ -24,18 +24,15 @@ class NormalizedSocialPost:
 
 class InstagramSyncService:
     """
-    Dienst für die Synchronisation von Instagram-Beiträgen (@upalemana).
-    Unterstützt Meta Instagram Graph API und SociableKIT JSON API.
-    Enthält Resilienz (Timeouts, Fehlerabfang) und atomare ACID-Transaktionen.
+    Servicio de sincronizacion de publicaciones de Instagram (@upalemana).
+    Soporta Meta Instagram Graph API y SociableKIT JSON API con timeouts explicitos
+    y transacciones atomicas sobre PostgreSQL.
     """
 
     DEFAULT_PERMALINK_FALLBACK = "https://www.instagram.com/upalemana"
 
     def extract_title_from_caption(self, caption: str) -> str:
-        """
-        Extrahiert einen prägnanten Titel aus dem Instagram-Caption.
-        Nimmt die erste Zeile und kürzt bei Bedarf auf maximal 200 Zeichen.
-        """
+        """Extrae un titulo conciso a partir de la primera linea del pie de foto (maximo 200 caracteres)."""
         if not caption or not caption.strip():
             return "Instagram Post @upalemana"
 
@@ -49,7 +46,7 @@ class InstagramSyncService:
         return first_line
 
     def parse_graph_api_item(self, item: dict[str, Any]) -> NormalizedSocialPost:
-        """Parst ein einzelnes Element aus der Instagram Graph API."""
+        """Convierte un elemento de la Instagram Graph API a NormalizedSocialPost."""
         media_id = str(item.get("id", ""))
         caption = item.get("caption") or ""
         media_type = item.get("media_type") or "IMAGE"
@@ -60,7 +57,6 @@ class InstagramSyncService:
         raw_ts = item.get("timestamp")
         if raw_ts:
             try:
-                # ISO Format parsen: '2026-10-20T12:00:00+0000' oder '2026-10-20T12:00:00Z'
                 timestamp = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
             except Exception:
                 timestamp = datetime.now(UTC)
@@ -75,7 +71,7 @@ class InstagramSyncService:
         )
 
     def parse_sociablekit_item(self, item: dict[str, Any]) -> NormalizedSocialPost:
-        """Parst ein Element aus dem SociableKIT Widget JSON Feed."""
+        """Convierte un elemento del feed JSON de SociableKIT a NormalizedSocialPost."""
         media_id = str(item.get("post_id") or item.get("id") or item.get("code") or "")
         caption = (
             item.get("pic_text_raw")
@@ -120,10 +116,7 @@ class InstagramSyncService:
         )
 
     async def fetch_from_graph_api(self, token: str, account_id: str = "") -> list[NormalizedSocialPost]:
-        """
-        Ruft neue Beiträge über die offizielle Instagram Graph API ab.
-        Expliziter Timeout (10s) und Fehlerbehandlung für Statuscodes.
-        """
+        """Obtiene publicaciones recientes desde la Instagram Graph API con timeout de 10 s."""
         if account_id:
             url = f"https://graph.facebook.com/v19.0/{account_id}/media"
         else:
@@ -137,15 +130,15 @@ class InstagramSyncService:
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url, params=params)
+                response = await client.get(url, params=params, timeout=10.0)
                 if response.status_code == 401:
-                    logger.error("[Instagram API] Ungültiger oder abgelaufener Access Token.")
+                    logger.error("[Instagram API] Token de acceso no valido o vencido.")
                     return []
                 if response.status_code == 429:
-                    logger.warning("[Instagram API] Rate-Limit erreicht (HTTP 429).")
+                    logger.warning("[Instagram API] Limite de tasa alcanzado (HTTP 429).")
                     return []
                 if response.status_code != 200:
-                    logger.error(f"[Instagram API] Unerwarteter Statuscode: {response.status_code} - {response.text}")
+                    logger.error("[Instagram API] Codigo de estado inesperado: %s - %s", response.status_code, response.text)
                     return []
 
                 data = response.json()
@@ -156,18 +149,14 @@ class InstagramSyncService:
                         posts.append(self.parse_graph_api_item(item))
                 return posts
         except httpx.RequestError as exc:
-            logger.error(f"[Instagram API Netzwerkfehler] {exc}")
+            logger.error("[Instagram API Error de Red] %s", exc)
             return []
         except Exception as exc:
-            logger.error(f"[Instagram API Fehler] {exc}")
+            logger.error("[Instagram API Error] %s", exc)
             return []
 
     async def fetch_from_sociablekit(self, embed_id: str) -> list[NormalizedSocialPost]:
-        """
-        Ruft Beiträge über die SociableKIT Widget JSON API ab.
-        Unterstützt primär data.accentapi.com/feed/{embed_id}.json und data.sociablekit.com als Fallback.
-        Expliziter Timeout (10s) und Netzwerkresilienz.
-        """
+        """Obtiene publicaciones desde SociableKIT JSON API con respaldo y timeout de 10 s."""
         urls_to_try = [
             f"https://data.accentapi.com/feed/{embed_id}.json",
             f"https://data.sociablekit.com/embeds/{embed_id}/data",
@@ -177,7 +166,7 @@ class InstagramSyncService:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 for url in urls_to_try:
                     try:
-                        response = await client.get(url)
+                        response = await client.get(url, timeout=10.0)
                         if response.status_code == 200:
                             data = response.json()
                             raw_items = data if isinstance(data, list) else data.get("posts", data.get("data", []))
@@ -189,14 +178,13 @@ class InstagramSyncService:
                             if posts:
                                 return posts
                     except Exception as exc:
-                        logger.warning(f"[SociableKIT] Anfrage an {url} fehlgeschlagen: {exc}")
+                        logger.warning("[SociableKIT] Solicitud a %s fallida: %s", url, exc)
                 return []
-                return posts
         except httpx.RequestError as exc:
-            logger.error(f"[SociableKIT Netzwerkfehler] {exc}")
+            logger.error("[SociableKIT Error de Red] %s", exc)
             return []
         except Exception as exc:
-            logger.error(f"[SociableKIT Fehler] {exc}")
+            logger.error("[SociableKIT Error] %s", exc)
             return []
 
     def sync_posts(
@@ -206,13 +194,13 @@ class InstagramSyncService:
         author_id: int | None = None,
     ) -> dict[str, Any]:
         """
-        Speichert oder aktualisiert die normalisierten Instagram-Posts in der Tabelle `posts`.
-        Idempotent (Upsert anhand von `instagram_id`) und atomar (ACID).
+        Guarda o actualiza publicaciones normalizadas de Instagram en la tabla `posts`.
+        Respeta las ediciones curadas en el portal (`is_edited == True`).
         """
         if not posts_data:
             return {
                 "status": "success",
-                "message": "Keine neuen Instagram-Beiträge empfangen.",
+                "message": "No se recibieron nuevas publicaciones de Instagram.",
                 "synced_count": 0,
                 "created_count": 0,
                 "updated_count": 0,
@@ -228,15 +216,23 @@ class InstagramSyncService:
 
                 existing = db.query(Post).filter(Post.instagram_id == item.instagram_id).first()
                 if existing:
-                    existing.caption = item.caption
-                    existing.content = item.caption
+                    if not existing.is_edited:
+                        existing.caption = item.caption
+                        existing.content = item.caption
                     existing.media_type = item.media_type
                     existing.media_url = item.media_url
                     existing.permalink = item.permalink
+                    if not existing.link_url:
+                        existing.link_url = item.permalink
+                    if not existing.link_label:
+                        existing.link_label = "Ver en Instagram"
+                    if existing.published_at is None:
+                        existing.published_at = item.timestamp or existing.created_at or datetime.now(UTC)
                     existing.updated_at = datetime.now(UTC)
                     updated_count += 1
                 else:
                     title = self.extract_title_from_caption(item.caption)
+                    pub_ts = item.timestamp or datetime.now(UTC)
                     new_post = Post(
                         title=title,
                         caption=item.caption,
@@ -245,13 +241,17 @@ class InstagramSyncService:
                         is_news=True,
                         is_event=False,
                         is_pinned=False,
+                        is_edited=False,
                         target_groups=["ALL"],
                         instagram_id=item.instagram_id,
                         media_type=item.media_type,
                         media_url=item.media_url,
                         permalink=item.permalink,
+                        link_url=item.permalink,
+                        link_label="Ver en Instagram",
                         author_id=author_id,
-                        created_at=item.timestamp or datetime.now(UTC),
+                        created_at=pub_ts,
+                        published_at=pub_ts,
                     )
                     db.add(new_post)
                     created_count += 1
@@ -265,29 +265,26 @@ class InstagramSyncService:
             }
         except Exception as e:
             db.rollback()
-            logger.error(f"[Instagram DB Sync Fehler] Rollback ausgeführt: {e}")
+            logger.error("[Instagram DB Sync] Transaccion revertida: %s", e)
             raise e
 
     async def sync_instagram(self, db: Session, author_id: int | None = None) -> dict[str, Any]:
-        """
-        Führt den gesamten Synchronisationsprozess für UPA-Instagram aus.
-        Wählt die konfigurierte Strategie (Graph API oder SociableKIT).
-        """
+        """Ejecuta el proceso completo de sincronizacion de Instagram segun las credenciales activas."""
         posts = []
         if settings.INSTAGRAM_ACCESS_TOKEN:
-            logger.info("[Instagram Sync] Rufe Instagram Graph API ab...")
+            logger.info("[Instagram Sync] Consultando Instagram Graph API...")
             posts = await self.fetch_from_graph_api(
                 token=settings.INSTAGRAM_ACCESS_TOKEN,
                 account_id=settings.INSTAGRAM_ACCOUNT_ID,
             )
         elif settings.SOCIABLEKIT_EMBED_ID:
-            logger.info("[Instagram Sync] Rufe SociableKIT Feed ab...")
+            logger.info("[Instagram Sync] Consultando SociableKIT Feed...")
             posts = await self.fetch_from_sociablekit(embed_id=settings.SOCIABLEKIT_EMBED_ID)
         else:
-            logger.info("[Instagram Sync] Keine externen Instagram-Zugangsdaten konfiguriert.")
+            logger.info("[Instagram Sync] Sin credenciales externas de Instagram configuradas.")
             return {
                 "status": "skipped",
-                "message": "Weder INSTAGRAM_ACCESS_TOKEN noch SOCIABLEKIT_EMBED_ID konfiguriert.",
+                "message": "No hay INSTAGRAM_ACCESS_TOKEN ni SOCIABLEKIT_EMBED_ID configurados.",
                 "synced_count": 0,
                 "created_count": 0,
                 "updated_count": 0,

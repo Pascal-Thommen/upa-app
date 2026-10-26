@@ -27,6 +27,7 @@ from ..services.push import (
     collect_recipient_tokens,
     dispatch_emergency_push,
 )
+from .publications import record_post_view
 
 router = APIRouter(prefix="/api/news", tags=["News"])
 
@@ -56,6 +57,7 @@ def get_news(
 
     query = db.query(Post).filter(
         Post.is_news.is_(True),
+        or_(Post.published_at.is_(None), Post.published_at <= now),
         or_(Post.expires_at.is_(None), Post.expires_at > now),
     )
 
@@ -94,6 +96,7 @@ def get_news_by_id(
         .filter(
             Post.id == post_id,
             Post.is_news.is_(True),
+            or_(Post.published_at.is_(None), Post.published_at <= now),
             or_(Post.expires_at.is_(None), Post.expires_at > now),
         )
         .first()
@@ -108,6 +111,7 @@ def get_news_by_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado: No pertenece al grupo destinatario de esta publicacion.",
         )
+    record_post_view(db, post.id, current_user.id)
     return NewsResponse.from_orm_post(post)
 
 

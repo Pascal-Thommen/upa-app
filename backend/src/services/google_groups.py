@@ -41,27 +41,26 @@ def _load_service_account_credentials() -> dict[str, Any] | None:
 
 async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
     """
-    Fragt die realen Google Groups für einen Benutzer über die Google Workspace Directory API ab.
-    Verwendet Domain-Wide Delegation mit dem hinterlegten Service Account.
+    Consulta los grupos reales de un usuario mediante la Google Workspace Directory API
+    empleando delegacion de dominio con la cuenta de servicio configurada.
     """
     sa = _load_service_account_credentials()
     if not sa:
-        logger.warning("Google Groups Abfrage übersprungen: Service Account nicht verfügbar für %s", user_email)
+        logger.warning("Consulta de Google Groups omitida: cuenta de servicio no disponible para %s", user_email)
         return []
 
     client_email = sa.get("client_email")
     private_key = sa.get("private_key")
     token_uri = sa.get("token_uri", "https://oauth2.googleapis.com/token")
-    # Liste potentieller delegierter Super-Admin-Accounts (soporte.ti besitzt nachweislich Workspace-Admin-Rechte)
+    # Cuentas delegadas candidatas con permisos de administracion de directorio
     candidates = []
     if settings.GOOGLE_ADMIN_DELEGATED_USER and settings.GOOGLE_ADMIN_DELEGATED_USER != "admin@upa.edu.py":
         candidates.append(settings.GOOGLE_ADMIN_DELEGATED_USER)
     candidates.extend(["soporte.ti@upa.edu.py", "admin@upa.edu.py"])
-    # Deduplizieren unter Beibehaltung der Reihenfolge
     delegated_candidates = list(dict.fromkeys(candidates))
 
     if not client_email or not private_key:
-        logger.error("Service Account JSON unvollständig (client_email oder private_key fehlt)")
+        logger.error("JSON de cuenta de servicio incompleto (falta client_email o private_key)")
         return []
 
     for delegated_user in delegated_candidates:
@@ -180,8 +179,8 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
 
 def map_groups_to_logical_tags(groups: list[dict[str, str]]) -> list[str]:
     """
-    Mappt Google Groups auf standardisierte System-Zielgruppen (z.B. TIE, ALL, PROF).
-    Ermöglicht Content-Segmentierung im UPA Campus Feed.
+    Asocia los grupos de Google Workspace a etiquetas institucionales estandarizadas (ej. TIE, ALL, PROF)
+    para la segmentacion de contenido en el feed del campus.
     """
     tags = {"ALL"}
     for g in groups:
@@ -201,3 +200,96 @@ def map_groups_to_logical_tags(groups: list[dict[str, str]]) -> list[str]:
             tags.add(g["name"])
 
     return sorted(list(tags))
+
+
+class WorkspaceDirectoryUnavailable(Exception):
+    """El listado de grupos de Google Workspace no esta disponible (sin credenciales, red o permisos)."""
+
+
+async def list_workspace_groups(domain: str | None = None) -> list[dict[str, str]]:
+    """
+    Lista todos los grupos del dominio mediante la Google Directory API (Service Account con delegacion).
+    Lanza WorkspaceDirectoryUnavailable con un mensaje legible si no es posible obtener el listado.
+    """
+    sa = _load_service_account_credentials()
+    if not sa:
+        raise WorkspaceDirectoryUnavailable("Google Workspace no está conectado (falta la cuenta de servicio).")
+
+    client_email = sa.get("client_email")
+    private_key = sa.get("private_key")
+    token_uri = sa.get("token_uri", "https://oauth2.googleapis.com/token")
+    if not client_email or not private_key:
+        raise WorkspaceDirectoryUnavailable("La cuenta de servicio de Google está incompleta.")
+
+    candidates = []
+    if settings.GOOGLE_ADMIN_DELEGATED_USER and settings.GOOGLE_ADMIN_DELEGATED_USER != "admin@upa.edu.py":
+        candidates.append(settings.GOOGLE_ADMIN_DELEGATED_USER)
+    candidates.extend(["soporte.ti@upa.edu.py", "admin@upa.edu.py"])
+    target_domain = domain or settings.ALLOWED_EMAIL_DOMAIN
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for delegated_user in dict.fromkeys(candidates):
+                now = int(time.time())
+                assertion = jwt.encode(
+                    {
+                        "iss": client_email,
+                        "sub": delegated_user,
+                        "scope": DIRECTORY_GROUP_SCOPE,
+                        "aud": token_uri,
+                        "exp": now + 3600,
+                        "iat": now,
+                    },
+                    private_key,
+                    algorithm="RS256",
+                )
+                token_resp = await client.post(
+                    token_uri,
+                    data={"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion},
+                    timeout=10.0,
+                )
+                if token_resp.status_code != 200:
+                    continue
+                access_token = token_resp.json().get("access_token")
+                if not access_token:
+                    continue
+
+                groups: list[dict[str, str]] = []
+                page_token: str | None = None
+                while True:
+                    params = {"domain": target_domain, "maxResults": "200"}
+                    if page_token:
+                        params["pageToken"] = page_token
+                    resp = await client.get(
+                        "https://admin.googleapis.com/admin/directory/v1/groups",
+                        params=params,
+                        headers={"Authorization": f"Bearer {access_token}"},
+                        timeout=10.0,
+                    )
+                    if resp.status_code == 403:
+                        break  # este usuario delegado no es administrador: probar el siguiente
+                    if resp.status_code != 200:
+                        raise WorkspaceDirectoryUnavailable(f"Google Directory respondió con el estado {resp.status_code}.")
+                    data = resp.json()
+                    for item in data.get("groups", []):
+                        email = (item.get("email") or "").strip().lower()
+                        if email:
+                            groups.append(
+                                {
+                                    "id": item.get("id", "") or "",
+                                    "name": item.get("name", "") or email,
+                                    "email": email,
+                                    "description": item.get("description", "") or "",
+                                }
+                            )
+                    page_token = data.get("nextPageToken")
+                    if not page_token:
+                        return sorted(groups, key=lambda g: g["name"].lower())
+    except httpx.TimeoutException as exc:
+        raise WorkspaceDirectoryUnavailable("Google Workspace no respondió a tiempo.") from exc
+    except httpx.HTTPError as exc:
+        raise WorkspaceDirectoryUnavailable("No se pudo contactar con Google Workspace.") from exc
+    except (ValueError, jwt.PyJWTError) as exc:
+        raise WorkspaceDirectoryUnavailable("Respuesta no válida de Google Workspace.") from exc
+
+    raise WorkspaceDirectoryUnavailable("Ninguna cuenta delegada tiene permiso para listar los grupos.")
