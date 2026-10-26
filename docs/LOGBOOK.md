@@ -54,5 +54,8 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
    * Visualización fidedigna y estricta de los 3 grupos reales obtenidos de Google Workspace Directory API (`user.google_groups`: *Estudiantes - Activos*, *Estudiantes TIE 2025*, *Ing. Tecnologías - TODOS*).
 3. **Persistencia y Renovación Continua de Google Classroom:**  
    * Actualización del flujo OAuth de Google en `/api/auth/login-google` incorporando `prompt=consent select_account` y `access_type=offline`. Esto asegura la entrega persistente del `refresh_token` y previene errores 401 en la lectura de tareas y fechas límite.
-4. **Despliegue y Validación en Contenedor Docker:**  
-   * Sincronización continua de los artefactos del portal a `backend/src/static/` y reconstrucción del servicio `upa-backend` sobre el puerto `8085` expuesto en NetBird.
+4. **Desacoplamiento Integral de Contenedores (SRV-150):**  
+   * Separación física del frontend web en su propio contenedor independiente `upa-frontend` (Nginx Alpine) eliminando archivos estáticos de la imagen de producción de FastAPI.
+   * Configuración de Nginx como Reverse Proxy en el puerto `8085` de la red NetBird: sirve el portal `/dashboard/` de manera estática y reenvía transparentemente el tráfico de `/api/`, `/health`, `/docs` y `/uploads/` hacia `http://backend:8000`.
+   * Preservación intacta del flujo de autenticación Google OAuth 2.0 y su URI de redirección (`https://upa.eu1.netbird.services/api/auth/google`).
+   * Infraestructura final en 3 contenedores productivos: `upa-postgres`, `upa-backend` y `upa-frontend`.
