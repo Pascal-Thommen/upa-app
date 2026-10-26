@@ -154,6 +154,21 @@ def test_delete_system_group_prevented():
     assert "institucional del sistema" in res.json()["detail"]
 
 
+def test_update_group_as_editor():
+    payload = {
+        "name": "Club de Robótica Avanzada",
+        "description": "Nueva descripción actualizada",
+        "google_group": "robotica_avanzada@upa.edu.py",
+        "emails": ["robotica@upa.edu.py", "lab@upa.edu.py"],
+    }
+    res = client.put("/api/groups/robotica", json=payload, headers=auth(EDITOR_ID, EDITOR_EMAIL, "editor"))
+    assert res.status_code == 200
+    updated = res.json()
+    assert updated["name"] == "Club de Robótica Avanzada"
+    assert updated["description"] == "Nueva descripción actualizada"
+    assert "lab@upa.edu.py" in updated["emails"]
+
+
 def test_delete_custom_group_success():
     res = client.delete("/api/groups/robotica", headers=auth(EDITOR_ID, EDITOR_EMAIL, "editor"))
     assert res.status_code == 200
@@ -193,6 +208,19 @@ def test_assign_role_new_admin():
     assert data["email"] == "nuevo.admin@upa.edu.py"
     assert data["role"] == "admin"
     assert data["is_primary"] is False
+
+
+def test_update_role_permissions_via_put():
+    payload = {
+        "email": EDITOR_EMAIL,
+        "name": "Editor Prensa",
+        "role": "editor",
+        "permissions": ["Publicaciones y Eventos", "Grupos y Audiencias"],
+    }
+    res = client.put(f"/api/roles/{EDITOR_EMAIL}", json=payload, headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
+    assert res.status_code == 200
+    data = res.json()
+    assert "Grupos y Audiencias" in data["permissions"]
 
 
 def test_assign_role_forbidden_domain_rejected():
