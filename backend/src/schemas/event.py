@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .post import ensure_utc_datetime, normalize_target_groups
+from .post import effective_reminders, ensure_utc_datetime, extra_detail_fields, normalize_target_groups
 
 
 class EventResponse(BaseModel):
@@ -42,6 +42,13 @@ class EventResponse(BaseModel):
     target_groups: list[str] = Field(default_factory=lambda: ["ALL"], description="Grupos destinatarios del evento")
     image_url: str = Field(default="", description="URL de imagen del evento (cadena vacia si no aplica)")
     permalink: str = Field(default="", description="Enlace externo del evento (cadena vacia si no aplica)")
+    detail_text: str = Field(default="", description="Texto adicional exclusivo al abrir el evento en la app")
+    link_url: str = Field(default="", description="URL del boton de enlace opcional (cadena vacia si no aplica)")
+    link_label: str = Field(default="", description="Texto del boton de enlace opcional (cadena vacia si no aplica)")
+    reminders: list[int] = Field(
+        default_factory=list,
+        description="Recordatorios en minutos antes del inicio (ej. [30, 1440])",
+    )
     created_at: datetime = Field(..., description="Fecha de creacion del registro en ISO-8601 UTC")
     is_registered: bool = Field(
         default=False,
@@ -89,6 +96,8 @@ class EventResponse(BaseModel):
             target_groups=normalize_target_groups(getattr(post, "target_groups", None)),
             image_url=img,
             permalink=(getattr(post, "permalink", None) or "").strip(),
+            **extra_detail_fields(post),
+            reminders=effective_reminders(post),
             created_at=created,
             is_registered=is_reg,
             registered_count=reg_count,

@@ -1,13 +1,10 @@
 /**
- * Nucleo del Cockpit de Redaccion (web-admin).
+ * Nucleo del Portal Institucional y Cockpit Editorial (web-admin).
  *
  * Modulo sin dependencias del DOM: constantes, validacion de formularios, construccion de payloads,
  * formateo, renderizado seguro de tablas (HTML escapado) y cliente REST con timeout.
  * Se carga en el navegador como `window.UpaEditorial` y en Node (`require`) para las pruebas
- * de integracion contra el backend real.
- *
- * Los textos visibles al usuario estan centralizados en `TEXTS` y los catalogos (categorias,
- * grupos, tipos de archivo) en constantes, para poder adaptarlos facilmente al diseno institucional.
+ * unitarias y de integracion contra el backend real.
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -26,13 +23,16 @@
   const DEFAULT_TIMEOUT_MS = 15000;
   const UPLOAD_TIMEOUT_MS = 60000;
 
+  /** Claves canonicas de los 4 modulos del portal. */
+  const PERMISSION_KEYS = ["publicaciones", "grupos", "roles", "apis"];
+
   /** Tipos MIME aceptados por POST /api/media/upload (el servidor ademas valida por contenido). */
   const ALLOWED_UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
   const CATEGORIES = [
-    { value: "MELDUNG", label: "Meldung del campus" },
+    { value: "MELDUNG", label: "Comunicado del campus" },
     { value: "ANKUENDIGUNG", label: "Anuncio" },
-    { value: "VERANSTALTUNG", label: "Aviso de evento" },
+    { value: "VERANSTALTUNG", label: "Actividad académica" },
     { value: "STELLENANGEBOT", label: "Oferta laboral" },
   ];
 
@@ -46,8 +46,18 @@
 
   const POST_TYPE_NORMAL = "MANUAL";
   const POST_TYPE_URGENT = "EMERGENCY_BANNER";
+  const POST_TYPE_INSTAGRAM = "INSTAGRAM";
 
-  const LIMITS = { title: 255, teaser: 300, content: 20000, location: 255, description: 20000 };
+  const LIMITS = {
+    title: 255,
+    teaser: 300,
+    content: 20000,
+    detailText: 20000,
+    location: 255,
+    description: 20000,
+    linkLabel: 120,
+    linkUrl: 1024,
+  };
 
   const TEXTS = {
     errTimeout: "La solicitud tardó demasiado y fue cancelada. Verifique la conexión e intente nuevamente.",
@@ -63,20 +73,20 @@
     errTitleRequired: "El título es obligatorio.",
     errDateRequired: "La fecha del evento es obligatoria.",
     errStartRequired: "La hora de inicio es obligatoria.",
+    errEventStartRequired: "Indique la fecha y hora de inicio del evento.",
     errEndBeforeStart: "La hora de finalización no puede ser anterior al inicio.",
     errGroupRequired: "Seleccione al menos un grupo destinatario.",
     errCategoryInvalid: "Categoría no válida.",
     errExpiresInvalid: "La fecha de vigencia no es válida.",
+    errPublishedInvalid: "La fecha programada de publicación no es válida.",
+    errSectionRequired: "Active al menos una sección: Noticia o Evento.",
+    errUrgentNoEvent: "Los avisos urgentes no admiten sección de Evento.",
   };
 
   // ---------------------------------------------------------------------------
   // Errores de API
   // ---------------------------------------------------------------------------
 
-  /**
-   * Error tipificado. `kind`: timeout | network | unauthorized | forbidden | not_found |
-   * validation | client | server | upload_too_large | upload_type | upload_empty | upload_missing
-   */
   class ApiError extends Error {
     constructor(kind, message, status, detail) {
       super(message);
@@ -87,7 +97,6 @@
     }
   }
 
-  /** Extrae un texto legible del campo `detail` de FastAPI (string o lista de errores 422). */
   function extractDetailMessage(detail) {
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) {
@@ -109,7 +118,7 @@
     const detail = body && typeof body === "object" ? body.detail : undefined;
     const detailText = extractDetailMessage(detail);
     if (status === 401) return new ApiError("unauthorized", TEXTS.errUnauthorized, status, detail);
-    if (status === 403) return new ApiError("forbidden", TEXTS.errForbidden, status, detail);
+    if (status === 403) return new ApiError("forbidden", detailText || TEXTS.errForbidden, status, detail);
     if (status === 404) return new ApiError("not_found", detailText || TEXTS.errNotFound, status, detail);
     if (status === 400 || status === 413 || status === 422) {
       return new ApiError("validation", detailText || `Datos inválidos (HTTP ${status}).`, status, detail);
@@ -118,7 +127,6 @@
     return new ApiError("client", detailText || `Error HTTP ${status}.`, status, detail);
   }
 
-  /** Mensaje para mostrar en la interfaz a partir de cualquier error capturado. */
   function describeError(error) {
     if (error instanceof ApiError) return error.message;
     if (error && error.message) return error.message;
@@ -129,11 +137,6 @@
   // Validacion de archivos
   // ---------------------------------------------------------------------------
 
-  /**
-   * Valida un archivo antes de subirlo (tamaño y tipo). No sustituye la validacion del servidor,
-   * evita transferir archivos que serian rechazados.
-   * @returns {{ok: boolean, kind?: string, message?: string}}
-   */
   function validateUploadFile(file) {
     if (!file) return { ok: false, kind: "upload_missing", message: TEXTS.errUploadMissing };
     if (!file.size) return { ok: false, kind: "upload_empty", message: TEXTS.errUploadEmpty };
@@ -160,7 +163,6 @@
       .replace(/'/g, "&#39;");
   }
 
-  /** Solo permite URLs http(s) o rutas relativas al servidor; evita `javascript:` y similares. */
   function safeUrl(url) {
     const clean = String(url || "").trim();
     if (/^https?:\/\//i.test(clean)) return clean;
@@ -180,7 +182,6 @@
     return String(n).padStart(2, "0");
   }
 
-  /** Combina fecha (YYYY-MM-DD) y hora (HH:MM) locales del navegador en un ISO-8601 UTC. */
   function localDateTimeToIso(date, time) {
     if (!date || !time) return null;
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
@@ -188,7 +189,6 @@
     if (!match || !timeMatch) return null;
     const [year, month, day, hour, minute] = [match[1], match[2], match[3], timeMatch[1], timeMatch[2]].map(Number);
     const d = new Date(year, month - 1, day, hour, minute, 0, 0);
-    // Rechaza valores que el constructor Date "corrige" (mes 13, 31 de febrero, hora 25, etc.)
     const exact =
       d.getFullYear() === year &&
       d.getMonth() === month - 1 &&
@@ -199,7 +199,6 @@
     return d.toISOString();
   }
 
-  /** Inverso de `localDateTimeToIso`: devuelve {date, time} en hora local. */
   function isoToLocalParts(iso) {
     const d = new Date(iso);
     if (!iso || Number.isNaN(d.getTime())) return { date: "", time: "" };
@@ -207,6 +206,21 @@
       date: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`,
       time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
     };
+  }
+
+  /** Convierte un ISO-8601 a valor `YYYY-MM-DDTHH:MM` para inputs `datetime-local`. */
+  function isoToDatetimeLocal(iso) {
+    const parts = isoToLocalParts(iso);
+    return parts.date && parts.time ? `${parts.date}T${parts.time}` : "";
+  }
+
+  /** Convierte un valor `datetime-local` (`YYYY-MM-DDTHH:MM`) a ISO-8601 UTC. */
+  function datetimeLocalToIso(localVal) {
+    const clean = String(localVal || "").trim();
+    if (!clean) return null;
+    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(clean);
+    if (!match) return null;
+    return localDateTimeToIso(match[1], match[2]);
   }
 
   function formatDateTime(iso, options) {
@@ -228,19 +242,265 @@
     return found ? found.label : "";
   }
 
-  // ---------------------------------------------------------------------------
-  // Formulario de noticias: validacion y payload
-  // ---------------------------------------------------------------------------
-
   function cleanGroups(groups) {
     const list = Array.isArray(groups) ? groups : [];
-    return list.map((g) => String(g).trim()).filter(Boolean);
+    const seen = new Set();
+    const out = [];
+    for (const raw of list) {
+      const val = String(raw || "").trim();
+      if (val && !seen.has(val)) {
+        seen.add(val);
+        out.push(val);
+      }
+    }
+    return out;
   }
 
-  /**
-   * @param {object} v {title, teaser, content, category, targetGroups[], urgent, pinned, imageUrl, expiresAt}
-   * @returns {Object<string,string>} errores por campo (vacio si es valido)
-   */
+  function cleanReminders(reminders) {
+    if (!Array.isArray(reminders)) return [];
+    const seen = new Set();
+    for (const raw of reminders) {
+      if (raw === "" || raw === null || raw === undefined) continue;
+      const n = Number(raw);
+      if (Number.isInteger(n) && n >= 0 && n <= 43200) {
+        seen.add(n);
+      }
+    }
+    return Array.from(seen).sort((a, b) => a - b);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Modelo unificado de Publicaciones (Noticia, Evento o ambos)
+  // ---------------------------------------------------------------------------
+
+  function validatePublicationValues(v) {
+    const errors = {};
+    const title = String(v.title || "").trim();
+    if (!title) errors.title = TEXTS.errTitleRequired;
+    else if (title.length > LIMITS.title) errors.title = `El título no puede superar ${LIMITS.title} caracteres.`;
+
+    const postType = String(v.postType || POST_TYPE_NORMAL).toUpperCase();
+    const isNews = postType === POST_TYPE_INSTAGRAM || postType === POST_TYPE_URGENT ? true : Boolean(v.isNews);
+    const isEvent = postType === POST_TYPE_URGENT ? false : Boolean(v.isEvent);
+
+    if (postType === POST_TYPE_URGENT && v.isEvent) {
+      errors.section = TEXTS.errUrgentNoEvent;
+    } else if (!isNews && !isEvent) {
+      errors.section = TEXTS.errSectionRequired;
+    }
+
+    if (cleanGroups(v.targetGroups).length === 0) {
+      errors.targetGroups = TEXTS.errGroupRequired;
+    }
+
+    if (v.publishMode === "scheduled" && postType !== POST_TYPE_INSTAGRAM) {
+      const pubIso = datetimeLocalToIso(v.publishedAt);
+      if (!pubIso) errors.publishedAt = TEXTS.errPublishedInvalid;
+    }
+
+    if (isNews) {
+      if (String(v.caption || "").length > LIMITS.teaser) {
+        errors.caption = `El resumen no puede superar ${LIMITS.teaser} caracteres.`;
+      }
+      if (String(v.content || "").length > LIMITS.content) {
+        errors.content = `El texto principal no puede superar ${LIMITS.content} caracteres.`;
+      }
+      if (String(v.detailText || "").length > LIMITS.detailText) {
+        errors.detailText = `El texto adicional no puede superar ${LIMITS.detailText} caracteres.`;
+      }
+      if (v.category && !CATEGORIES.some((c) => c.value === v.category)) {
+        errors.category = TEXTS.errCategoryInvalid;
+      }
+      if (v.expiresAt && !datetimeLocalToIso(v.expiresAt)) {
+        errors.expiresAt = TEXTS.errExpiresInvalid;
+      }
+    }
+
+    if (isEvent) {
+      const startIso = datetimeLocalToIso(v.eventStart);
+      if (!startIso) {
+        errors.eventStart = TEXTS.errEventStartRequired;
+      } else if (v.eventEnd) {
+        const endIso = datetimeLocalToIso(v.eventEnd);
+        if (!endIso || new Date(endIso) < new Date(startIso)) {
+          errors.eventEnd = TEXTS.errEndBeforeStart;
+        }
+      }
+      if (String(v.location || "").length > LIMITS.location) {
+        errors.location = `El lugar no puede superar ${LIMITS.location} caracteres.`;
+      }
+    }
+
+    return errors;
+  }
+
+  function buildPublicationPayload(v) {
+    const postType = String(v.postType || POST_TYPE_NORMAL).toUpperCase();
+    const isNews = postType === POST_TYPE_INSTAGRAM || postType === POST_TYPE_URGENT ? true : Boolean(v.isNews);
+    const isEvent = postType === POST_TYPE_URGENT ? false : Boolean(v.isEvent);
+    const targetGroups = cleanGroups(v.targetGroups);
+    const imageUrl = String(v.imageUrl || "").trim();
+
+    const payload = {
+      title: String(v.title || "").trim(),
+      post_type: postType,
+      has_registration: Boolean(v.hasRegistration),
+      target_groups: targetGroups.length ? targetGroups : ["ALL"],
+      published_at:
+        postType !== POST_TYPE_INSTAGRAM && v.publishMode === "scheduled" ? datetimeLocalToIso(v.publishedAt) : null,
+      is_news: isNews,
+      notify_groups: isNews ? cleanGroups(v.notifyGroups) : [],
+      caption: isNews ? String(v.caption || "").trim() : "",
+      content: isNews ? String(v.content || "").trim() : "",
+      detail_text: isNews ? String(v.detailText || "").trim() : "",
+      category: isNews ? String(v.category || "").trim() : "",
+      is_pinned: isNews ? Boolean(v.pinned) : false,
+      expires_at: isNews && v.expiresAt ? datetimeLocalToIso(v.expiresAt) : null,
+      media_url: imageUrl,
+      media_type: mediaTypeForUrl(imageUrl),
+      link_label: isNews ? String(v.linkLabel || "").trim() : "",
+      link_url: isNews ? String(v.linkUrl || "").trim() : "",
+      is_event: isEvent,
+      event_start: isEvent ? datetimeLocalToIso(v.eventStart) : null,
+      event_end: isEvent && v.eventEnd ? datetimeLocalToIso(v.eventEnd) : null,
+      location: isEvent ? String(v.location || "").trim() : "",
+      event_notify_groups: isEvent ? cleanGroups(v.eventNotifyGroups) : [],
+      reminders: isEvent ? cleanReminders(v.reminders) : [],
+    };
+    return payload;
+  }
+
+  function publicationToFormValues(pub) {
+    const p = pub || {};
+    const postType = String(p.post_type || POST_TYPE_NORMAL).toUpperCase();
+    const isNews = p.is_news !== undefined ? Boolean(p.is_news) : true;
+    const isEvent = Boolean(p.is_event);
+    const reminders = Array.isArray(p.reminders) ? p.reminders.slice() : isEvent ? [30] : [30];
+    const linkUrl = p.link_url || (postType === POST_TYPE_INSTAGRAM ? p.permalink || "" : "");
+    const linkLabel = p.link_label || (postType === POST_TYPE_INSTAGRAM && linkUrl ? "Ver en Instagram" : "");
+
+    return {
+      id: p.id || "",
+      title: p.title || "",
+      postType,
+      hasRegistration: Boolean(p.has_registration),
+      targetGroups: Array.isArray(p.target_groups) && p.target_groups.length ? p.target_groups.slice() : ["ALL"],
+      publishMode: p.published_at ? "scheduled" : "on_save",
+      publishedAt: isoToDatetimeLocal(p.published_at),
+      publishedAtIso: p.published_at || p.created_at || "",
+      isNews,
+      notifyGroups: Array.isArray(p.notify_groups) ? p.notify_groups.slice() : [],
+      caption: p.caption || "",
+      content: p.content || "",
+      detailText: p.detail_text || "",
+      category: p.category || "",
+      pinned: Boolean(p.is_pinned),
+      expiresAt: isoToDatetimeLocal(p.expires_at),
+      imageUrl: p.media_url || p.image_url || "",
+      permalink: p.permalink || "",
+      linkLabel,
+      linkUrl,
+      isEvent,
+      eventStart: isoToDatetimeLocal(p.event_start),
+      eventEnd: isoToDatetimeLocal(p.event_end),
+      location: p.location || "",
+      eventNotifyGroups: Array.isArray(p.event_notify_groups) ? p.event_notify_groups.slice() : [],
+      reminders,
+      viewsCount: Number(p.views_count || 0),
+      attendingCount: Number(p.attending_count || 0),
+      declinedCount: Number(p.declined_count || 0),
+      isEdited: p.is_edited !== undefined ? Boolean(p.is_edited) : postType !== POST_TYPE_INSTAGRAM,
+    };
+  }
+
+  function renderPublicationRows(items, options) {
+    const opts = options || {};
+    if (!items || items.length === 0) {
+      return `<tr><td colspan="5" class="ed-empty">No hay publicaciones para mostrar.</td></tr>`;
+    }
+    return items
+      .map((item) => {
+        const img = safeUrl(item.media_url || item.image_url);
+        const thumb = img
+          ? `<img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy">`
+          : `<div class="ed-thumb-placeholder" aria-hidden="true">UPA</div>`;
+
+        const sectionTags = [];
+        if (item.is_news) sectionTags.push(`<span class="ed-badge ed-badge-info">Noticias</span>`);
+        if (item.is_event) sectionTags.push(`<span class="ed-badge ed-badge-ok">Eventos</span>`);
+
+        const postType = String(item.post_type || "MANUAL").toUpperCase();
+        const typeBadge =
+          postType === POST_TYPE_URGENT
+            ? `<span class="ed-badge ed-badge-urgent">Aviso urgente</span>`
+            : postType === POST_TYPE_INSTAGRAM
+              ? `<span class="ed-badge ed-badge-social">Instagram</span>`
+              : `<span class="ed-badge ed-badge-neutral">Interna</span>`;
+
+        const views = Number(item.views_count || 0);
+        const attending = Number(item.attending_count || 0);
+        const declined = Number(item.declined_count || 0);
+        const showRsvp = Boolean(item.has_registration) || attending > 0 || declined > 0;
+        const metricsHtml = `<div class="ed-metrics-inline">
+          <span title="Estudiantes que abrieron la publicación">${escapeHtml(views)} vistas</span>
+          ${
+            showRsvp
+              ? `<span class="ed-subtle">&bull; ${escapeHtml(attending)} inscritos / ${escapeHtml(declined)} bajas</span>`
+              : ""
+          }
+        </div>`;
+
+        const isEdited = item.is_edited !== undefined ? Boolean(item.is_edited) : postType !== POST_TYPE_INSTAGRAM;
+        const editBadge = isEdited
+          ? `<span class="ed-badge ed-badge-ok">Editado</span>`
+          : `<span class="ed-badge ed-badge-warn">Pendiente</span>`;
+
+        const pubDate = formatDateTime(item.published_at || item.created_at, opts);
+        const eventDate = item.is_event && item.event_start ? formatDateTime(item.event_start, opts) : "";
+        const subtitle = item.summary || item.caption || "";
+
+        return `<tr class="ed-clickable-row" data-pub-id="${escapeHtml(item.id)}" tabindex="0">
+          <td class="ed-cell-title">
+            ${thumb}
+            <div class="min-w-0">
+              <div class="ed-title truncate">${escapeHtml(item.title)}</div>
+              <div class="ed-subtle truncate">${escapeHtml(subtitle)}</div>
+              <div class="ed-subtle">${escapeHtml(pubDate)}${eventDate ? ` &bull; Evento: ${escapeHtml(eventDate)}` : ""}</div>
+            </div>
+          </td>
+          <td><div class="flex flex-wrap gap-1">${sectionTags.join(" ")}</div></td>
+          <td>${typeBadge}</td>
+          <td>${metricsHtml}</td>
+          <td>${editBadge}</td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  function renderHistoryEntries(entries, options) {
+    const opts = options || {};
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return "";
+    }
+    const lines = entries.slice(0, 6).map((entry) => {
+      const who = escapeHtml(entry.admin_name || entry.admin_email || "Admin");
+      const verb = escapeHtml(entry.verb || entry.action || "actualizó");
+      const target =
+        opts.showTarget && entry.target_label ? ` <span class="font-medium">${escapeHtml(entry.target_label)}</span>` : "";
+      const changes =
+        Array.isArray(entry.changes) && entry.changes.length > 0
+          ? ` (${escapeHtml(entry.changes.join(", "))})`
+          : "";
+      const when = entry.created_at ? ` &middot; ${escapeHtml(formatDateTime(entry.created_at, opts))}` : "";
+      return `<span>${who} ${verb}${target}${changes}${when}</span>`;
+    });
+    return `<div class="ed-audit-trail">Historial: ${lines.join(" &bull; ")}</div>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Compatibilidad con formularios individuales (/api/news y /api/events)
+  // ---------------------------------------------------------------------------
+
   function validateNewsValues(v) {
     const errors = {};
     const title = String(v.title || "").trim();
@@ -263,10 +523,6 @@
     return errors;
   }
 
-  /**
-   * Construye el cuerpo para POST /api/news (create) o PUT /api/news/{id} (update).
-   * En update se pueden vaciar campos de texto enviando cadena vacia; expires_at solo se envia si existe.
-   */
   function buildNewsPayload(v, mode) {
     const isUpdate = mode === "update";
     const imageUrl = String(v.imageUrl || "").trim();
@@ -291,7 +547,6 @@
     return payload;
   }
 
-  /** Valores de formulario a partir de una noticia del backend (para editar). */
   function newsToFormValues(news) {
     return {
       title: news.title || "",
@@ -306,13 +561,6 @@
     };
   }
 
-  // ---------------------------------------------------------------------------
-  // Formulario de eventos: validacion y payload
-  // ---------------------------------------------------------------------------
-
-  /**
-   * @param {object} v {title, description, location, date, startTime, endTime, targetGroups[], rsvp, imageUrl}
-   */
   function validateEventValues(v) {
     const errors = {};
     const title = String(v.title || "").trim();
@@ -335,7 +583,6 @@
     return errors;
   }
 
-  /** Construye el cuerpo para POST /api/events o PUT /api/events/{id}. */
   function buildEventPayload(v) {
     const imageUrl = String(v.imageUrl || "").trim();
     const payload = {
@@ -352,7 +599,6 @@
     return payload;
   }
 
-  /** Valores de formulario a partir de un evento del backend (para editar). */
   function eventToFormValues(event) {
     const start = isoToLocalParts(event.event_start);
     const end = isoToLocalParts(event.event_end);
@@ -368,10 +614,6 @@
       imageUrl: event.image_url || "",
     };
   }
-
-  // ---------------------------------------------------------------------------
-  // Renderizado seguro (todo el contenido dinamico se escapa)
-  // ---------------------------------------------------------------------------
 
   function groupBadges(groups) {
     return (Array.isArray(groups) ? groups : [])
@@ -451,24 +693,27 @@
   function renderParticipantsTable(response, options) {
     const opts = options || {};
     const regs = (response && response.registrations) || [];
+    const declinedCount = response && response.declined_count ? Number(response.declined_count) : 0;
+    const declinedHtml = declinedCount > 0 ? ` <span class="ed-badge ed-badge-neutral">${escapeHtml(declinedCount)} bajas</span>` : "";
     const header = `<div class="ed-participants-head"><strong>${escapeHtml(
       response ? response.title : ""
-    )}</strong><span class="ed-badge ed-badge-ok">${escapeHtml(
+    )}</strong><div><span class="ed-badge ed-badge-ok">${escapeHtml(
       response ? response.attending_count : 0
-    )} inscritos</span></div>`;
+    )} inscritos</span>${declinedHtml}</div></div>`;
     if (regs.length === 0) {
       return `${header}<p class="ed-empty">Todavía no hay participantes inscritos.</p>`;
     }
     const rows = regs
       .map((r) => {
         const attending = r.status === "attending";
+        const label = attending ? "Asiste" : r.status === "declined" ? "Baja" : r.status;
         return `<tr>
           <td>${escapeHtml(r.full_name)}</td>
           <td class="ed-mono">${escapeHtml(r.email)}</td>
           <td>${
             attending
-              ? `<span class="ed-badge ed-badge-ok">Asiste</span>`
-              : `<span class="ed-badge ed-badge-neutral">${escapeHtml(r.status)}</span>`
+              ? `<span class="ed-badge ed-badge-ok">${escapeHtml(label)}</span>`
+              : `<span class="ed-badge ed-badge-neutral">${escapeHtml(label)}</span>`
           }</td>
           <td>${escapeHtml(formatDateTime(r.registered_at, opts))}</td>
         </tr>`;
@@ -477,7 +722,6 @@
     return `${header}<table class="ed-table"><thead><tr><th>Nombre</th><th>Correo</th><th>Estado</th><th>Inscripción</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
-  /** Texto de estado para la sincronizacion con Instagram a partir de la respuesta del backend. */
   function describeSyncResult(result) {
     const r = result || {};
     if (r.status === "skipped") {
@@ -508,15 +752,6 @@
   // Cliente REST
   // ---------------------------------------------------------------------------
 
-  /**
-   * @param {object} config
-   * @param {string} [config.baseUrl]            prefijo de URL (vacio en el navegador, mismo origen)
-   * @param {function():string|null} config.getToken  devuelve el JWT de sesion
-   * @param {function} [config.onUnauthorized]   se invoca ante HTTP 401 (sesion expirada)
-   * @param {number} [config.timeoutMs]          timeout por solicitud JSON
-   * @param {number} [config.uploadTimeoutMs]    timeout para cargas de archivos
-   * @param {function} [config.fetchImpl]        implementacion de fetch (por defecto la global)
-   */
   function createClient(config) {
     const baseUrl = (config && config.baseUrl) || "";
     const getToken = (config && config.getToken) || (() => null);
@@ -541,7 +776,7 @@
 
       let body;
       if (options.formData) {
-        body = options.formData; // el navegador fija el boundary multipart
+        body = options.formData;
       } else if (options.json !== undefined) {
         headers["Content-Type"] = "application/json";
         body = JSON.stringify(options.json);
@@ -578,7 +813,7 @@
     }
 
     const qs = (params) => {
-      const entries = Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null);
+      const entries = Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== "");
       return entries.length ? `?${new URLSearchParams(entries).toString()}` : "";
     };
 
@@ -586,6 +821,37 @@
       request,
       getMe: () => request("GET", "/api/auth/me"),
 
+      // Publicaciones unificadas
+      listPublications: (params) => request("GET", `/api/publications${qs({ limit: 150, ...params })}`),
+      getPublication: (id) => request("GET", `/api/publications/${encodeURIComponent(id)}`),
+      createPublication: (payload) => request("POST", "/api/publications", { json: payload }),
+      updatePublication: (id, payload) => request("PUT", `/api/publications/${encodeURIComponent(id)}`, { json: payload }),
+      deletePublication: (id) => request("DELETE", `/api/publications/${encodeURIComponent(id)}`),
+      getPublicationRegistrations: (id) => request("GET", `/api/publications/${encodeURIComponent(id)}/registrations`),
+      submitPublicationRsvp: (id, status) =>
+        request("POST", `/api/publications/${encodeURIComponent(id)}/rsvp`, { json: { status } }),
+      markPublicationViewed: (id) => request("POST", `/api/publications/${encodeURIComponent(id)}/view`),
+
+      // Grupos
+      listGroups: () => request("GET", "/api/groups"),
+      listWorkspaceGroups: () => request("GET", "/api/groups/google-workspace"),
+      createGroup: (payload) => request("POST", "/api/groups", { json: payload }),
+      updateGroup: (id, payload) => request("PUT", `/api/groups/${encodeURIComponent(id)}`, { json: payload }),
+      deleteGroup: (id) => request("DELETE", `/api/groups/${encodeURIComponent(id)}`),
+
+      // Roles
+      listRoles: () => request("GET", "/api/roles"),
+      assignRole: (payload) => request("POST", "/api/roles", { json: payload }),
+      updateRole: (email, payload) => request("PUT", `/api/roles/${encodeURIComponent(email)}`, { json: payload }),
+      revokeRole: (email) => request("DELETE", `/api/roles/${encodeURIComponent(email)}`),
+
+      // Historial de auditoria (solo administradores)
+      getHistory: (entityType, key) =>
+        key !== undefined && key !== null && key !== ""
+          ? request("GET", `/api/history/${encodeURIComponent(entityType)}/${encodeURIComponent(key)}`)
+          : request("GET", `/api/history/${encodeURIComponent(entityType)}`),
+
+      // Compatibilidad con endpoints de noticias y eventos
       listNews: (params) => request("GET", `/api/news${qs({ limit: 100, ...params })}`),
       createNews: (payload) => request("POST", "/api/news", { json: payload }),
       updateNews: (id, payload) => request("PUT", `/api/news/${encodeURIComponent(id)}`, { json: payload }),
@@ -599,10 +865,6 @@
 
       syncInstagram: () => request("POST", "/api/news/sync-instagram", { timeoutMs: uploadTimeoutMs }),
 
-      /**
-       * Sube un archivo a POST /api/media/upload. Valida tamaño y tipo en el cliente,
-       * salvo que `skipClientValidation` sea verdadero (usado para verificar el rechazo del servidor).
-       */
       async uploadMedia(file, uploadOptions) {
         const skip = uploadOptions && uploadOptions.skipClientValidation;
         if (!skip) {
@@ -620,10 +882,12 @@
     MAX_UPLOAD_BYTES,
     DEFAULT_TIMEOUT_MS,
     ALLOWED_UPLOAD_TYPES,
+    PERMISSION_KEYS,
     CATEGORIES,
     TARGET_GROUPS,
     POST_TYPE_NORMAL,
     POST_TYPE_URGENT,
+    POST_TYPE_INSTAGRAM,
     TEXTS,
     ApiError,
     describeError,
@@ -634,8 +898,17 @@
     isImageUrl,
     localDateTimeToIso,
     isoToLocalParts,
+    isoToDatetimeLocal,
+    datetimeLocalToIso,
     formatDateTime,
     categoryLabel,
+    cleanGroups,
+    cleanReminders,
+    validatePublicationValues,
+    buildPublicationPayload,
+    publicationToFormValues,
+    renderPublicationRows,
+    renderHistoryEntries,
     validateNewsValues,
     buildNewsPayload,
     newsToFormValues,

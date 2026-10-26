@@ -330,3 +330,98 @@ test("red: un servidor inaccesible produce ApiError network", async () => {
     (err) => err instanceof Core.ApiError && err.kind === "network" && /red/.test(err.message)
   );
 });
+
+test("modelo unificado: validatePublicationValues y buildPublicationPayload para hibrido, urgente e Instagram", () => {
+  const hybrid = {
+    title: "Jornada de puertas abiertas",
+    postType: "MANUAL",
+    hasRegistration: true,
+    targetGroups: ["ALL", "TIE"],
+    publishMode: "scheduled",
+    publishedAt: "2030-08-10T09:00",
+    isNews: true,
+    notifyGroups: ["TIE"],
+    caption: "Resumen",
+    content: "Contenido principal",
+    detailText: "Detalle exclusivo app",
+    category: "VERANSTALTUNG",
+    pinned: true,
+    expiresAt: "2030-08-20T18:00",
+    imageUrl: "/uploads/jornada.png",
+    linkLabel: "Inscribirse",
+    linkUrl: "https://upa.edu.py/jornada",
+    isEvent: true,
+    eventStart: "2030-08-15T10:00",
+    eventEnd: "2030-08-15T13:00",
+    location: "Campus San Lorenzo",
+    eventNotifyGroups: ["TIE"],
+    reminders: [60, 15, 15],
+  };
+
+  assert.deepEqual(Core.validatePublicationValues(hybrid), {});
+  const payload = Core.buildPublicationPayload(hybrid);
+  assert.equal(payload.is_news, true);
+  assert.equal(payload.is_event, true);
+  assert.equal(payload.has_registration, true);
+  assert.equal(payload.detail_text, "Detalle exclusivo app");
+  assert.equal(payload.link_label, "Inscribirse");
+  assert.equal(payload.link_url, "https://upa.edu.py/jornada");
+  assert.deepEqual(payload.reminders, [15, 60]);
+  assert.ok(payload.published_at);
+
+  // Al menos una seccion requerida
+  assert.ok(Core.validatePublicationValues({ ...hybrid, isNews: false, isEvent: false }).section);
+
+  // Eilmeldung no admite Evento
+  assert.ok(Core.validatePublicationValues({ ...hybrid, postType: "EMERGENCY_BANNER", isEvent: true }).section);
+
+  // Instagram bloquea fecha programada en payload (published_at -> null para conservar fecha original en backend)
+  const igPayload = Core.buildPublicationPayload({ ...hybrid, postType: "INSTAGRAM" });
+  assert.equal(igPayload.published_at, null);
+  assert.equal(igPayload.is_news, true);
+});
+
+test("renderPublicationRows y renderHistoryEntries muestran etiquetas, metricas y escapan XSS", () => {
+  const html = Core.renderPublicationRows(
+    [
+      {
+        id: 42,
+        title: "Post <script>alert(1)</script>",
+        summary: "Resumen",
+        post_type: "INSTAGRAM",
+        is_news: true,
+        is_event: true,
+        has_registration: true,
+        views_count: 18,
+        attending_count: 9,
+        declined_count: 2,
+        is_edited: false,
+        published_at: "2030-06-15T12:00:00Z",
+        event_start: "2030-06-20T15:00:00Z",
+      },
+    ],
+    { timeZone: "UTC" }
+  );
+  assert.ok(!html.includes("<script>"));
+  assert.ok(html.includes("Noticias") && html.includes("Eventos"));
+  assert.ok(html.includes("Instagram"));
+  assert.ok(html.includes("Pendiente"));
+  assert.ok(html.includes("18 vistas"));
+  assert.ok(html.includes("9 inscritos / 2 bajas"));
+
+  const hist = Core.renderHistoryEntries(
+    [
+      {
+        admin_name: "Pascal <b>",
+        verb: "editó",
+        target_label: "Foro UPA",
+        changes: ["título", "recordatorios"],
+        created_at: "2030-06-15T12:00:00Z",
+      },
+    ],
+    { showTarget: true, timeZone: "UTC" }
+  );
+  assert.ok(hist.includes("Historial:"));
+  assert.ok(hist.includes("Pascal &lt;b&gt;"));
+  assert.ok(hist.includes("(título, recordatorios)"));
+});

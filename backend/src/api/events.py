@@ -22,6 +22,7 @@ from ..schemas.post import (
     normalize_target_groups,
     user_can_access_post,
 )
+from .publications import record_post_view
 
 router = APIRouter(prefix="/api/events", tags=["Events"])
 
@@ -49,6 +50,7 @@ def get_events(
     now = datetime.now(UTC)
     query = db.query(Post).filter(
         Post.is_event.is_(True),
+        or_(Post.published_at.is_(None), Post.published_at <= now),
         or_(Post.expires_at.is_(None), Post.expires_at > now),
     )
 
@@ -90,6 +92,7 @@ def get_event_by_id(
         .filter(
             Post.id == event_id,
             Post.is_event.is_(True),
+            or_(Post.published_at.is_(None), Post.published_at <= now),
             or_(Post.expires_at.is_(None), Post.expires_at > now),
         )
         .first()
@@ -104,6 +107,7 @@ def get_event_by_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado: No pertenece al grupo destinatario de este evento.",
         )
+    record_post_view(db, post.id, current_user.id)
     return EventResponse.from_orm_post(post, current_user_id=current_user.id)
 
 

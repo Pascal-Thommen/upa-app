@@ -1,8 +1,8 @@
 /*
- * Estilos del Cockpit de Redaccion (web-admin).
+ * Estilos del Cockpit de Redacción y Portal Institucional (web-admin).
  *
  * Todos los colores, radios y sombras se controlan con las variables --ed-* de abajo.
- * Para adaptar el cockpit al diseno institucional basta con cambiar este bloque :root
+ * Para adaptar el portal al diseño institucional basta con cambiar este bloque :root
  * (o sobrescribirlo en una hoja posterior); los componentes (.ed-*) no contienen colores fijos.
  */
 
@@ -15,10 +15,12 @@
 
   /* Superficies y texto */
   --ed-surface: #ffffff;
-  --ed-surface-muted: #f1f5f9;
+  --ed-surface-muted: #f8fafc;
+  --ed-surface-subtle: #f1f5f9;
   --ed-border: #e2e8f0;
   --ed-text: #0f172a;
   --ed-text-muted: #64748b;
+  --ed-text-faint: #94a3b8;
 
   /* Estados */
   --ed-danger: #dc2626;
@@ -36,7 +38,7 @@
   /* Forma */
   --ed-radius: 0.75rem;
   --ed-radius-lg: 1.25rem;
-  --ed-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --ed-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 /* Tarjetas */
@@ -60,17 +62,18 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.6rem 0.75rem;
+  padding: 0.75rem 1rem;
 }
 
-/* Conmutador de modo y pestanas */
+/* Conmutador de filtros y pestañas */
 .ed-mode-btn {
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 0.85rem;
   font-size: 0.75rem;
   font-weight: 600;
   border-radius: 0.5rem;
   color: var(--ed-text-muted);
   transition: all 0.15s ease-in-out;
+  cursor: pointer;
 }
 
 .ed-mode-btn:hover {
@@ -90,8 +93,8 @@
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  padding: 0.55rem 1rem;
-  font-size: 0.8rem;
+  padding: 0.5rem 0.95rem;
+  font-size: 0.78rem;
   font-weight: 700;
   border-radius: var(--ed-radius);
   border: 1px solid transparent;
@@ -119,7 +122,7 @@
 }
 
 .ed-btn-secondary {
-  background: var(--ed-surface-muted);
+  background: var(--ed-surface-subtle);
   color: var(--ed-text);
   border-color: var(--ed-border);
 }
@@ -166,6 +169,12 @@
   border-radius: var(--ed-radius);
 }
 
+.ed-input:disabled {
+  background: var(--ed-surface-subtle);
+  color: var(--ed-text-muted);
+  cursor: not-allowed;
+}
+
 .ed-input:focus {
   outline: 2px solid var(--ed-primary);
   outline-offset: 0;
@@ -177,11 +186,16 @@
 }
 
 .ed-check {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   font-size: 0.78rem;
   color: var(--ed-text);
+  cursor: pointer;
+}
+
+.ed-check input:disabled {
+  cursor: not-allowed;
 }
 
 .ed-field-error {
@@ -200,6 +214,75 @@
 .ed-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.72rem;
+}
+
+/* Secciones modulares de Noticia y Evento */
+.ed-section-box {
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  background: var(--ed-surface);
+  overflow: hidden;
+}
+
+.ed-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--ed-surface-muted);
+  border-bottom: 1px solid transparent;
+}
+
+.ed-section-box.is-open .ed-section-header {
+  border-bottom-color: var(--ed-border);
+}
+
+.ed-section-body {
+  padding: 1rem;
+}
+
+.ed-metrics-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--ed-radius);
+  background: var(--ed-surface-muted);
+  border: 1px solid var(--ed-border);
+  font-size: 0.76rem;
+}
+
+.ed-metrics-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ed-text);
+}
+
+.ed-reminder-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.55rem;
+  background: var(--ed-surface-muted);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  font-size: 0.75rem;
+}
+
+.ed-reminder-row input {
+  width: 4.5rem;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--ed-border);
+  border-radius: 0.45rem;
+  background: var(--ed-surface);
 }
 
 /* Zona de carga de archivos (arrastrar y soltar) */
@@ -291,7 +374,7 @@
 
 .ed-table th {
   text-align: left;
-  padding: 0.5rem 0.6rem;
+  padding: 0.55rem 0.65rem;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -300,15 +383,27 @@
 }
 
 .ed-table td {
-  padding: 0.6rem;
+  padding: 0.65rem;
   vertical-align: middle;
   border-bottom: 1px solid var(--ed-border);
+}
+
+.ed-clickable-row {
+  cursor: pointer;
+  transition: background-color 0.12s ease-in-out;
+}
+
+.ed-clickable-row:hover,
+.ed-clickable-row:focus-visible {
+  background: var(--ed-surface-muted);
+  outline: none;
 }
 
 .ed-cell-title {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.7rem;
+  max-width: 24rem;
 }
 
 .ed-title {
@@ -319,9 +414,26 @@
 .ed-thumb {
   width: 2.75rem;
   height: 2.75rem;
+  flex-shrink: 0;
   object-fit: cover;
   border-radius: 0.5rem;
   border: 1px solid var(--ed-border);
+}
+
+.ed-thumb-placeholder {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ed-border);
+  background: var(--ed-surface-subtle);
+  color: var(--ed-text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 .ed-actions {
@@ -331,7 +443,7 @@
 }
 
 .ed-empty {
-  padding: 1.25rem;
+  padding: 1.5rem;
   text-align: center;
   font-size: 0.78rem;
   color: var(--ed-text-muted);
@@ -353,10 +465,11 @@
   font-weight: 700;
   border-radius: 9999px;
   border: 1px solid transparent;
+  white-space: nowrap;
 }
 
 .ed-badge-neutral {
-  background: var(--ed-surface-muted);
+  background: var(--ed-surface-subtle);
   color: var(--ed-text-muted);
   border-color: var(--ed-border);
 }
@@ -371,6 +484,11 @@
   color: var(--ed-success);
 }
 
+.ed-badge-warn {
+  background: var(--ed-warning-soft);
+  color: var(--ed-warning);
+}
+
 .ed-badge-urgent {
   background: var(--ed-danger-soft);
   color: var(--ed-danger);
@@ -380,4 +498,14 @@
 .ed-badge-social {
   background: var(--ed-social-soft);
   color: var(--ed-social);
+}
+
+/* Historial discreto al pie (solo administradores) */
+.ed-audit-trail {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ed-border);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--ed-text-faint);
 }

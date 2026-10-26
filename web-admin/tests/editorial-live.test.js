@@ -459,3 +459,104 @@ test("sesion expirada: HTTP 401 dispara el cierre de sesion exactamente una vez"
   );
   assert.equal(uploadCalls, 1);
 });
+
+test("publicaciones unificadas: crear hibrido Noticia+Evento, RSVP con baja, vistas e historial admin", live, async () => {
+  const eventStart = `${tomorrowParts()}T14:00`;
+  const eventEnd = `${tomorrowParts()}T16:00`;
+  const values = {
+    title: "Simposio de Ingeniería y Gestión",
+    postType: "MANUAL",
+    hasRegistration: true,
+    targetGroups: ["ALL"],
+    publishMode: "on_save",
+    isNews: true,
+    notifyGroups: ["ALL"],
+    caption: "Inscripciones abiertas",
+    content: "Actividad conjunta para estudiantes y docentes.",
+    detailText: "Incluye certificado de participación.",
+    linkLabel: "Agenda PDF",
+    linkUrl: "https://upa.edu.py/simposio",
+    category: "VERANSTALTUNG",
+    isEvent: true,
+    eventStart,
+    eventEnd,
+    location: "Auditorio Central",
+    eventNotifyGroups: ["ALL"],
+    reminders: [30, 120],
+    imageUrl: ctx.posterUrl,
+  };
+  assert.deepEqual(Core.validatePublicationValues(values), {});
+  const created = await ctx.editor.createPublication(Core.buildPublicationPayload(values));
+  assert.equal(created.is_news, true);
+  assert.equal(created.is_event, true);
+  assert.deepEqual(created.reminders, [30, 120]);
+  assert.equal(created.detail_text, "Incluye certificado de participación.");
+
+  // Vistas unicas y RSVP (asistencia + baja)
+  const v1 = await ctx.student.markPublicationViewed(created.id);
+  const v2 = await ctx.student.markPublicationViewed(created.id);
+  assert.equal(v1.views_count, 1);
+  assert.equal(v2.views_count, 1);
+
+  await ctx.student.submitPublicationRsvp(created.id, "attending");
+  const student2Client = clientFor(sessions.student2.access_token);
+  await student2Client.submitPublicationRsvp(created.id, "attending");
+  const afterDecline = await student2Client.submitPublicationRsvp(created.id, "declined");
+  assert.equal(afterDecline.attending_count, 1);
+  assert.equal(afterDecline.declined_count, 1);
+
+  // Quitar todos los recordatorios dejando lista vacia []
+  const updated = await ctx.editor.updatePublication(created.id, { reminders: [] });
+  assert.deepEqual(updated.reminders, []);
+
+  // Historial visible para admin (200) y prohibido para editor y estudiante (403)
+  const history = await ctx.admin.getHistory("post", created.id);
+  assert.ok(Array.isArray(history) && history.length >= 2);
+  await assert.rejects(
+    () => ctx.editor.getHistory("post", created.id),
+    (err) => err.kind === "forbidden" && err.status === 403
+  );
+  await assert.rejects(
+    () => ctx.student.getHistory("post"),
+    (err) => err.kind === "forbidden" && err.status === 403
+  );
+
+  await ctx.editor.deletePublication(created.id);
+});
+
+test("grupos y matriz de roles en vivo contra SQLite/PostgreSQL", live, async () => {
+  const ws = await ctx.admin.listWorkspaceGroups();
+  assert.ok(Array.isArray(ws.groups));
+
+  const grp = await ctx.admin.createGroup({
+    name: "Cohorte Innovación",
+    description: "",
+    google_groups: ["innovacion@upa.edu.py"],
+    emails: ["ana.gomez@upa.edu.py"],
+  });
+  assert.equal(grp.name, "Cohorte Innovación");
+  assert.deepEqual(grp.google_groups, ["innovacion@upa.edu.py"]);
+
+  const updGrp = await ctx.admin.updateGroup(grp.id, {
+    name: "Cohorte Innovación 2026",
+    google_groups: ["innovacion@upa.edu.py"],
+    emails: ["ana.gomez@upa.edu.py", "luis.benitez@upa.edu.py"],
+  });
+  assert.equal(updGrp.name, "Cohorte Innovación 2026");
+  assert.equal(updGrp.emails.length, 2);
+  await ctx.admin.deleteGroup(grp.id);
+
+  // Matriz de roles: autorizar cuenta con permisos especificos y actualizarla
+  const assigned = await ctx.admin.assignRole({
+    email: "coordinador.test@upa.edu.py",
+    name: "Coordinador Test",
+    permissions: ["publicaciones", "grupos"],
+  });
+  assert.deepEqual(assigned.permissions, ["publicaciones", "grupos"]);
+
+  const updatedRole = await ctx.admin.updateRole("coordinador.test@upa.edu.py", {
+    permissions: ["grupos", "apis"],
+  });
+  assert.deepEqual(updatedRole.permissions, ["grupos", "apis"]);
+  await ctx.admin.revokeRole("coordinador.test@upa.edu.py");
+});

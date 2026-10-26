@@ -42,6 +42,7 @@ def get_feed(
             .filter(
                 Post.post_type == "EMERGENCY_BANNER",
                 Post.is_news.is_(True),
+                or_(Post.published_at.is_(None), Post.published_at <= now),
                 or_(Post.expires_at.is_(None), Post.expires_at > now),
             )
             .order_by(desc(Post.is_pinned), desc(Post.created_at))
@@ -56,6 +57,7 @@ def get_feed(
 
     posts_query = db.query(Post).filter(
         Post.post_type != "EMERGENCY_BANNER",
+        or_(Post.published_at.is_(None), Post.published_at <= now),
         or_(Post.expires_at.is_(None), Post.expires_at > now),
     )
 

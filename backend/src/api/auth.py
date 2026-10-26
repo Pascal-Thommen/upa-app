@@ -11,6 +11,7 @@ from ..auth import create_access_token, get_current_user, verify_google_id_token
 from ..config import settings
 from ..database import get_db
 from ..models import User, UserRole
+from ..permissions import effective_permissions, normalize_permissions
 from ..schemas.feed import ErrorResponse
 from ..services.google_groups import get_google_groups_for_user, map_groups_to_logical_tags
 from .classroom import clear_classroom_cache
@@ -27,7 +28,12 @@ ADMIN_EMAILS = {
 def _resolve_user_role(db: Session, email: str, existing_user: User | None = None) -> str:
     assigned_role = db.query(UserRole).filter(UserRole.email == email).first()
     if assigned_role:
-        return assigned_role.role
+        perms = normalize_permissions(assigned_role.permissions)
+        if "roles" in perms:
+            return "admin"
+        if perms:
+            return "editor"
+        return "user"
     if existing_user and existing_user.role in ("admin", "editor"):
         return existing_user.role
     if email in ADMIN_EMAILS:
@@ -138,6 +144,10 @@ class UserResponse(BaseModel):
         default=False,
         description="Indica si el usuario tiene un token de Google Classroom registrado",
     )
+    permissions: list[str] = Field(
+        default_factory=list,
+        description="Modulos del portal habilitados: publicaciones, grupos, roles, apis",
+    )
 
 
 class ClassroomTokenRequest(BaseModel):
@@ -241,7 +251,7 @@ def _validate_and_normalize_email(raw_email: str) -> str:
     return email
 
 
-def _build_user_response(user: User) -> UserResponse:
+def _build_user_response(user: User, permissions: list[str] | None = None) -> UserResponse:
     """Construye un UserResponse libre de valores nulos y con filtrado de privacidad."""
     clean_email = (user.email or "").strip().lower()
     clean_name = (user.full_name or "").strip() or _derive_full_name(clean_email)
@@ -258,6 +268,7 @@ def _build_user_response(user: User) -> UserResponse:
         groups=_filter_user_groups_for_privacy(clean_email, user.groups),
         google_groups=_filter_google_groups_for_privacy(clean_email, user.google_groups),
         has_classroom_token=has_token,
+        permissions=list(permissions or []),
     )
 
 
@@ -431,7 +442,7 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
     return AuthResponse(
         access_token=session_token,
         token_type="bearer",
-        user=_build_user_response(user),
+        user=_build_user_response(user, effective_permissions(db, user)),
     )
 
 
@@ -512,7 +523,7 @@ async def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> 
     return AuthResponse(
         access_token=session_token,
         token_type="bearer",
-        user=_build_user_response(user),
+        user=_build_user_response(user, effective_permissions(db, user)),
     )
 
 
@@ -524,9 +535,9 @@ async def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> 
         401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
     },
 )
-def get_me(current_user: User = Depends(get_current_user)) -> UserResponse:
-    """Retorna los datos de perfil y grupos del usuario autenticado actualmente."""
-    return _build_user_response(current_user)
+def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> UserResponse:
+    """Retorna los datos de perfil, grupos y modulos habilitados del usuario autenticado actualmente."""
+    return _build_user_response(current_user, effective_permissions(db, current_user))
 
 
 @router.post(
@@ -561,7 +572,7 @@ def update_classroom_token(
     db.commit()
     db.refresh(current_user)
     clear_classroom_cache(current_user.email)
-    return _build_user_response(current_user)
+    return _build_user_response(current_user, effective_permissions(db, current_user))
 
 
 @router.get(

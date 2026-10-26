@@ -25,9 +25,11 @@ from .api.diagnostics import router as diagnostics_router
 from .api.events import router as events_router
 from .api.feed import router as feed_router
 from .api.groups import router as groups_router
+from .api.history import router as history_router
 from .api.media import UploadsStaticFiles, get_upload_dir
 from .api.media import router as media_router
 from .api.news import router as news_router
+from .api.publications import router as publications_router
 from .api.roles import router as roles_router
 from .api.users import router as users_router
 from .auth import get_current_user_optional
@@ -96,8 +98,10 @@ app.include_router(events_router)
 app.include_router(classroom_router)
 app.include_router(feed_router)
 app.include_router(media_router)
+app.include_router(publications_router)
 app.include_router(groups_router)
 app.include_router(roles_router)
+app.include_router(history_router)
 app.include_router(diagnostics_router)
 
 
@@ -127,6 +131,7 @@ def _query_upcoming_events(
     now = datetime.now(UTC)
     query = db.query(Post).filter(
         Post.is_event.is_(True),
+        or_(Post.published_at.is_(None), Post.published_at <= now),
         or_(Post.expires_at.is_(None), Post.expires_at > now),
     )
     if upcoming_only:
@@ -239,7 +244,10 @@ async def get_app_state(
     """
     now = datetime.now(UTC)
 
-    query = db.query(Post).filter(or_(Post.expires_at.is_(None), Post.expires_at > now))
+    query = db.query(Post).filter(
+        or_(Post.published_at.is_(None), Post.published_at <= now),
+        or_(Post.expires_at.is_(None), Post.expires_at > now),
+    )
     if current_user is None:
         query = query.filter(Post.post_type == "INSTAGRAM")
 

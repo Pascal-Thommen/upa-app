@@ -23,35 +23,10 @@ body {
   color: #1e293b;
 }
 
-/* Badges de Grupos de Google Workspace */
-.group-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.35rem 0.65rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.025em;
-  border: 1px solid transparent;
-  transition: all 0.15s ease-in-out;
-}
-
-.group-badge-all {
-  background-color: #eff6ff;
-  color: #1e40af;
-  border-color: #bfdbfe;
-}
-
-.group-badge-tie {
-  background-color: #f0fdf4;
-  color: #166534;
-  border-color: #bbf7d0;
-}
-
-/* Spinner de Carga */
+/* Spinner de carga */
 .spinner {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.15rem;
+  height: 1.15rem;
   border: 2px solid #e2e8f0;
   border-top-color: #6c9339;
   border-radius: 9999px;
@@ -63,7 +38,103 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* Cuadrícula del Calendario Mensual */
+/* Tarjetas de cursos y feed en vista de APIs */
+.course-card {
+  padding: 0.75rem;
+  border-radius: 0.85rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-classroom-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: #eff6ff;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.btn-classroom-link:hover {
+  background: #dbeafe;
+}
+
+.feed-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.9rem;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.feed-card-img {
+  width: 100%;
+  height: 10.5rem;
+  object-fit: cover;
+  background: #f1f5f9;
+}
+
+.feed-card-placeholder {
+  width: 100%;
+  height: 10.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* Filas limpias de Grupos y chips de miembros */
+.group-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  background: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.12s ease-in-out, border-color 0.12s ease-in-out;
+}
+
+.group-row:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.chip-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.chip-tag button {
+  color: #64748b;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.chip-tag button:hover {
+  color: #dc2626;
+}
+
+/* Cuadrícula del calendario mensual */
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -120,25 +191,4 @@ body {
 .calendar-day.is-empty {
   cursor: default;
   background-color: transparent !important;
-}
-
-/* Botones de Modo Redacción vs Estudiantes */
-.ed-mode-btn {
-  padding: 0.375rem 0.875rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 0.75rem;
-  transition: all 0.15s ease-in-out;
-  color: #64748b;
-}
-
-.ed-mode-btn:hover {
-  color: #0f172a;
-}
-
-.ed-mode-btn.is-active {
-  background-color: #ffffff;
-  color: #6c9339;
-  font-weight: 700;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
