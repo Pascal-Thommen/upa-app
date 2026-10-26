@@ -143,6 +143,26 @@ def test_dashboard_static_files_served():
     assert "Google Classroom" in response.text
 
 
+def test_dashboard_spa_subroutes_served():
+    subroutes = [
+        "/dashboard/publicaciones",
+        "/dashboard/grupos",
+        "/dashboard/roles",
+        "/dashboard/diagnostico",
+        "/dashboard/estudiantes",
+        "/dashboard/ruta-desconocida",
+    ]
+    for route in subroutes:
+        response = client.get(route)
+        assert response.status_code == 200, f"Error al servir subruta SPA {route}"
+        assert "UPA" in response.text
+        assert "Portal Campus Institucional" in response.text or "Portal Institucional" in response.text
+
+    # Archivo con extension inexistente debe dar 404
+    missing_asset = client.get("/dashboard/no-existe.png")
+    assert missing_asset.status_code == 404
+
+
 def test_root_redirects_to_dashboard():
     response = client.get("/", follow_redirects=False)
     assert response.status_code in (307, 200)

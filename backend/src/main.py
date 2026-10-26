@@ -9,6 +9,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import asc, desc, or_
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException
 
 from .api.auth import (
     _derive_full_name,
@@ -306,6 +307,21 @@ try:
 except OSError as upload_dir_error:
     print(f"[Startup Warning] Directorio de subidas no disponible, /uploads no montado: {upload_dir_error}")
 
+class SPAStaticFiles(StaticFiles):
+    """StaticFiles con soporte SPA: resuelve subrutas sin extension hacia index.html."""
+
+    async def get_response(self, path: str, scope):
+        try:
+            response = await super().get_response(path, scope)
+            if response.status_code == 404 and "." not in path:
+                return await super().get_response("index.html", scope)
+            return response
+        except HTTPException as ex:
+            if ex.status_code == 404 and "." not in path:
+                return await super().get_response("index.html", scope)
+            raise
+
+
 # Montaje del portal estatico Web-Admin
 candidate_static_dirs = [
     Path(__file__).resolve().parent / "static",
@@ -320,8 +336,8 @@ for candidate in candidate_static_dirs:
         break
 
 if active_static_dir:
-    app.mount("/dashboard", StaticFiles(directory=str(active_static_dir), html=True), name="dashboard")
-    app.mount("/admin", StaticFiles(directory=str(active_static_dir), html=True), name="admin")
+    app.mount("/dashboard", SPAStaticFiles(directory=str(active_static_dir), html=True), name="dashboard")
+    app.mount("/admin", SPAStaticFiles(directory=str(active_static_dir), html=True), name="admin")
 
 
 @app.get("/", include_in_schema=False)

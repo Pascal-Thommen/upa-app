@@ -616,6 +616,9 @@ async function refreshDashboard() {
   if (user) {
     // Cockpit de redaccion: visible solo para administradores y redactores
     if (window.UpaCockpit) window.UpaCockpit.onUserLoaded(user);
+    if (window.UpaRouter && typeof window.UpaRouter.reapplyCurrentRoute === "function") {
+      window.UpaRouter.reapplyCurrentRoute();
+    }
     await Promise.all([loadClassroomCourses(), loadClassroomDeadlines(), loadCampusFeed()]);
     updateJsonView();
   }
@@ -1092,82 +1095,239 @@ function renderAdminsModule() {
   });
 }
 
+// ===========================================================================
+// Enrutamiento URL Dedicado por Modulo (History API, Deep Linking y F5)
+// ===========================================================================
+
+const ROUTE_CONFIG = {
+  publicaciones: {
+    path: "/dashboard/publicaciones",
+    btnId: "nav-mod-publications",
+    viewId: "view-editorial",
+  },
+  grupos: {
+    path: "/dashboard/grupos",
+    btnId: "nav-mod-groups",
+    viewId: "view-groups",
+  },
+  roles: {
+    path: "/dashboard/roles",
+    btnId: "nav-mod-admins",
+    viewId: "view-admins",
+  },
+  diagnostico: {
+    path: "/dashboard/diagnostico",
+    btnId: "nav-mod-diagnostic",
+    viewId: "view-diagnostic",
+  },
+  estudiantes: {
+    path: "/dashboard/estudiantes",
+    btnId: "nav-mod-students",
+    viewId: "student-workspace",
+  },
+};
+
+let currentActiveRoute = "publicaciones";
+
+function resolveRoute(rawPath) {
+  if (!rawPath) {
+    return { name: "publicaciones", path: "/dashboard/publicaciones", isRedirect: true };
+  }
+  let path = String(rawPath).split("?")[0].split("#")[0].replace(/\/+$/, "");
+  if (!path) path = "/dashboard";
+  const lower = path.toLowerCase();
+
+  if (lower === "/dashboard/publicaciones" || lower === "/dashboard/noticias" || lower === "/dashboard/eventos") {
+    return { name: "publicaciones", path: "/dashboard/publicaciones", isRedirect: lower !== "/dashboard/publicaciones" };
+  }
+  if (lower === "/dashboard/grupos" || lower === "/dashboard/groups") {
+    return { name: "grupos", path: "/dashboard/grupos", isRedirect: lower !== "/dashboard/grupos" };
+  }
+  if (lower === "/dashboard/roles" || lower === "/dashboard/admins") {
+    return { name: "roles", path: "/dashboard/roles", isRedirect: lower !== "/dashboard/roles" };
+  }
+  if (lower === "/dashboard/diagnostico" || lower === "/dashboard/diagnostic") {
+    return { name: "diagnostico", path: "/dashboard/diagnostico", isRedirect: lower !== "/dashboard/diagnostico" };
+  }
+  if (lower === "/dashboard/estudiantes" || lower === "/dashboard/students") {
+    return { name: "estudiantes", path: "/dashboard/estudiantes", isRedirect: lower !== "/dashboard/estudiantes" };
+  }
+
+  // Cualquier ruta no reconocida redirige a /dashboard/publicaciones
+  return { name: "publicaciones", path: "/dashboard/publicaciones", isRedirect: true };
+}
+
+function syncNavClasses(routeName) {
+  const config = ROUTE_CONFIG[routeName] || ROUTE_CONFIG.publicaciones;
+  const allBtns = Object.values(ROUTE_CONFIG)
+    .map(c => document.getElementById(c.btnId))
+    .filter(Boolean);
+
+  allBtns.forEach(btn => {
+    btn.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+  });
+
+  const activeBtn = document.getElementById(config.btnId);
+  if (activeBtn) {
+    activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
+  }
+}
+
+function applyRoute(routeName, options = {}) {
+  const config = ROUTE_CONFIG[routeName] || ROUTE_CONFIG.publicaciones;
+  const canonicalPath = config.path;
+  const shouldUpdateUrl = options.updateUrl !== false;
+
+  if (shouldUpdateUrl && typeof window !== "undefined" && window.history) {
+    const currentPath = (window.location.pathname || "").replace(/\/+$/, "") || "/dashboard";
+    if (options.replace || options.isRedirect || currentPath !== canonicalPath) {
+      if (options.push && !options.replace && !options.isRedirect) {
+        window.history.pushState({ route: routeName }, "", canonicalPath);
+      } else {
+        window.history.replaceState({ route: routeName }, "", canonicalPath);
+      }
+    }
+  }
+
+  currentActiveRoute = routeName;
+  try {
+    localStorage.setItem("upa_active_route", routeName);
+  } catch (_) {}
+
+  syncNavClasses(routeName);
+
+  const allViews = Object.values(ROUTE_CONFIG)
+    .map(c => document.getElementById(c.viewId))
+    .filter(Boolean);
+  allViews.forEach(v => v.classList.add("hidden"));
+
+  const activeView = document.getElementById(config.viewId);
+  if (activeView) {
+    activeView.classList.remove("hidden");
+  }
+
+  const edBtn = document.getElementById("mode-btn-editorial");
+  const stBtn = document.getElementById("mode-btn-student");
+
+  if (routeName === "publicaciones") {
+    if (edBtn) edBtn.classList.add("is-active");
+    if (stBtn) stBtn.classList.remove("is-active");
+    if (window.UpaCockpit && typeof window.UpaCockpit.loadPanelData === "function") {
+      window.UpaCockpit.loadPanelData();
+    }
+  } else if (routeName === "estudiantes") {
+    if (stBtn) stBtn.classList.add("is-active");
+    if (edBtn) edBtn.classList.remove("is-active");
+  } else if (routeName === "grupos") {
+    if (edBtn) edBtn.classList.remove("is-active");
+    if (stBtn) stBtn.classList.remove("is-active");
+    renderGroupsModule();
+  } else if (routeName === "roles") {
+    if (edBtn) edBtn.classList.remove("is-active");
+    if (stBtn) stBtn.classList.remove("is-active");
+    renderAdminsModule();
+  } else if (routeName === "diagnostico") {
+    if (edBtn) edBtn.classList.remove("is-active");
+    if (stBtn) stBtn.classList.remove("is-active");
+    updateJsonView();
+  }
+}
+
+function navigate(targetPath, options = {}) {
+  const resolved = resolveRoute(targetPath);
+  const shouldPush = options.push !== false && !options.replace && !resolved.isRedirect;
+  applyRoute(resolved.name, {
+    updateUrl: true,
+    push: shouldPush,
+    replace: !shouldPush || options.replace || resolved.isRedirect,
+    isRedirect: resolved.isRedirect,
+  });
+}
+
+const UpaRouter = {
+  ROUTES: {
+    PUBLICACIONES: "/dashboard/publicaciones",
+    GRUPOS: "/dashboard/grupos",
+    ROLES: "/dashboard/roles",
+    DIAGNOSTICO: "/dashboard/diagnostico",
+    ESTUDIANTES: "/dashboard/estudiantes",
+  },
+  resolveRoute,
+  applyRoute,
+  navigate,
+  syncNavClasses,
+  getCurrentRoute() {
+    return currentActiveRoute;
+  },
+  reapplyCurrentRoute() {
+    applyRoute(currentActiveRoute, { updateUrl: false });
+  },
+  init() {
+    const initialResolved = resolveRoute(typeof window !== "undefined" ? window.location.pathname : "/dashboard/publicaciones");
+    applyRoute(initialResolved.name, {
+      updateUrl: true,
+      push: false,
+      replace: initialResolved.isRedirect,
+      isRedirect: initialResolved.isRedirect,
+    });
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("popstate", () => {
+        const popResolved = resolveRoute(window.location.pathname);
+        applyRoute(popResolved.name, {
+          updateUrl: popResolved.isRedirect,
+          push: false,
+          replace: true,
+          isRedirect: popResolved.isRedirect,
+        });
+      });
+    }
+  },
+};
+
+window.UpaRouter = UpaRouter;
+
 function setupSidebarNavigation() {
   const btnPubs = document.getElementById("nav-mod-publications");
   const btnGroups = document.getElementById("nav-mod-groups");
   const btnAdmins = document.getElementById("nav-mod-admins");
   const btnDiag = document.getElementById("nav-mod-diagnostic");
-
-  const viewEditorial = document.getElementById("view-editorial");
-  const viewGroups = document.getElementById("view-groups");
-  const viewAdmins = document.getElementById("view-admins");
-  const viewDiag = document.getElementById("view-diagnostic");
-  const studentWorkspace = document.getElementById("student-workspace");
-
-  const allNavBtns = [btnPubs, btnGroups, btnAdmins, btnDiag].filter(Boolean);
-  const allViews = [viewEditorial, viewGroups, viewAdmins, viewDiag, studentWorkspace].filter(Boolean);
-
-  function setActive(activeBtn, activeView) {
-    allNavBtns.forEach(b => {
-      b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
-    });
-    if (activeBtn) {
-      activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
-    }
-    allViews.forEach(v => v.classList.add("hidden"));
-    if (activeView) {
-      activeView.classList.remove("hidden");
-    }
-  }
+  const btnStudents = document.getElementById("nav-mod-students");
+  const headerLogoLink = document.getElementById("header-logo-link");
 
   if (btnPubs) {
-    btnPubs.addEventListener("click", () => {
-      setActive(btnPubs, viewEditorial);
-      const edBtn = document.getElementById("mode-btn-editorial");
-      if (edBtn) edBtn.click();
-    });
+    btnPubs.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.PUBLICACIONES));
   }
   if (btnGroups) {
-    btnGroups.addEventListener("click", () => {
-      setActive(btnGroups, viewGroups);
-      renderGroupsModule();
-    });
+    btnGroups.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.GRUPOS));
   }
   if (btnAdmins) {
-    btnAdmins.addEventListener("click", () => {
-      setActive(btnAdmins, viewAdmins);
-      renderAdminsModule();
-    });
+    btnAdmins.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.ROLES));
   }
   if (btnDiag) {
-    btnDiag.addEventListener("click", () => {
-      setActive(btnDiag, viewDiag);
-      updateJsonView();
+    btnDiag.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.DIAGNOSTICO));
+  }
+  if (btnStudents) {
+    btnStudents.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.ESTUDIANTES));
+  }
+  if (headerLogoLink) {
+    headerLogoLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      UpaRouter.navigate(UpaRouter.ROUTES.PUBLICACIONES);
     });
   }
 
   const modeBtnStudent = document.getElementById("mode-btn-student");
   if (modeBtnStudent) {
-    modeBtnStudent.addEventListener("click", () => {
-      allNavBtns.forEach(b => {
-        b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
-      });
-      [viewGroups, viewAdmins, viewDiag].forEach(v => v && v.classList.add("hidden"));
-    });
+    modeBtnStudent.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.ESTUDIANTES));
   }
 
   const modeBtnEditorial = document.getElementById("mode-btn-editorial");
   if (modeBtnEditorial) {
-    modeBtnEditorial.addEventListener("click", () => {
-      if (btnPubs) {
-        allNavBtns.forEach(b => {
-          b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
-        });
-        btnPubs.className = "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
-      }
-      [viewGroups, viewAdmins, viewDiag].forEach(v => v && v.classList.add("hidden"));
-    });
+    modeBtnEditorial.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.PUBLICACIONES));
   }
+
+  UpaRouter.init();
 
   const formAddAdmin = document.getElementById("form-add-admin");
   if (formAddAdmin) {
