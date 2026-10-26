@@ -27,8 +27,8 @@
     }
   </script>
   
-  <link rel="stylesheet" href="/dashboard/style.css">
-  <link rel="stylesheet" href="/dashboard/editorial.css">
+  <link rel="stylesheet" href="/dashboard/style.css?v=1.1.0">
+  <link rel="stylesheet" href="/dashboard/editorial.css?v=1.1.0">
   <script>
     if (localStorage.getItem("upa_auth_token") || window.location.search.includes("token=")) {
       document.documentElement.classList.add("has-auth");
@@ -43,45 +43,22 @@
 
   <!-- Encabezado Principal Institucional UPA -->
   <header class="bg-white text-slate-900 shadow-xs border-b border-slate-200 sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
       <div class="flex items-center space-x-3.5">
         <a href="/dashboard/" class="flex items-center gap-3">
           <img src="/dashboard/upa-logo.png" alt="Universidad Paraguayo Alemana" class="h-10 w-auto object-contain">
         </a>
         <div class="h-7 w-px bg-slate-200 hidden sm:block"></div>
         <div>
-          <h1 class="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            Portal Campus Institucional
-            <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase tracking-wider">
-              En Vivo
-            </span>
+          <h1 class="text-sm font-bold tracking-tight text-slate-900">
+            Portal Institucional Campus
           </h1>
-          <p class="text-[11px] text-slate-500">Administración y Diagnóstico &bull; UPA Heidelberg - Asunción</p>
+          <p class="text-[11px] text-slate-500">Universidad Paraguayo Alemana &bull; Asunción</p>
         </div>
       </div>
 
-      <!-- Barra de estado de 4 APIs del Backend -->
-      <div class="flex items-center flex-wrap gap-2 text-[11px]">
-        <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" id="badge-api-oauth"></span>
-          <span>1. OAuth 2.0</span>
-        </div>
-        <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" id="badge-api-groups"></span>
-          <span>2. Mailgruppen</span>
-        </div>
-        <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" id="badge-api-classroom"></span>
-          <span>3. Google Classroom</span>
-        </div>
-        <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" id="badge-api-feed"></span>
-          <span>4. Instagram Feed</span>
-        </div>
-
-        <div id="auth-actions" class="ml-2 flex items-center gap-2">
-          <!-- Botón de Cerrar Sesión dinámico -->
-        </div>
+      <div id="auth-actions" class="flex items-center gap-2">
+        <!-- Avatar y Botón de Cerrar Sesión dinámico -->
       </div>
     </div>
   </header>
@@ -203,42 +180,25 @@
 
         <!-- Menú Lateral Institucional -->
         <aside id="sidebar-menu" class="w-full lg:w-72 flex-shrink-0 space-y-4">
-          <!-- Área Estudiantil (Próximamente) -->
-          <div class="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Área Estudiantil</span>
-              <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">Móvil</span>
+          <!-- Módulos de Gestión -->
+          <nav class="bg-white rounded-2xl p-3 shadow-2xs border border-slate-200/90 space-y-1 w-full">
+            <div class="px-3.5 py-2 text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              Gestión Institucional
             </div>
-            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/70 space-y-1.5">
-              <div class="flex items-center gap-2 text-xs font-semibold text-slate-800">
-                <span>📱</span>
-                <span>App Nativa Android</span>
-              </div>
-              <p class="text-[11px] text-slate-500 leading-snug">
-                Agenda académica, plazos de Classroom y eventos estudiantiles en desarrollo nativo en Kotlin y Compose.
-              </p>
-            </div>
-          </div>
-
-          <!-- Módulos Administrativos (4 Pestañas) -->
-          <nav class="bg-white rounded-2xl p-3 shadow-2xs border border-slate-200/90 space-y-1.5 w-full">
-            <div class="px-3 py-2 text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-              Módulos Administrativos
-            </div>
-            <button id="nav-mod-publications" type="button" class="sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs">
-              <span class="text-base">📰</span>
+            <button id="nav-mod-publications" type="button" class="sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
               <span class="flex-1">Publicaciones y Eventos</span>
             </button>
-            <button id="nav-mod-groups" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
-              <span class="text-base">👥</span>
+            <button id="nav-mod-groups" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
               <span class="flex-1">Grupos y Audiencias</span>
             </button>
-            <button id="nav-mod-admins" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
-              <span class="text-base">🛡️</span>
+            <button id="nav-mod-admins" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
               <span class="flex-1">Consola de Roles</span>
             </button>
-            <button id="nav-mod-diagnostic" type="button" class="sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
-              <span class="text-base">🔌</span>
+            <button id="nav-mod-diagnostic" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
               <span class="flex-1">Diagnóstico de APIs</span>
             </button>
           </nav>
@@ -247,26 +207,8 @@
         <!-- Contenedor Principal de Módulos -->
         <div class="flex-1 min-w-0 space-y-6 w-full">
 
-      <!-- Vista de estudiantes (Dashboard y JSON móvil) -->
+      <!-- Vista de Estudiantes y Campus -->
       <div id="student-workspace" class="space-y-6">
-
-      <!-- Barra de Pestañas: Dashboard vs JSON Móvil -->
-      <div class="bg-white rounded-2xl border border-slate-200/80 p-2 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-        <div class="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl">
-          <button id="tab-btn-dashboard" class="px-4 py-2 text-xs font-bold rounded-lg bg-white text-blue-900 shadow-sm transition">
-            Campus Dashboard
-          </button>
-          <button id="tab-btn-json" class="px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition">
-            JSON für Mobile App
-          </button>
-        </div>
-        <button id="btn-open-raw-json" class="text-xs text-blue-700 hover:text-blue-900 font-semibold flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 transition shadow-xs">
-          <span>In neuem Tab öffnen ↗</span>
-        </button>
-      </div>
-
-      <!-- Pestaña 1: Vista Gráfica del Dashboard -->
-      <div id="tab-content-dashboard" class="space-y-6">
 
         <!-- Alerta de Classroom cuando faltan permisos -->
         <div id="classroom-permission-alert" class="hidden p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm bg-amber-50/80 border-amber-200 text-amber-900">
@@ -289,8 +231,8 @@
           <article id="tile-mailgroups" class="bg-white rounded-2xl shadow-2xs border border-slate-200/90 overflow-hidden flex flex-col">
             <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">API 2 &bull; Acceso Restringido</span>
-                <h3 class="font-bold text-slate-900 text-sm">Google Mailgruppen</h3>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Comunidad y Distribución</span>
+                <h3 class="font-bold text-slate-900 text-sm">Grupos Institucionales</h3>
               </div>
               <span id="groups-count" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">0 grupos</span>
             </div>
@@ -305,21 +247,21 @@
               </div>
               <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70 text-[11px] text-slate-600">
                 <span class="font-semibold text-slate-800 block">Regla de Visibilidad:</span>
-                <span>Visibles para el administrador <span class="font-mono text-slate-900 font-bold">pascal.thommen@upa.edu.py</span>.</span>
+                <span>Visibles para la dirección institucional <span class="font-mono text-slate-900 font-bold">pascal.thommen@upa.edu.py</span>.</span>
               </div>
             </div>
           </article>
 
           <!-- Kachel 2: Cursos Activos de Classroom -->
-          <article class="bg-white rounded-3xl shadow-md border border-slate-200/80 overflow-hidden flex flex-col">
-            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <article class="bg-white rounded-2xl shadow-2xs border border-slate-200/90 overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div>
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">API 3A &bull; Google Classroom</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Google Classroom</span>
                 <h3 class="font-bold text-slate-900 text-sm">Cursos Activos</h3>
               </div>
-              <span id="courses-count" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">0 cursos</span>
+              <span id="courses-count" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">0 cursos</span>
             </div>
-            <div class="p-5 flex-1 space-y-3 overflow-y-auto max-h-[360px]" id="courses-container">
+            <div class="p-4 flex-1 space-y-3 overflow-y-auto max-h-[360px]" id="courses-container">
               <div class="flex items-center justify-center p-6 text-slate-400 gap-2">
                 <div class="spinner"></div>
                 <span class="text-xs">Consultando asignaturas...</span>
@@ -327,57 +269,32 @@
             </div>
           </article>
 
-          <!-- Kachel 3: Calendario Interactivo de Entregas y Plazos (API 3B) -->
-          <article class="bg-white rounded-3xl shadow-md border border-slate-200/80 overflow-hidden flex flex-col">
-            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <!-- Kachel 3: Agenda de Entregas y Plazos (Lista cronológica limpia estilo App Móvil) -->
+          <article class="bg-white rounded-2xl shadow-2xs border border-slate-200/90 overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div>
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">API 3B &bull; Google Classroom</span>
-                <h3 class="font-bold text-slate-900 text-sm">Calendario de Entregas</h3>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Agenda Académica</span>
+                <h3 class="font-bold text-slate-900 text-sm">Próximas Entregas y Plazos</h3>
               </div>
-              <div class="flex items-center gap-1.5">
-                <button id="cal-prev" class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-200 text-slate-700 text-xs font-bold transition">&larr;</button>
-                <span id="cal-month-title" class="text-xs font-bold text-slate-800 px-1">Mes 2026</span>
-                <button id="cal-next" class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-200 text-slate-700 text-xs font-bold transition">&rarr;</button>
-              </div>
+              <span id="deadlines-count" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">0 tareas</span>
             </div>
-            <div class="p-5 flex-1 flex flex-col space-y-4">
-              <!-- Matriz del Calendario Mensual -->
-              <div>
-                <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-extrabold text-slate-400 mb-1.5">
-                  <span>LU</span><span>MA</span><span>MI</span><span>JU</span><span>VI</span><span>SA</span><span>DO</span>
-                </div>
-                <div id="calendar-grid" class="calendar-grid">
-                  <!-- Días renderizados dinámicamente -->
-                </div>
-              </div>
-
-              <!-- Lista de Deadlines para el día seleccionado -->
-              <div class="border-t border-slate-100 pt-3">
-                <div class="flex items-center justify-between mb-2">
-                  <span id="selected-date-label" class="text-xs font-bold text-slate-800">Próximas Entregas</span>
-                  <span id="deadlines-count" class="text-[10px] font-semibold text-slate-500">0 tareas</span>
-                </div>
-                <div id="deadlines-container" class="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                  <span class="text-xs text-slate-400">Sin tareas registradas.</span>
-                </div>
+            <div class="p-4 flex-1 space-y-2.5 overflow-y-auto max-h-[360px]" id="deadlines-container">
+              <div class="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
+                Cargando entregas...
               </div>
             </div>
           </article>
         </div>
 
-        <!-- SECCIÓN 2: CAMPUS FEED E INSTAGRAM INGESTION (API 4) -->
-        <section class="bg-white rounded-3xl shadow-md border border-slate-200/80 overflow-hidden">
+        <!-- SECCIÓN 2: CAMPUS FEED E INSTAGRAM -->
+        <section class="bg-white rounded-2xl shadow-2xs border border-slate-200/90 overflow-hidden">
           <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-50/50">
             <div>
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-purple-700">API 4 &bull; Redes Sociales</span>
-                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                <span class="text-xs text-slate-500 font-mono">GET /api/v1/feed</span>
-              </div>
-              <h3 class="font-extrabold text-slate-900 text-base mt-0.5">Feed del Campus & Instagram Ingestion (@upalemana)</h3>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">Redes Sociales</span>
+              <h3 class="font-extrabold text-slate-900 text-base mt-0.5">Feed Institucional en Instagram (@upalemana)</h3>
             </div>
             <div class="flex items-center gap-3">
-              <span id="feed-count-badge" class="text-xs font-bold px-3 py-1 rounded-full bg-purple-100 text-purple-800">
+              <span id="feed-count-badge" class="text-xs font-bold px-3 py-1 rounded-full bg-purple-50 text-purple-800 border border-purple-200">
                 Sincronizando feed...
               </span>
             </div>
@@ -389,25 +306,6 @@
             </div>
           </div>
         </section>
-      </div>
-
-      <!-- Pestaña 2: Vista de Datos Crudos JSON para Aplicación Móvil -->
-      <div id="tab-content-json" class="hidden bg-slate-950 text-slate-100 rounded-3xl p-6 shadow-2xl border border-slate-800 space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-4">
-          <div>
-            <h3 class="text-sm font-extrabold text-white flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400"></span>
-              Schnittstellen-JSON für mobile UPA App (Android / Kotlin)
-            </h3>
-            <p class="text-xs text-slate-400 mt-1">Vollständig aggregiertes Datenpaket aus allen 4 Backend-APIs: Profil, Mailgruppen, Classroom & Instagram Feed.</p>
-          </div>
-          <button id="btn-copy-json" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition shadow-sm">
-            In Zwischenablage kopieren
-          </button>
-        </div>
-        <pre id="raw-json-output" class="font-mono text-xs text-emerald-400 overflow-x-auto p-5 bg-slate-900 rounded-2xl max-h-[600px] leading-relaxed border border-slate-800/80"></pre>
-      </div>
-
       </div>
 
       <!-- Cockpit de redacción (Marketing): noticias, eventos, carga de medios y Instagram -->
@@ -681,6 +579,68 @@
           </div>
         </section>
 
+        <!-- Módulo D: Diagnóstico de APIs y Exportación de Datos -->
+        <section id="view-diagnostic" class="hidden space-y-6" aria-label="Diagnóstico de APIs">
+          <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Módulo Diagnóstico</span>
+                <h3 class="font-bold text-slate-900 text-base mt-0.5">Diagnóstico de APIs y Payload Móvil</h3>
+                <p class="text-xs text-slate-500 mt-1">Inspección de contratos REST y datos agregados para la aplicación móvil nativa UPA.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="btn-copy-json" type="button" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl border border-slate-200 transition shadow-2xs">
+                  Copiar JSON
+                </button>
+                <button id="btn-open-raw-json" type="button" class="px-3.5 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5">
+                  <span>Abrir en nueva pestaña ↗</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Resumen de Estado de APIs -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-slate-700">OAuth 2.0</span>
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                </div>
+                <p class="text-[11px] text-slate-500">Google Workspace (@upa.edu.py)</p>
+              </div>
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-slate-700">Mailgruppen</span>
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                </div>
+                <p class="text-[11px] text-slate-500">Google Directory API</p>
+              </div>
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-slate-700">Classroom</span>
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                </div>
+                <p class="text-[11px] text-slate-500">Cursos y plazos académicos</p>
+              </div>
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-slate-700">Instagram Feed</span>
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                </div>
+                <p class="text-[11px] text-slate-500">Feed oficial (@upalemana)</p>
+              </div>
+            </div>
+
+            <!-- Visor JSON -->
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-800">Contrato de Datos Agregados (JSON)</span>
+                <span class="text-[11px] text-slate-400 font-mono">GET /api/v1/app-state</span>
+              </div>
+              <pre id="raw-json-output" class="font-mono text-xs text-emerald-400 overflow-x-auto p-4 bg-slate-900 rounded-xl max-h-[500px] leading-relaxed border border-slate-800"></pre>
+            </div>
+          </div>
+        </section>
+
         </div> <!-- Cierra el contenedor flex-1 min-w-0 -->
       </div> <!-- Cierra el layout flex flex-col lg:flex-row -->
 
@@ -723,8 +683,8 @@
     </div>
   </div>
 
-  <script src="/dashboard/editorial-core.js"></script>
-  <script src="/dashboard/editorial.js"></script>
-  <script src="/dashboard/app.js"></script>
+  <script src="/dashboard/editorial-core.js?v=1.1.0"></script>
+  <script src="/dashboard/editorial.js?v=1.1.0"></script>
+  <script src="/dashboard/app.js?v=1.1.0"></script>
 </body>
 </html>
