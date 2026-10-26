@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 96" role="img" aria-labelledby="logo-title">
+  <title id="logo-title">UPA, Universidad Paraguayo Alemana, Heidelberg - Asunción</title>
+  <rect x="0" y="0" width="96" height="96" rx="14" fill="#779a0b"/>
+  <text x="48" y="61" text-anchor="middle" font-family="Inter, Arial, Helvetica, sans-serif" font-size="38" font-weight="800" fill="#ffffff" letter-spacing="1">UPA</text>
+  <text x="112" y="40" font-family="Inter, Arial, Helvetica, sans-serif" font-size="19" font-weight="700" fill="#2f3d06">Universidad</text>
+  <text x="112" y="62" font-family="Inter, Arial, Helvetica, sans-serif" font-size="19" font-weight="700" fill="#2f3d06">Paraguayo Alemana</text>
+  <text x="112" y="82" font-family="Inter, Arial, Helvetica, sans-serif" font-size="13" font-weight="500" fill="#5b7409" letter-spacing="0.6">Heidelberg - Asunción</text>
+</svg>

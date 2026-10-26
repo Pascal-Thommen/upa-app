@@ -1,6 +1,6 @@
 /**
  * Portal Institucional UPA (web-admin)
- * Demostracion interactiva de las 4 APIs del Backend:
+ * Consume las 4 APIs del Backend:
  * 1. Google OAuth 2.0 (Login @upa.edu.py, nombre y avatar)
  * 2. Google Mailgruppen (Exclusivo para pascal.thommen@upa.edu.py)
  * 3. Google Classroom (Cursos y calendario interactivo de plazos)
@@ -9,7 +9,9 @@
  * Estricto cumplimiento de la doctrina Zero-Mock (llamadas reales a la API REST).
  */
 
-const STORAGE_KEY = "upa_access_token";
+const PortalCore = window.UpaPortalCore;
+const STORAGE_KEY = PortalCore.ACCESS_TOKEN_KEY;
+const ROOT_ELEMENT = document.documentElement;
 
 const DOM_ELEMENTS = {
   viewLogin: document.getElementById("view-login"),
@@ -48,14 +50,7 @@ const DOM_ELEMENTS = {
   btnRefresh: document.getElementById("btn-refresh"),
   diagBackend: document.getElementById("diag-backend"),
   diagEnv: document.getElementById("diag-env"),
-};
-
-const GROUP_LABELS = {
-  ALL: "Comunidad UPA General",
-  TIE: "Ingeniería Empresarial",
-  PI: "Ingeniería Industrial",
-  TI: "Tecnologías de la Información",
-  PROF: "Cuerpo Docente y Académico",
+  rawJsonOutput: document.getElementById("raw-json-output"),
 };
 
 // Estado reactivo de la aplicacion
@@ -79,6 +74,8 @@ function setStoredToken(token) {
   } else {
     localStorage.removeItem(STORAGE_KEY);
   }
+  // Clave heredada de versiones anteriores del portal: ya no se usa.
+  localStorage.removeItem(PortalCore.LEGACY_TOKEN_KEY);
 }
 
 function logout() {
@@ -104,7 +101,18 @@ function showLoginAlert(message, type = "error") {
   }
 }
 
+/**
+ * La pagina arranca oculta (clase `auth-pending`) cuando hay una sesion almacenada. Al
+ * validarla se revela la vista correcta, de modo que nunca se muestra el login por error.
+ */
+function markAuthResolved(authenticated) {
+  const root = ROOT_ELEMENT;
+  root.classList.remove("auth-pending");
+  root.classList.toggle("has-auth", authenticated);
+}
+
 function showLoginView() {
+  markAuthResolved(false);
   if (window.UpaCockpit) window.UpaCockpit.reset();
   DOM_ELEMENTS.viewLogin.classList.remove("hidden");
   DOM_ELEMENTS.viewDashboard.classList.add("hidden");
@@ -112,6 +120,7 @@ function showLoginView() {
 }
 
 function showDashboardView(user) {
+  markAuthResolved(true);
   DOM_ELEMENTS.viewLogin.classList.add("hidden");
   DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
 
@@ -225,25 +234,12 @@ function renderUserProfile(user) {
   const isExclusiveUser = (user.email || "").toLowerCase() === "pascal.thommen@upa.edu.py";
   // Estrictamente los 3 grupos reales obtenidos de Google Workspace Directory API
   // Se excluyen los tags sintéticos internos (ALL, TIE)
-  const realGoogleGroups = Array.isArray(user.google_groups) && user.google_groups.length > 0
-    ? user.google_groups
-    : (Array.isArray(user.groups) ? user.groups.filter((g) => g !== "ALL" && g !== "TIE") : []);
-  const groups = realGoogleGroups;
+  const groups = PortalCore.groupsFromUser(user);
 
   if (isExclusiveUser && groups.length > 0) {
     DOM_ELEMENTS.tileMailgroups.classList.remove("hidden");
     DOM_ELEMENTS.groupsCount.textContent = `${groups.length} grupos`;
-    DOM_ELEMENTS.userGroupsContainer.innerHTML = groups
-      .map((grp) => {
-        const label = GROUP_LABELS[grp] || grp;
-        return `
-          <span class="group-badge group-badge-all" title="${label}">
-            <span>${grp}</span>
-            <span class="ml-1 text-[10px] opacity-75 font-normal">&bull; ${label}</span>
-          </span>
-        `;
-      })
-      .join("");
+    DOM_ELEMENTS.userGroupsContainer.innerHTML = PortalCore.renderGroupBadges(groups);
   } else {
     // Si es estudiante regular o no tiene permiso, la kachel de grupos se oculta completamente
     DOM_ELEMENTS.tileMailgroups.classList.add("hidden");
@@ -551,8 +547,7 @@ async function loadCampusFeed() {
  * Refresca todo el contenido de las 4 APIs.
  */
 async function refreshDashboard() {
-  await checkHealth();
-  const user = await loadUserProfile();
+  const [, user] = await Promise.all([checkHealth(), loadUserProfile()]);
   if (user) {
     // Cockpit de redaccion: visible solo para administradores y redactores
     if (window.UpaCockpit) window.UpaCockpit.onUserLoaded(user);
@@ -609,7 +604,7 @@ function getAppJsonData() {
 }
 
 function updateJsonView() {
-  const rawJsonOutput = document.getElementById("raw-json-output");
+  const rawJsonOutput = DOM_ELEMENTS.rawJsonOutput;
   if (rawJsonOutput) {
     const data = getAppJsonData();
     rawJsonOutput.textContent = JSON.stringify(data, null, 2);
@@ -811,7 +806,7 @@ function init() {
       try {
         await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
         btnCopyJson.textContent = "¡Copiado!";
-        setTimeout(() => { btnCopyJson.textContent = "In Zwischenablage kopieren"; }, 2000);
+        setTimeout(() => { btnCopyJson.textContent = "Copiar al portapapeles"; }, 2000);
       } catch (e) {
         alert("JSON copiado al portapapeles.");
       }
@@ -831,7 +826,6 @@ function init() {
         if (resp.ok) {
           const data = await resp.json();
           setStoredToken(data.access_token);
-          localStorage.setItem("upa_auth_token", data.access_token);
           showLoginAlert("Inicio de sesión exitoso.", "success");
           await refreshDashboard();
         } else {
@@ -851,7 +845,6 @@ function init() {
     const tokenFromUrl = urlParams.get("token");
     if (tokenFromUrl) {
       setStoredToken(tokenFromUrl);
-      localStorage.setItem("upa_auth_token", tokenFromUrl);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   } catch (_) {}

@@ -142,6 +142,12 @@ def test_cockpit_core_unit_tests_pass():
     assert summary["tests"] >= 15
 
 
+def test_portal_core_unit_tests_pass():
+    node = _require_node()
+    summary = _run_node_tests(node, [WEB_TESTS / "portal-core.test.js"], dict(os.environ))
+    assert summary["tests"] >= 8
+
+
 def test_cockpit_end_to_end_against_real_backend(live_backend):
     node = _require_node()
     expired_token = create_access_token(
@@ -155,3 +161,23 @@ def test_cockpit_end_to_end_against_real_backend(live_backend):
     }
     summary = _run_node_tests(node, [WEB_TESTS / "editorial-live.test.js"], env)
     assert summary["tests"] >= 15
+
+
+def test_portal_dom_against_real_backend(live_backend):
+    """Portal completo en jsdom (arranque sin login flash, Mailgruppen, cockpit) contra uvicorn real."""
+    node = _require_node()
+    if not (WEB_TESTS / "node_modules" / "jsdom").exists():
+        if os.environ.get("CI"):
+            pytest.fail("jsdom es obligatorio en CI (npm ci en web-admin/tests).")
+        pytest.skip("jsdom no instalado (npm ci en web-admin/tests): pruebas DOM omitidas fuera de CI.")
+    expired_token = create_access_token(
+        {"sub": "1", "email": "admin@upa.edu.py", "role": "admin"},
+        expires_delta=timedelta(minutes=-5),
+    )
+    env = {
+        **os.environ,
+        "UPA_BASE_URL": live_backend["base_url"],
+        "UPA_EXPIRED_TOKEN": expired_token,
+    }
+    summary = _run_node_tests(node, [WEB_TESTS / "editorial-dom.test.js"], env)
+    assert summary["tests"] >= 16

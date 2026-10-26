@@ -25,6 +25,11 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install jsdom (pruebas DOM del portal)
+        run: |
+          cd web-admin/tests
+          npm ci
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

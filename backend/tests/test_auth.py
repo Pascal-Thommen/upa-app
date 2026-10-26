@@ -149,6 +149,31 @@ def test_login_google_redirect():
     assert "client_id=" in location
     assert "redirect_uri=" in location
 
+def _login_google_query(url: str) -> dict[str, list[str]]:
+    import urllib.parse
+
+    return urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+
+
+def test_login_google_does_not_force_repeated_consent():
+    """Por defecto solo se pide seleccionar cuenta: Google no repite el consentimiento ya otorgado."""
+    response = client.get("/api/auth/login-google", follow_redirects=False)
+    query = _login_google_query(response.headers["location"])
+    assert query["prompt"] == ["select_account"]
+    assert query["access_type"] == ["offline"]
+    assert query["include_granted_scopes"] == ["true"]
+    assert "state" not in query
+    assert "classroom.courses.readonly" in query["scope"][0]
+
+
+def test_login_google_consent_true_forces_consent_once_for_refresh_token():
+    response = client.get("/api/auth/login-google?consent=true", follow_redirects=False)
+    query = _login_google_query(response.headers["location"])
+    assert query["prompt"] == ["consent select_account"]
+    assert query["access_type"] == ["offline"]
+    assert query["state"] == ["consent"]
+
+
 def test_google_callback_missing_code_redirects_error():
     response = client.get("/api/auth/google", follow_redirects=False)
     assert response.status_code == 307

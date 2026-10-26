@@ -1,0 +1,129 @@
+/* Identidad institucional UPA: verde oliva del campus y tarjetas minimalistas (como la app movil). */
+
+:root {
+  --upa-olive: #779a0b;
+  --upa-olive-dark: #5b7409;
+  --upa-olive-deep: #2f3d06;
+  --upa-olive-soft: #f3f7e6;
+  --upa-olive-line: #dbe6b8;
+  --upa-ink: #1f2933;
+  --upa-muted: #64748b;
+  --upa-surface: #ffffff;
+  --upa-bg: #f6f7f2;
+}
+
+/* Arranque sin parpadeo: con sesion almacenada se oculta todo hasta validar el token. */
+html.auth-pending #view-login,
+html.auth-pending #view-dashboard,
+html.has-auth #view-login {
+  display: none !important;
+}
+
+#boot-loader {
+  display: none;
+}
+
+html.auth-pending #boot-loader {
+  display: flex;
+  justify-content: center;
+  padding: 6rem 0;
+}
+
+body.upa-body {
+  background-color: var(--upa-bg);
+  color: var(--upa-ink);
+}
+
+.upa-header {
+  background: var(--upa-surface);
+  border-bottom: 3px solid var(--upa-olive);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.upa-logo {
+  height: 44px;
+  width: auto;
+  display: block;
+}
+
+.upa-logo-login {
+  height: 64px;
+  margin: 0 auto 1.25rem;
+}
+
+.upa-api-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--upa-olive-line);
+  background: var(--upa-olive-soft);
+  color: var(--upa-olive-deep);
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.upa-api-status .upa-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--upa-olive);
+}
+
+/* Tarjetas minimalistas */
+.upa-card,
+#view-login,
+#view-dashboard article,
+#view-dashboard > div.bg-white,
+#view-dashboard section.bg-white {
+  border-radius: 16px !important;
+  border: 1px solid #e5e8dc !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+#view-dashboard article > div:first-child {
+  background: var(--upa-surface) !important;
+}
+
+.upa-btn-primary {
+  background: var(--upa-olive);
+  color: #fff;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: background 0.15s ease-in-out;
+}
+
+.upa-btn-primary:hover {
+  background: var(--upa-olive-dark);
+}
+
+#view-dashboard .sidebar-nav-btn.is-active,
+#view-dashboard .sidebar-nav-btn[aria-current="page"] {
+  background: var(--upa-olive-soft);
+  color: var(--upa-olive-deep);
+}
+
+/* Mailgruppen (API 2): nombre y correo reales de cada grupo */
+.group-badge {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  border-radius: 12px;
+  background: var(--upa-olive-soft);
+  color: var(--upa-olive-deep);
+  border-color: var(--upa-olive-line);
+  letter-spacing: 0;
+}
+
+.group-badge-name {
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.group-badge-email {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--upa-olive-dark);
+}

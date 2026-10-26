@@ -254,28 +254,53 @@ def _build_user_response(user: User) -> UserResponse:
     )
 
 
+GOOGLE_OAUTH_SCOPES = (
+    "openid email profile "
+    "https://www.googleapis.com/auth/classroom.courses.readonly "
+    "https://www.googleapis.com/auth/classroom.coursework.me.readonly"
+)
+GOOGLE_OAUTH_REDIRECT_URI = "https://upa.eu1.netbird.services/api/auth/google"
+# Marca en `state` del flujo OAuth: el consentimiento ya se solicito una vez (evita bucles).
+OAUTH_STATE_CONSENT = "consent"
+
+
+def _build_google_auth_url(force_consent: bool) -> str:
+    """
+    Construye la URL de autorizacion de Google.
+
+    Por defecto solo se solicita la seleccion de cuenta: Google no repite la pantalla de
+    consentimiento si el acceso ya fue otorgado. El consentimiento se fuerza unicamente
+    cuando hace falta obtener un refresh token (primer acceso o token revocado).
+    """
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_OAUTH_REDIRECT_URI,
+        "response_type": "code",
+        "scope": GOOGLE_OAUTH_SCOPES,
+        "access_type": "offline",
+        "include_granted_scopes": "true",
+        "prompt": "consent select_account" if force_consent else "select_account",
+        "hd": settings.ALLOWED_EMAIL_DOMAIN,
+    }
+    if force_consent:
+        params["state"] = OAUTH_STATE_CONSENT
+    return f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
+
+
 @router.get("/login-google", summary="Iniciar flujo web OAuth 2.0 con Google")
-def login_google():
-    """Inicia el flujo oficial de redireccion Google OAuth 2.0 Web con permisos de Classroom."""
-    client_id = settings.GOOGLE_CLIENT_ID
-    params = urllib.parse.urlencode(
-        {
-            "client_id": client_id,
-            "redirect_uri": "https://upa.eu1.netbird.services/api/auth/google",
-            "response_type": "code",
-            "scope": "openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-            "access_type": "offline",
-            "prompt": "consent select_account",
-            "hd": settings.ALLOWED_EMAIL_DOMAIN,
-        }
-    )
-    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+def login_google(consent: bool = False):
+    """
+    Inicia el flujo oficial de redireccion Google OAuth 2.0 Web con permisos de Classroom.
+    No repite el consentimiento si ya fue otorgado (usar `consent=true` para forzarlo).
+    """
+    return RedirectResponse(_build_google_auth_url(force_consent=consent))
 
 
 @router.get("/google", summary="Callback OAuth 2.0 de Google")
 async def google_callback(
     code: str | None = None,
     error: str | None = None,
+    state: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -297,7 +322,7 @@ async def google_callback(
                     "client_secret": client_secret,
                     "code": code,
                     "grant_type": "authorization_code",
-                    "redirect_uri": "https://upa.eu1.netbird.services/api/auth/google",
+                    "redirect_uri": GOOGLE_OAUTH_REDIRECT_URI,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=10.0,
@@ -355,6 +380,12 @@ async def google_callback(
 
     db.commit()
     db.refresh(user)
+
+    # Sin refresh token almacenado no hay renovacion automatica de Classroom: se solicita el
+    # consentimiento una sola vez. Con state=consent no se repite (evita bucles de redireccion).
+    has_refresh_token = bool((user.classroom_refresh_token or "").strip())
+    if not has_refresh_token and state != OAUTH_STATE_CONSENT:
+        return RedirectResponse(_build_google_auth_url(force_consent=True))
 
     session_token = create_access_token(
         data={"sub": str(user.id), "email": user.email, "role": user.role}

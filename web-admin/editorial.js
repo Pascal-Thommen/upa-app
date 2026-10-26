@@ -504,6 +504,7 @@
       statusEl.textContent = `Última sincronización: ${new Date().toLocaleTimeString("es-PY", {
         hour: "2-digit",
         minute: "2-digit",
+        hour12: false,
       })}`;
       if (state.panel === "news") await loadNews();
     } catch (error) {

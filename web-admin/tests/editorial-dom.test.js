@@ -149,6 +149,12 @@ async function openPortal(token, options) {
   if (opts.mode) window.localStorage.setItem("upa_view_mode", opts.mode);
   if (token) window.localStorage.setItem(STORAGE_KEY, token);
 
+  window.eval(fs.readFileSync(path.join(WEB_ADMIN, "portal-core.js"), "utf8"));
+  // Script de arranque de index.html (marca la sesion pendiente antes de pintar nada).
+  const bootScript = /<script>([^<]*hasStoredSession[^<]*)<\/script>/.exec(html);
+  assert.ok(bootScript, "index.html debe incluir el script de arranque sin parpadeo");
+  window.eval(bootScript[1]);
+  portal.bootPending = document.documentElement.classList.contains("auth-pending");
   for (const script of ["editorial-core.js", "editorial.js", "app.js"]) {
     window.eval(fs.readFileSync(path.join(WEB_ADMIN, script), "utf8"));
   }
@@ -190,6 +196,15 @@ async function openPortal(token, options) {
     );
   };
   portal.rowFor = (tbodyId, attr, id) => portal.$(tbodyId).querySelector(`tr[${attr}="${id}"]`);
+  // El arranque termina cuando el portal volco los datos (JSON movil) o volvio al login con aviso;
+  // asi ninguna carga asincrona sigue activa cuando la ventana se cierra.
+  portal.settle = () =>
+    portal.waitFor(
+      () => portal.$("raw-json-output").textContent || portal.$("login-alert").textContent,
+      "arranque completo del portal",
+      15000
+    );
+  if (token && !opts.noSettle) await portal.settle();
   return portal;
 }
 
@@ -594,6 +609,78 @@ test("instagram: el boton sincroniza contra el endpoint real y muestra el estado
     assert.match(p.$("ed-sync-status").textContent, /^Última sincronización: \d{2}:\d{2}$/);
     assert.equal(button.disabled, false);
     assert.equal(button.textContent, label);
+    assertNoPageErrors(p);
+  } finally {
+    p.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Arranque sin parpadeo de login y Mailgruppen
+// ---------------------------------------------------------------------------
+
+test("arranque: con sesion activa el login nunca se muestra y el panel carga directo", live, async () => {
+  const p = await openPortal(tokens.admin, { noSettle: true });
+  try {
+    assert.ok(p.bootPending, "con token almacenado la pagina arranca en estado pendiente");
+    const root = p.document.documentElement;
+    const seen = [];
+    const observer = new p.window.MutationObserver(() => {
+      seen.push(!p.$("view-login").classList.contains("hidden"));
+    });
+    observer.observe(p.$("view-login"), { attributes: true, attributeFilter: ["class"] });
+    await p.waitFor(() => p.visible("view-dashboard"), "dashboard visible");
+    observer.disconnect();
+    assert.ok(!seen.includes(true), "el formulario de login no se activa en ningun momento");
+    assert.ok(!p.visible("view-login"));
+    assert.ok(!root.classList.contains("auth-pending"), "el estado pendiente termina al validar");
+    assert.ok(root.classList.contains("has-auth"));
+    await p.settle();
+    assertNoPageErrors(p);
+  } finally {
+    p.close();
+  }
+});
+
+test("arranque: sin sesion se muestra el login inmediatamente", live, async () => {
+  const p = await openPortal(null);
+  try {
+    assert.equal(p.bootPending, false);
+    await p.waitFor(() => p.visible("view-login"), "login visible");
+    assert.ok(!p.visible("view-dashboard"));
+    assert.ok(!p.document.documentElement.classList.contains("has-auth"));
+    assertNoPageErrors(p);
+  } finally {
+    p.close();
+  }
+});
+
+test("mailgruppen: los grupos de la API 2 muestran nombre y correo, nunca [object Object]", live, async () => {
+  const p = await openPortal(tokens.admin);
+  try {
+    await p.waitFor(() => p.visible("view-dashboard"), "dashboard visible");
+    // Forma exacta del contrato GET /api/auth/me (GoogleGroupDetail) para la cuenta con acceso.
+    p.window.renderUserProfile({
+      id: 1,
+      email: "pascal.thommen@upa.edu.py",
+      full_name: "Pascal Thommen",
+      role: "admin",
+      groups: ["ALL", "TIE"],
+      google_groups: [
+        { id: "g1", name: "Estudiantes Activos", email: "estudiantes.activos@upa.edu.py", description: "" },
+        { id: "g2", name: "Ing. Tecnologías", email: "ing.tecnologias@upa.edu.py", description: "Carrera TI" },
+        { id: "g3", name: "Personal Administrativo", email: "administrativo@upa.edu.py", description: "" },
+      ],
+      has_classroom_token: true,
+    });
+    const text = p.$("user-groups-container").textContent;
+    assert.ok(!text.includes("[object Object]"));
+    assert.equal(p.$("user-groups-container").querySelectorAll(".group-badge").length, 3);
+    for (const fragment of ["Estudiantes Activos", "estudiantes.activos@upa.edu.py", "ing.tecnologias@upa.edu.py", "Personal Administrativo"]) {
+      assert.ok(text.includes(fragment), `falta ${fragment}`);
+    }
+    assert.equal(p.$("groups-count").textContent, "3 grupos");
+    assert.ok(p.visible("tile-mailgroups"));
     assertNoPageErrors(p);
   } finally {
     p.close();

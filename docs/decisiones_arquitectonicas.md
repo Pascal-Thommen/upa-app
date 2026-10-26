@@ -40,7 +40,7 @@ El objetivo de la plataforma UPA App es consolidar en un punto único de acceso 
 * **Fundamentación:** Permite la comunicación segura y cifrada entre el entorno de desarrollo, el servidor staging y la red universitaria sin exponer puertos de bases de datos o servicios administrativos directamente a la Internet pública.
 
 ### 3.5. Autenticación y Federación de Identidades (Google OAuth 2.0)
-* **Decisión:** Autenticación delegada exclusiva para el dominio institucional `@upa.edu.py`, con obtención de `refresh_token` (`prompt=consent select_account`) y emisión de tokens JWT propios de corta duración para la API interna.
+* **Decisión:** Autenticación delegada exclusiva para el dominio institucional `@upa.edu.py`, con obtención de `refresh_token` (`access_type=offline`; el consentimiento se solicita una sola vez: `prompt=select_account` por defecto y `prompt=consent select_account` únicamente cuando el usuario no tiene `refresh_token` almacenado o se fuerza con `/api/auth/login-google?consent=true`) y emisión de tokens JWT propios de corta duración para la API interna.
 * **Fundamentación:** Eliminación del riesgo de gestionar contraseñas locales y sincronización automática de permisos basada en los grupos de Google Workspace Admin Directory API.
 
 ### 3.6. Portal Web-Admin y Cockpit Editorial (En preparación para Documento v3)
