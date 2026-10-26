@@ -130,6 +130,28 @@ def test_create_group_as_editor():
     assert created["is_system"] is False
 
 
+def test_update_group_success():
+    payload = {
+        "name": "Club de Robótica Avanzada",
+        "description": "Estudiantes, docentes e investigadores de robótica.",
+        "google_group": "robotica-avanzada@upa.edu.py",
+        "emails": ["robotica@upa.edu.py", "investigacion@upa.edu.py"],
+    }
+    res = client.put("/api/groups/robotica", json=payload, headers=auth(EDITOR_ID, EDITOR_EMAIL, "editor"))
+    assert res.status_code == 200
+    updated = res.json()
+    assert updated["id"] == "robotica"
+    assert updated["name"] == "Club de Robótica Avanzada"
+    assert updated["description"] == "Estudiantes, docentes e investigadores de robótica."
+    assert "investigacion@upa.edu.py" in updated["emails"]
+
+
+def test_update_group_not_found():
+    payload = {"name": "No existe"}
+    res = client.put("/api/groups/inexistente", json=payload, headers=auth(EDITOR_ID, EDITOR_EMAIL, "editor"))
+    assert res.status_code == 404
+
+
 def test_create_group_duplicate_rejected():
     payload = {
         "id": "estudiantes",
@@ -215,6 +237,34 @@ def test_demote_primary_admin_rejected():
     res = client.post("/api/roles", json=payload, headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
     assert res.status_code == 400
     assert "administrador principal no puede ser degradado" in res.json()["detail"]
+
+    # Probar tambien via PUT
+    res_put = client.put(f"/api/roles/{ADMIN_EMAIL}", json={"role": "editor"}, headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
+    assert res_put.status_code == 400
+    assert "administrador principal no puede ser degradado" in res_put.json()["detail"]
+
+
+def test_update_role_permissions_matrix():
+    payload = {
+        "permissions": ["Publicaciones y Eventos", "Grupos y Audiencias", "Diagnóstico de APIs"],
+    }
+    res = client.put(f"/api/roles/{EDITOR_EMAIL}", json=payload, headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
+    assert res.status_code == 200
+    updated = res.json()
+    assert updated["email"] == EDITOR_EMAIL
+    assert "Grupos y Audiencias" in updated["permissions"]
+    assert "Diagnóstico de APIs" in updated["permissions"]
+
+
+def test_update_role_invalid_domain_rejected():
+    res = client.put("/api/roles/intruso@externo.com", json={"role": "editor"}, headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
+    assert res.status_code == 400
+    assert "@upa.edu.py" in res.json()["detail"]
+
+
+def test_update_role_not_found():
+    res = client.put("/api/roles/noexiste@upa.edu.py", json={"role": "editor"}, headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
+    assert res.status_code == 404
 
 
 def test_revoke_primary_admin_rejected():

@@ -425,8 +425,10 @@
         const rsvp = e.has_registration
           ? `<span class="ed-badge ed-badge-ok">RSVP activo &bull; ${escapeHtml(e.registered_count)}</span>`
           : `<span class="ed-badge ed-badge-neutral">Sin RSVP</span>`;
+        const img = safeUrl(e.media_url || e.image_url);
+        const thumb = img && isImageUrl(img) ? `<img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy">` : "";
         return `<tr data-event-id="${escapeHtml(e.id)}">
-          <td class="ed-cell-title"><div><div class="ed-title">${escapeHtml(e.title)}</div><div class="ed-subtle">${escapeHtml(
+          <td class="ed-cell-title">${thumb}<div><div class="ed-title">${escapeHtml(e.title)}</div><div class="ed-subtle">${escapeHtml(
             e.location
           )}</div></div></td>
           <td>${escapeHtml(when)}</td>

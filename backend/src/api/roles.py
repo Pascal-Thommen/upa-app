@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from ..auth import require_admin, require_editor
 from ..database import get_db
 from ..models import User, UserRole
-from ..schemas.role import UserRoleCreate, UserRoleResponse
+from ..schemas.role import UserRoleCreate, UserRoleResponse, UserRoleUpdate
 
 router = APIRouter(prefix="/api/roles", tags=["Roles"])
 
@@ -62,6 +62,54 @@ def assign_role(
     user_record = db.query(User).filter(User.email == email).first()
     if user_record:
         user_record.role = "admin" if payload.role == "admin" else "user"
+
+    db.commit()
+    db.refresh(role_record)
+    return role_record
+
+
+@router.put(
+    "/{email}",
+    response_model=UserRoleResponse,
+    summary="Actualizar permisos y rol de administrador",
+)
+def update_role(
+    email: str,
+    payload: UserRoleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> UserRoleResponse:
+    norm_email = email.strip().lower()
+    if not norm_email.endswith("@upa.edu.py"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El correo debe pertenecer al dominio institucional @upa.edu.py",
+        )
+
+    role_record = db.query(UserRole).filter(UserRole.email == norm_email).first()
+    if not role_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado en la lista de roles",
+        )
+
+    if (role_record.is_primary or norm_email == "pascal.thommen@upa.edu.py") and payload.role is not None and payload.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El administrador principal no puede ser degradado a un rol inferior.",
+        )
+
+    if payload.name is not None:
+        role_record.name = payload.name.strip()
+    if payload.role is not None:
+        role_record.role = payload.role
+    if payload.permissions is not None:
+        role_record.permissions = payload.permissions
+
+    if payload.role is not None:
+        user_record = db.query(User).filter(User.email == norm_email).first()
+        if user_record:
+            user_record.role = "admin" if payload.role == "admin" else "user"
 
     db.commit()
     db.refresh(role_record)

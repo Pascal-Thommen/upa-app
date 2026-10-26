@@ -608,3 +608,9 @@ def test_openapi_docs_and_integration_guide_completeness():
         "/api/classroom/deadlines",
     ]:
         assert expected_snippet in guide_text, f"Missing {expected_snippet} in FRONTEND_INTEGRATION_GUIDE.md"
+
+
+def test_dashboard_app_route_returns_200():
+    res = client.get("/dashboard/app")
+    assert res.status_code == 200
+    assert "text/html" in res.headers.get("content-type", "")

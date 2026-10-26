@@ -334,6 +334,8 @@
       const saved = id ? await getClient().updateNews(id, payload) : await getClient().createNews(payload);
       showNotice("success", id ? `Noticia #${saved.id} actualizada.` : `Noticia publicada (ID ${saved.id}).`);
       resetNewsForm();
+      const form = $("ed-form-news");
+      if (form) form.classList.add("hidden");
       await loadNews();
     } catch (error) {
       showNotice("error", Core.describeError(error));
@@ -358,8 +360,10 @@
   function editNews(id) {
     const item = state.news.find((n) => String(n.id) === String(id));
     if (!item) return;
+    const form = $("ed-form-news");
+    if (form) form.classList.remove("hidden");
     fillNewsForm(Core.newsToFormValues(item), item.id);
-    $("ed-form-news").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (form) form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   // ---------------------------------------------------------------------------
@@ -447,6 +451,8 @@
       const saved = id ? await getClient().updateEvent(id, payload) : await getClient().createEvent(payload);
       showNotice("success", id ? `Evento #${saved.id} actualizado.` : `Evento creado (ID ${saved.id}).`);
       resetEventForm();
+      const form = $("ed-form-event");
+      if (form) form.classList.add("hidden");
       await loadEvents();
       if (state.participantsEventId && String(state.participantsEventId) === String(saved.id)) {
         showParticipants(saved.id);
@@ -475,8 +481,10 @@
   function editEvent(id) {
     const item = state.events.find((e) => String(e.id) === String(id));
     if (!item) return;
+    const form = $("ed-form-event");
+    if (form) form.classList.remove("hidden");
     fillEventForm(Core.eventToFormValues(item), item.id);
-    $("ed-form-event").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (form) form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function hideParticipants() {
@@ -569,13 +577,55 @@
     $("ed-tab-news").addEventListener("click", () => applyPanel("news"));
     $("ed-tab-events").addEventListener("click", () => applyPanel("events"));
 
+    const btnToggleNews = $("btn-toggle-new-news");
+    if (btnToggleNews) {
+      btnToggleNews.addEventListener("click", () => {
+        const form = $("ed-form-news");
+        if (form.classList.contains("hidden")) {
+          form.classList.remove("hidden");
+          resetNewsForm();
+          form.scrollIntoView({ behavior: "smooth", block: "start" });
+          const titleInput = $("ed-news-title");
+          if (titleInput) titleInput.focus();
+        } else {
+          form.classList.add("hidden");
+          resetNewsForm();
+        }
+      });
+    }
+
+    const btnToggleEvent = $("btn-toggle-new-event");
+    if (btnToggleEvent) {
+      btnToggleEvent.addEventListener("click", () => {
+        const form = $("ed-form-event");
+        if (form.classList.contains("hidden")) {
+          form.classList.remove("hidden");
+          resetEventForm();
+          form.scrollIntoView({ behavior: "smooth", block: "start" });
+          const titleInput = $("ed-event-title");
+          if (titleInput) titleInput.focus();
+        } else {
+          form.classList.add("hidden");
+          resetEventForm();
+        }
+      });
+    }
+
     $("ed-form-news").addEventListener("submit", submitNews);
-    $("ed-news-cancel").addEventListener("click", resetNewsForm);
+    $("ed-news-cancel").addEventListener("click", () => {
+      resetNewsForm();
+      const form = $("ed-form-news");
+      if (form) form.classList.add("hidden");
+    });
     $("ed-news-reload").addEventListener("click", loadNews);
     bindTableActions("ed-news-rows", { "edit-news": editNews, "delete-news": deleteNews });
 
     $("ed-form-event").addEventListener("submit", submitEvent);
-    $("ed-event-cancel").addEventListener("click", resetEventForm);
+    $("ed-event-cancel").addEventListener("click", () => {
+      resetEventForm();
+      const form = $("ed-form-event");
+      if (form) form.classList.add("hidden");
+    });
     $("ed-events-reload").addEventListener("click", loadEvents);
     $("ed-events-include-past").addEventListener("change", loadEvents);
     bindTableActions("ed-event-rows", {

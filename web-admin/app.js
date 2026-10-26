@@ -108,7 +108,10 @@ function showLoginView() {
   if (window.UpaCockpit) window.UpaCockpit.reset();
   DOM_ELEMENTS.viewLogin.classList.remove("hidden");
   DOM_ELEMENTS.viewDashboard.classList.add("hidden");
-  DOM_ELEMENTS.authActions.innerHTML = "";
+  const profileContainer = document.getElementById("user-profile-container");
+  if (profileContainer) profileContainer.classList.add("hidden");
+  const dropdown = document.getElementById("user-profile-dropdown");
+  if (dropdown) dropdown.classList.add("hidden");
 }
 
 function showDashboardView(user) {
@@ -117,21 +120,27 @@ function showDashboardView(user) {
   DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
 
   const email = (user && user.email) || "";
-  const initials = email ? email.substring(0, 2).toUpperCase() : "PT";
+  const name = (user && user.full_name) || (email ? email.split("@")[0].replace(".", " ") : "Usuario");
+  const initials = email ? email.substring(0, 2).toUpperCase() : "U";
 
-  DOM_ELEMENTS.authActions.innerHTML = `
-    <div class="flex items-center gap-2">
-      <div class="w-7 h-7 rounded-full bg-[#6c9339] text-white flex items-center justify-center font-bold text-[11px] shadow-2xs">
-        ${initials}
-      </div>
-      <span class="text-xs text-slate-600 hidden sm:inline font-mono truncate max-w-xs">${email}</span>
-      <button id="btn-logout" class="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-red-700 hover:bg-red-50 rounded-lg border border-slate-200 transition">
-        Cerrar sesión
-      </button>
-    </div>
-  `;
+  const profileContainer = document.getElementById("user-profile-container");
+  if (profileContainer) {
+    profileContainer.classList.remove("hidden");
+  }
+  const displayEmail = document.getElementById("user-display-email");
+  if (displayEmail) displayEmail.textContent = email;
+  const displayName = document.getElementById("user-display-name");
+  if (displayName) displayName.textContent = name;
+  const userAvatar = document.getElementById("user-avatar");
+  if (userAvatar) userAvatar.textContent = initials;
+  const dropdownAvatar = document.getElementById("dropdown-avatar");
+  if (dropdownAvatar) dropdownAvatar.textContent = initials;
 
-  document.getElementById("btn-logout").addEventListener("click", logout);
+  const btnLogout = document.getElementById("btn-logout");
+  if (btnLogout && !btnLogout.dataset.bound) {
+    btnLogout.dataset.bound = "true";
+    btnLogout.addEventListener("click", logout);
+  }
 }
 
 async function apiRequest(endpoint, options = {}) {
@@ -202,16 +211,29 @@ async function loadUserProfile() {
  */
 function renderUserProfile(user) {
   // 1. Google OAuth: Nombre y avatar
-  DOM_ELEMENTS.userFullName.textContent = user.full_name || user.email.split("@")[0];
-  DOM_ELEMENTS.userEmail.textContent = user.email || "";
+  const email = user.email || "";
+  const name = user.full_name || email.split("@")[0];
+  DOM_ELEMENTS.userFullName.textContent = name;
+  DOM_ELEMENTS.userEmail.textContent = email;
 
-  const initials = (user.full_name || user.email)
+  const initials = (user.full_name || email)
     .split(" ")
     .map((n) => n[0])
     .slice(0, 2)
     .join("")
     .toUpperCase();
   DOM_ELEMENTS.userAvatar.textContent = initials || "U";
+  const dropdownAvatar = document.getElementById("dropdown-avatar");
+  if (dropdownAvatar) dropdownAvatar.textContent = initials || "U";
+  const displayName = document.getElementById("user-display-name");
+  if (displayName) displayName.textContent = name;
+  const displayEmail = document.getElementById("user-display-email");
+  if (displayEmail) displayEmail.textContent = email;
+
+  const appPreviewName = document.getElementById("app-preview-user-name");
+  if (appPreviewName) appPreviewName.textContent = name;
+  const appPreviewEmail = document.getElementById("app-preview-user-email");
+  if (appPreviewEmail) appPreviewEmail.textContent = email;
 
   const role = (user.role || "user").toUpperCase();
   const roleLabels = { ADMIN: "ADMINISTRADOR", EDITOR: "REDACCIÓN" };
@@ -684,6 +706,28 @@ async function updateJsonView() {
         contexto_aplicacion_movil: getAppJsonData(),
       };
       rawJsonOutput.textContent = JSON.stringify(combined, null, 2);
+
+      // Actualizar tarjetas informativas de telemetría
+      const dbUsers = document.getElementById("telemetry-db-users");
+      if (dbUsers && diagData.database) {
+        dbUsers.textContent = diagData.database.total_users ?? 0;
+        const dbDetail = document.getElementById("telemetry-db-detail");
+        if (dbDetail) {
+          dbDetail.textContent = `${diagData.database.dialect || 'PostgreSQL'} • ${diagData.database.total_groups || 0} grupos • ${diagData.database.total_posts || 0} publicaciones`;
+        }
+      }
+      const dirGroups = document.getElementById("telemetry-dir-groups");
+      if (dirGroups && diagData.directory_sync) {
+        dirGroups.textContent = diagData.directory_sync.cached_groups_count ?? (diagData.database ? diagData.database.total_groups : 0);
+      }
+      const crCourses = document.getElementById("telemetry-classroom-courses");
+      if (crCourses && diagData.classroom_api) {
+        crCourses.textContent = state.courses ? state.courses.length : 0;
+      }
+      const srvBadge = document.getElementById("telemetry-server-badge");
+      if (srvBadge && diagData.application) {
+        srvBadge.textContent = diagData.application.zero_mock_certified ? "100% Zero-Mock" : "Activo";
+      }
       return;
     }
   } catch (err) {
@@ -1004,104 +1048,205 @@ async function fetchAppAdmins() {
   return appAdminsCache;
 }
 
+function openEditGroupModal(group) {
+  const modal = document.getElementById("modal-edit-group");
+  if (!modal) return;
+  const inputId = document.getElementById("edit-group-id");
+  const labelId = document.getElementById("modal-group-id-label");
+  const inputName = document.getElementById("edit-group-name");
+  const inputDesc = document.getElementById("edit-group-description");
+  const inputGoogle = document.getElementById("edit-group-google");
+  const inputEmails = document.getElementById("edit-group-emails");
+
+  if (inputId) inputId.value = group.id;
+  if (labelId) labelId.textContent = `ID: ${group.id}`;
+  if (inputName) inputName.value = group.name || "";
+  if (inputDesc) inputDesc.value = group.description || "";
+  if (inputGoogle) inputGoogle.value = group.google_group || "";
+  if (inputEmails) inputEmails.value = (group.emails || []).join(", ");
+
+  modal.classList.remove("hidden");
+}
+
+function closeEditGroupModal() {
+  const modal = document.getElementById("modal-edit-group");
+  if (modal) modal.classList.add("hidden");
+}
+
 async function renderGroupsModule() {
-  const container = document.getElementById("groups-list-container");
-  if (!container) return;
-  container.innerHTML = `<div class="col-span-full p-8 text-center text-xs text-slate-500 font-medium">Cargando grupos institucionales desde base de datos...</div>`;
+  const tbody = document.getElementById("groups-table-rows");
+  const fallbackContainer = document.getElementById("groups-list-container");
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-xs text-slate-500 font-medium">Cargando grupos institucionales desde base de datos...</td></tr>`;
+  }
   const groups = await fetchAppGroups();
 
   if (!Array.isArray(groups) || groups.length === 0) {
-    container.innerHTML = `<div class="col-span-full p-8 text-center text-xs text-slate-400">No hay grupos institucionales registrados.</div>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-xs text-slate-400">No hay grupos institucionales registrados.</td></tr>`;
+    if (fallbackContainer) fallbackContainer.innerHTML = `<div class="col-span-full p-6 text-center text-xs text-slate-400">No hay grupos.</div>`;
     return;
   }
 
-  container.innerHTML = groups.map((g) => `
-    <div class="bg-slate-50/80 p-5 rounded-2xl border border-slate-200 space-y-3">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full ${g.is_system ? 'bg-[#6c9339]' : 'bg-blue-600'}"></span>
-          <h4 class="font-extrabold text-sm text-slate-900">${g.name}</h4>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${g.badge_class || 'bg-slate-200 text-slate-800'} uppercase">
+  if (tbody) {
+    tbody.innerHTML = groups.map((g) => `
+      <tr class="hover:bg-slate-50/70 transition" data-group-row="${g.id}">
+        <td class="py-3 px-3.5">
+          <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${g.badge_class || 'bg-slate-100 text-slate-800 border border-slate-200'} uppercase font-mono">
             ${g.id}
           </span>
-          ${!g.is_system ? `<button type="button" data-delete-group="${g.id}" title="Eliminar grupo" class="w-5 h-5 flex items-center justify-center text-xs text-red-600 hover:text-white hover:bg-red-600 rounded-full border border-red-200 transition font-bold">✕</button>` : ''}
-        </div>
-      </div>
-      <p class="text-xs text-slate-500 leading-relaxed">${g.description || 'Sin descripción'}</p>
-      
-      <div class="pt-2 border-t border-slate-200/60 space-y-1.5 text-xs">
-        <div class="text-[11px] text-slate-700">
-          <strong>Google Workspace Group:</strong>
-          <span class="font-mono text-blue-900 block mt-0.5 bg-white px-2 py-1 rounded border border-slate-200">${g.google_group || 'Sin vincular'}</span>
-        </div>
-        <div class="text-[11px] text-slate-700">
-          <strong>Correos autorizados:</strong>
-          <div class="flex flex-wrap gap-1 mt-1">
-            ${(g.emails || []).map(e => `<span class="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-600">${e}</span>`).join('')}
+        </td>
+        <td class="py-3 px-3.5">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full ${g.is_system ? 'bg-[#6c9339]' : 'bg-blue-600'}"></span>
+            <span class="font-bold text-slate-900">${g.name}</span>
           </div>
-        </div>
-      </div>
-    </div>
-  `).join('');
+        </td>
+        <td class="py-3 px-3.5 text-slate-600 max-w-xs truncate" title="${g.description || ''}">
+          ${g.description || '<span class="text-slate-400 italic">Sin descripción</span>'}
+        </td>
+        <td class="py-3 px-3.5">
+          ${g.google_group ? `<span class="px-2 py-0.5 bg-slate-100 text-blue-900 font-mono text-[10px] rounded border border-slate-200">${g.google_group}</span>` : '<span class="text-slate-400 italic">Sin vincular</span>'}
+        </td>
+        <td class="py-3 px-3.5">
+          <div class="flex flex-wrap gap-1 max-w-xs">
+            ${(g.emails || []).map(e => `<span class="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-mono border border-slate-200">${e}</span>`).join('')}
+          </div>
+        </td>
+        <td class="py-3 px-3.5 text-right whitespace-nowrap">
+          <div class="flex items-center justify-end gap-1.5">
+            <button type="button" data-edit-group="${g.id}" class="px-2.5 py-1 text-xs font-semibold text-[#6c9339] hover:bg-[#6c9339]/10 rounded-lg transition cursor-pointer">
+              Editar
+            </button>
+            ${!g.is_system ? `<button type="button" data-delete-group="${g.id}" title="Eliminar grupo" class="px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer">Eliminar</button>` : '<span class="text-[10px] font-bold text-slate-300 uppercase px-1">Sistema</span>'}
+          </div>
+        </td>
+      </tr>
+    `).join('');
 
-  container.querySelectorAll("button[data-delete-group]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const id = btn.getAttribute("data-delete-group");
-      if (!confirm(`¿Desea eliminar el grupo '${id}' permanentemente?`)) return;
-      try {
-        const res = await apiRequest(`/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          alert(err.detail || "Error al eliminar el grupo.");
-          return;
-        }
-        await renderGroupsModule();
-      } catch (e) {
-        alert("Error de conexión al eliminar grupo.");
-      }
+    tbody.querySelectorAll("button[data-edit-group]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-edit-group");
+        const group = groups.find((grp) => grp.id === id);
+        if (group) openEditGroupModal(group);
+      });
     });
-  });
+
+    tbody.querySelectorAll("button[data-delete-group]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-delete-group");
+        if (!confirm(`¿Desea eliminar el grupo '${id}' permanentemente?`)) return;
+        try {
+          const res = await apiRequest(`/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(err.detail || "Error al eliminar el grupo.");
+            return;
+          }
+          await renderGroupsModule();
+        } catch (e) {
+          alert("Error de conexión al eliminar grupo.");
+        }
+      });
+    });
+  }
 }
 
 async function renderAdminsModule() {
   const tbody = document.getElementById("admin-table-rows");
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-xs text-slate-400">Cargando administradores desde PostgreSQL...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-xs text-slate-400">Cargando administradores desde PostgreSQL...</td></tr>`;
   const admins = await fetchAppAdmins();
 
   if (!Array.isArray(admins) || admins.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-xs text-slate-400">No hay administradores registrados.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-xs text-slate-400">No hay administradores registrados.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = admins.map((adm) => `
-    <tr class="hover:bg-slate-50/50">
-      <td class="py-3 px-3">
-        <div class="font-bold text-slate-900">${adm.name || adm.email.split('@')[0]}</div>
-        <div class="font-mono text-[11px] text-slate-500">${adm.email}</div>
-      </td>
-      <td class="py-3 px-3">
-        <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${adm.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-700'} uppercase">
-          ${adm.role}
-        </span>
-      </td>
-      <td class="py-3 px-3">
-        <div class="flex flex-wrap gap-1">
-          ${(adm.permissions || []).map(p => `<span class="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">${p}</span>`).join('')}
-        </div>
-      </td>
-      <td class="py-3 px-3 text-right">
-        ${adm.is_primary ? '<span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Principal</span>' : `<button type="button" data-remove-admin="${adm.email}" class="text-xs text-red-600 hover:text-red-800 font-semibold">Remover</button>`}
-      </td>
-    </tr>
-  `).join('');
+  const PERM_KEYS = [
+    { key: "Publicaciones y Eventos", label: "Publicaciones" },
+    { key: "Grupos y Audiencias", label: "Grupos" },
+    { key: "Gestión de Roles", label: "Roles" },
+    { key: "Diagnóstico de APIs", label: "Diagnóstico" },
+  ];
 
-  tbody.querySelectorAll("button[data-remove-admin]").forEach(btn => {
+  tbody.innerHTML = admins.map((adm) => {
+    const isPrimary = adm.is_primary || (adm.email || "").toLowerCase() === "pascal.thommen@upa.edu.py";
+    const permCells = PERM_KEYS.map((p) => {
+      const checked = (adm.permissions || []).includes(p.key) || isPrimary;
+      const disabled = isPrimary ? "disabled" : "";
+      return `
+        <td class="py-3 px-2 text-center">
+          <input type="checkbox"
+                 data-perm-email="${adm.email}"
+                 data-perm-key="${p.key}"
+                 ${checked ? "checked" : ""}
+                 ${disabled}
+                 title="${p.label} para ${adm.email}"
+                 class="w-4 h-4 rounded text-[#6c9339] focus:ring-[#6c9339] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+        </td>
+      `;
+    }).join('');
+
+    return `
+      <tr class="hover:bg-slate-50/60 transition" data-role-row="${adm.email}">
+        <td class="py-3 px-3.5">
+          <div class="font-bold text-slate-900">${adm.name || adm.email.split('@')[0]}</div>
+          <div class="font-mono text-[11px] text-slate-500">${adm.email}</div>
+        </td>
+        <td class="py-3 px-3.5">
+          <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${adm.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-700'} uppercase">
+            ${adm.role}
+          </span>
+        </td>
+        ${permCells}
+        <td class="py-3 px-3.5 text-right whitespace-nowrap">
+          ${isPrimary
+            ? '<span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Protegido</span>'
+            : `<button type="button"
+                       data-remove-admin="${adm.email}"
+                       title="Revocar rol y permisos"
+                       class="p-1.5 text-red-600 hover:text-white hover:bg-red-600 rounded-lg border border-red-200 transition cursor-pointer inline-flex items-center justify-center">
+                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+               </button>`
+          }
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Checkboxes directos con actualización inmediata en PostgreSQL
+  tbody.querySelectorAll("input[data-perm-email]").forEach((chk) => {
+    chk.addEventListener("change", async () => {
+      const email = chk.getAttribute("data-perm-email");
+      const row = chk.closest("tr");
+      const activePerms = [];
+      row.querySelectorAll("input[data-perm-email]").forEach((c) => {
+        if (c.checked) activePerms.push(c.getAttribute("data-perm-key"));
+      });
+      try {
+        const res = await apiRequest(`/api/roles/${encodeURIComponent(email)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ permissions: activePerms }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || "Error al actualizar permisos.");
+          await renderAdminsModule();
+          return;
+        }
+      } catch (e) {
+        alert("Error de conexión al actualizar permisos.");
+        await renderAdminsModule();
+      }
+    });
+  });
+
+  // Papelera de revocación
+  tbody.querySelectorAll("button[data-remove-admin]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const email = btn.getAttribute("data-remove-admin");
-      if (!confirm(`¿Desea revocar el rol para ${email}?`)) return;
+      if (!confirm(`¿Desea revocar definitivamente la autorización para ${email}?`)) return;
       try {
         const res = await apiRequest(`/api/roles/${encodeURIComponent(email)}`, { method: "DELETE" });
         if (!res.ok) {
@@ -1147,6 +1292,11 @@ const ROUTE_CONFIG = {
     btnId: "nav-mod-students",
     viewId: "student-workspace",
   },
+  app: {
+    path: "/dashboard/app",
+    btnId: "nav-mod-app",
+    viewId: "view-app",
+  },
 };
 
 let currentActiveRoute = "publicaciones";
@@ -1173,6 +1323,9 @@ function resolveRoute(rawPath) {
   }
   if (lower === "/dashboard/estudiantes" || lower === "/dashboard/students") {
     return { name: "estudiantes", path: "/dashboard/estudiantes", isRedirect: lower !== "/dashboard/estudiantes" };
+  }
+  if (lower === "/dashboard/app" || lower === "/dashboard/mobile" || lower === "/dashboard/aplicacion") {
+    return { name: "app", path: "/dashboard/app", isRedirect: lower !== "/dashboard/app" };
   }
 
   // Cualquier ruta no reconocida redirige a /dashboard/publicaciones
@@ -1252,6 +1405,16 @@ function applyRoute(routeName, options = {}) {
     if (edBtn) edBtn.classList.remove("is-active");
     if (stBtn) stBtn.classList.remove("is-active");
     updateJsonView();
+  } else if (routeName === "app") {
+    if (edBtn) edBtn.classList.remove("is-active");
+    if (stBtn) stBtn.classList.remove("is-active");
+    if (state.currentUser) {
+      const u = state.currentUser;
+      const previewName = document.getElementById("app-preview-user-name");
+      if (previewName) previewName.textContent = u.full_name || u.email.split("@")[0];
+      const previewEmail = document.getElementById("app-preview-user-email");
+      if (previewEmail) previewEmail.textContent = u.email || "";
+    }
   }
 }
 
@@ -1273,6 +1436,7 @@ const UpaRouter = {
     ROLES: "/dashboard/roles",
     DIAGNOSTICO: "/dashboard/diagnostico",
     ESTUDIANTES: "/dashboard/estudiantes",
+    APP: "/dashboard/app",
   },
   resolveRoute,
   applyRoute,
@@ -1315,6 +1479,7 @@ function setupSidebarNavigation() {
   const btnAdmins = document.getElementById("nav-mod-admins");
   const btnDiag = document.getElementById("nav-mod-diagnostic");
   const btnStudents = document.getElementById("nav-mod-students");
+  const btnApp = document.getElementById("nav-mod-app");
   const headerLogoLink = document.getElementById("header-logo-link");
 
   if (btnPubs) {
@@ -1331,6 +1496,9 @@ function setupSidebarNavigation() {
   }
   if (btnStudents) {
     btnStudents.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.ESTUDIANTES));
+  }
+  if (btnApp) {
+    btnApp.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.APP));
   }
   if (headerLogoLink) {
     headerLogoLink.addEventListener("click", (e) => {
@@ -1349,6 +1517,38 @@ function setupSidebarNavigation() {
     modeBtnEditorial.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.PUBLICACIONES));
   }
 
+  // Interacción del Menú Desplegable de Perfil en el Encabezado
+  const btnProfileToggle = document.getElementById("btn-profile-toggle");
+  const profileDropdown = document.getElementById("user-profile-dropdown");
+  if (btnProfileToggle && profileDropdown) {
+    btnProfileToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      profileDropdown.classList.toggle("hidden");
+      btnProfileToggle.setAttribute("aria-expanded", !profileDropdown.classList.contains("hidden"));
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    const profileContainer = document.getElementById("user-profile-container");
+    const dropdown = document.getElementById("user-profile-dropdown");
+    if (dropdown && !dropdown.classList.contains("hidden")) {
+      if (!profileContainer || !profileContainer.contains(e.target)) {
+        dropdown.classList.add("hidden");
+        const toggle = document.getElementById("btn-profile-toggle");
+        if (toggle) toggle.setAttribute("aria-expanded", "false");
+      }
+    }
+  });
+
+  const btnOpenClassroomDropdown = document.getElementById("btn-open-classroom-dropdown");
+  if (btnOpenClassroomDropdown) {
+    btnOpenClassroomDropdown.addEventListener("click", () => {
+      const dropdown = document.getElementById("user-profile-dropdown");
+      if (dropdown) dropdown.classList.add("hidden");
+      if (DOM_ELEMENTS.modalClassroom) DOM_ELEMENTS.modalClassroom.classList.remove("hidden");
+    });
+  }
+
   UpaRouter.init();
 
   const formAddAdmin = document.getElementById("form-add-admin");
@@ -1362,12 +1562,12 @@ function setupSidebarNavigation() {
         alert("El correo debe pertenecer al dominio institucional @upa.edu.py");
         return;
       }
-      const perms = [];
-      if (document.getElementById("perm-publications")?.checked) perms.push("Publicaciones y Eventos");
-      if (document.getElementById("perm-groups")?.checked) perms.push("Grupos y Audiencias");
-      if (document.getElementById("perm-admins")?.checked) perms.push("Gestión de Roles");
-      if (document.getElementById("perm-diagnostic")?.checked) perms.push("Diagnóstico de APIs");
-
+      const perms = [
+        "Publicaciones y Eventos",
+        "Grupos y Audiencias",
+        "Gestión de Roles",
+        "Diagnóstico de APIs",
+      ];
       try {
         const res = await apiRequest("/api/roles", {
           method: "POST",
@@ -1423,6 +1623,47 @@ function setupSidebarNavigation() {
       }
     });
   }
+
+  const formEditGroup = document.getElementById("form-edit-group");
+  if (formEditGroup) {
+    formEditGroup.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("edit-group-id").value;
+      const name = document.getElementById("edit-group-name").value.trim();
+      const description = document.getElementById("edit-group-description").value.trim();
+      const googleGroup = document.getElementById("edit-group-google").value.trim();
+      const emailsRaw = document.getElementById("edit-group-emails").value;
+      const emails = emailsRaw.split(",").map(em => em.trim()).filter(Boolean);
+
+      try {
+        const res = await apiRequest(`/api/groups/${encodeURIComponent(id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            description: description || undefined,
+            google_group: googleGroup || undefined,
+            emails: emails.length > 0 ? emails : undefined,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || "Error al actualizar el grupo.");
+          return;
+        }
+        closeEditGroupModal();
+        await renderGroupsModule();
+        alert(`Grupo '${id}' actualizado con éxito en PostgreSQL.`);
+      } catch (err) {
+        alert("Error de conexión al guardar grupo.");
+      }
+    });
+  }
+
+  const btnCloseGrp = document.getElementById("btn-close-group-modal");
+  if (btnCloseGrp) btnCloseGrp.addEventListener("click", closeEditGroupModal);
+  const btnCancelGrp = document.getElementById("btn-cancel-group");
+  if (btnCancelGrp) btnCancelGrp.addEventListener("click", closeEditGroupModal);
 }
 
 document.addEventListener("DOMContentLoaded", init);

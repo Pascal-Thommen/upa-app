@@ -134,11 +134,13 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones") {
     "nav-mod-admins",
     "nav-mod-diagnostic",
     "nav-mod-students",
+    "nav-mod-app",
     "header-logo-link",
     "view-editorial",
     "view-groups",
     "view-admins",
     "view-diagnostic",
+    "view-app",
     "student-workspace",
     "mode-btn-editorial",
     "mode-btn-student",
@@ -262,6 +264,12 @@ test("resolucion: rutas canonicas de los 5 modulos principales", () => {
     path: "/dashboard/estudiantes",
     isRedirect: false,
   });
+
+  assert.deepEqual(r.resolveRoute("/dashboard/app"), {
+    name: "app",
+    path: "/dashboard/app",
+    isRedirect: false,
+  });
 });
 
 test("resolucion: alias y tolerancia a mayusculas/barras", () => {
@@ -274,6 +282,8 @@ test("resolucion: alias y tolerancia a mayusculas/barras", () => {
   assert.equal(r.resolveRoute("/dashboard/admins").name, "roles");
   assert.equal(r.resolveRoute("/dashboard/diagnostic").name, "diagnostico");
   assert.equal(r.resolveRoute("/dashboard/students").name, "estudiantes");
+  assert.equal(r.resolveRoute("/dashboard/mobile").name, "app");
+  assert.equal(r.resolveRoute("/dashboard/aplicacion").name, "app");
   assert.equal(r.resolveRoute("/DASHBOARD/ROLES/").name, "roles");
 });
 
@@ -339,6 +349,12 @@ test("navegacion: clic en pestanas actualiza la URL con pushState y alterna vist
   assert.equal(window.location.pathname, "/dashboard/estudiantes");
   assert.ok(!elements["student-workspace"].classList.contains("hidden"));
   assert.ok(elements["nav-mod-students"].classList.contains("is-active"));
+
+  // Navegar a Vista Aplicacion
+  elements["nav-mod-app"].click();
+  assert.equal(window.location.pathname, "/dashboard/app");
+  assert.ok(!elements["view-app"].classList.contains("hidden"));
+  assert.ok(elements["nav-mod-app"].classList.contains("is-active"));
 
   // Clic en logo institucional regresa a Publicaciones
   elements["header-logo-link"].click();
@@ -444,6 +460,16 @@ test("deep linking: carga directa de /dashboard/estudiantes activa la vista estu
   assert.equal(router.getCurrentRoute(), "estudiantes");
   assert.ok(!elements["student-workspace"].classList.contains("hidden"));
   assert.ok(elements["nav-mod-students"].classList.contains("is-active"));
+});
+
+test("deep linking: carga directa de /dashboard/app activa el modulo de la aplicacion movil", () => {
+  const env = createTestEnvironment("/dashboard/app");
+  const { elements, window, router } = env;
+
+  assert.equal(window.location.pathname, "/dashboard/app");
+  assert.equal(router.getCurrentRoute(), "app");
+  assert.ok(!elements["view-app"].classList.contains("hidden"));
+  assert.ok(elements["nav-mod-app"].classList.contains("is-active"));
 });
 
 test("modo selector: botones de modo editorial y estudiante activan las rutas correspondientes", () => {

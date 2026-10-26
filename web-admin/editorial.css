@@ -317,11 +317,13 @@
 }
 
 .ed-thumb {
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 5.5rem;
+  height: 5.5rem;
   object-fit: cover;
-  border-radius: 0.5rem;
+  border-radius: 0.625rem;
   border: 1px solid var(--ed-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
 }
 
 .ed-actions {

@@ -41,24 +41,78 @@
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
 
-  <!-- Encabezado Principal Institucional UPA -->
+  <!-- Encabezado Principal Institucional UPA (Compacto) -->
   <header class="bg-white text-slate-900 shadow-xs border-b border-slate-200 sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
-      <div class="flex items-center space-x-3.5">
-        <a href="/dashboard/publicaciones" id="header-logo-link" class="flex items-center gap-3">
-          <img src="/dashboard/upa-logo.png" alt="Universidad Paraguayo Alemana" class="h-10 w-auto object-contain">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3">
+      <div class="flex items-center space-x-3">
+        <a href="/dashboard/publicaciones" id="header-logo-link" class="flex items-center gap-2.5">
+          <img src="/dashboard/upa-logo.png" alt="Universidad Paraguayo Alemana" class="h-8 w-auto object-contain">
         </a>
-        <div class="h-7 w-px bg-slate-200 hidden sm:block"></div>
+        <div class="h-6 w-px bg-slate-200 hidden sm:block"></div>
         <div>
-          <h1 class="text-sm font-bold tracking-tight text-slate-900">
+          <h1 class="text-xs font-bold tracking-tight text-slate-900 leading-tight">
             Portal Institucional Campus
           </h1>
-          <p class="text-[11px] text-slate-500">Universidad Paraguayo Alemana &bull; Asunción</p>
+          <p class="text-[10px] text-slate-500 leading-tight">Universidad Paraguayo Alemana &bull; Asunción</p>
         </div>
       </div>
 
-      <div id="auth-actions" class="flex items-center gap-2">
-        <!-- Avatar y Botón de Cerrar Sesión dinámico -->
+      <div id="auth-actions" class="flex items-center gap-2 relative">
+        <div id="user-profile-container" class="relative hidden">
+          <button id="btn-profile-toggle" type="button" aria-expanded="false" class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition shadow-2xs text-left cursor-pointer">
+            <div id="user-avatar" class="w-7 h-7 rounded-full bg-[#6c9339] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+              U
+            </div>
+            <div class="hidden sm:block text-left">
+              <div id="user-display-name" class="text-xs font-bold text-slate-800 leading-tight truncate max-w-[150px]">Usuario</div>
+              <div id="user-display-email" class="text-[10px] text-slate-500 font-mono leading-tight truncate max-w-[150px]">usuario@upa.edu.py</div>
+            </div>
+            <svg class="w-3.5 h-3.5 text-slate-400 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+
+          <!-- Menú flotante interactivo de cuenta/perfil -->
+          <div id="user-profile-dropdown" class="hidden absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200/90 p-4 z-50 space-y-3.5">
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div id="dropdown-avatar" class="w-10 h-10 rounded-full bg-[#6c9339] text-white font-bold text-sm flex items-center justify-center shadow-2xs flex-shrink-0">
+                U
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <h3 id="user-full-name" class="text-sm font-extrabold text-slate-900 truncate">Nombre del Usuario</h3>
+                </div>
+                <p id="user-email" class="text-[11px] text-slate-500 font-mono truncate mt-0.5">usuario@upa.edu.py</p>
+                <div class="mt-1">
+                  <span id="user-role-badge" class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-50 text-blue-800 border border-blue-200 uppercase tracking-wide">
+                    ESTUDIANTE
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Estado de cuenta y Classroom -->
+            <div class="space-y-2 text-xs">
+              <div class="flex items-center gap-1.5 text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200/60 font-medium">
+                <svg class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                <span>Google OAuth 2.0 Verificado</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200/60">
+                <span id="user-classroom-sync-badge" class="text-slate-500 font-medium">&bull; Classroom: Comprobando...</span>
+                <button type="button" id="btn-open-classroom-dropdown" class="text-[10px] font-bold text-blue-700 hover:text-blue-900 underline cursor-pointer">Vincular</button>
+              </div>
+            </div>
+
+            <!-- Acciones Rápidas -->
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+              <button id="btn-refresh" type="button" class="flex-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>Actualizar Datos</span>
+              </button>
+              <button id="btn-logout" type="button" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-semibold rounded-xl text-xs border border-red-200 transition cursor-pointer">
+                Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -137,40 +191,8 @@
     <!-- Vista 2: Dashboard Principal Multidimensional (4 APIs) -->
     <section id="view-dashboard" class="hidden space-y-6">
 
-      <!-- Barra de Perfil e Identidad (API 1: Google OAuth) -->
-      <div class="bg-white rounded-3xl shadow-md border border-slate-200/80 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div class="flex items-center gap-4">
-          <div id="user-avatar" class="w-12 h-12 rounded-full bg-[#6c9339] text-white font-bold text-lg flex items-center justify-center shadow-2xs">
-            U
-          </div>
-          <div>
-            <div class="flex items-center gap-2.5">
-              <h2 id="user-full-name" class="text-xl font-extrabold text-slate-900 tracking-tight">Nombre del Usuario</h2>
-              <span id="user-role-badge" class="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-blue-50 text-blue-800 border border-blue-200 uppercase tracking-wide">
-                ESTUDIANTE
-              </span>
-            </div>
-            <p id="user-email" class="text-xs text-slate-500 font-mono mt-0.5">usuario@upa.edu.py</p>
-            <div class="flex items-center gap-3 mt-1.5 text-xs text-emerald-700 font-medium">
-              <span class="inline-flex items-center gap-1.5 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60 text-emerald-800 text-[11px]">
-                <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-                Google OAuth 2.0 Verificado (@upa.edu.py)
-              </span>
-              <span id="user-classroom-sync-badge" class="text-slate-400 text-[11px]">&bull; Classroom: Comprobando...</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2 self-end sm:self-center">
-          <button id="btn-refresh" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition flex items-center gap-1.5 shadow-xs">
-            <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-            <span>Actualizar Datos</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Selector de modo: solo Administradores y Redacción (Compatibilidad de Tests) -->
-      <div id="mode-switch" class="hidden">
+      <!-- Selector de modo para compatibilidad con suites de prueba (oculto en interfaz) -->
+      <div id="mode-switch" class="hidden" style="display:none !important;" aria-hidden="true">
         <button id="mode-btn-editorial" type="button" class="ed-mode-btn is-active">Cockpit de redacción</button>
         <button id="mode-btn-student" type="button" class="ed-mode-btn">Vista de estudiantes</button>
       </div>
@@ -185,25 +207,29 @@
             <div class="px-3.5 py-2 text-[10px] font-bold uppercase text-slate-400 tracking-wider">
               Gestión Institucional
             </div>
-            <button id="nav-mod-publications" type="button" class="sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs">
+            <button id="nav-mod-publications" type="button" class="sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs cursor-pointer">
               <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
               <span class="flex-1">Publicaciones y Eventos</span>
             </button>
-            <button id="nav-mod-groups" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+            <button id="nav-mod-groups" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer">
               <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
               <span class="flex-1">Grupos y Audiencias</span>
             </button>
-            <button id="nav-mod-admins" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+            <button id="nav-mod-admins" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer">
               <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
               <span class="flex-1">Consola de Roles</span>
             </button>
-            <button id="nav-mod-diagnostic" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+            <button id="nav-mod-diagnostic" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer">
               <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
               <span class="flex-1">Diagnóstico de APIs</span>
             </button>
-            <button id="nav-mod-students" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+            <button id="nav-mod-students" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer">
               <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/></svg>
-              <span class="flex-1">Vista de Estudiantes</span>
+              <span class="flex-1">Control de APIs</span>
+            </button>
+            <button id="nav-mod-app" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+              <span class="flex-1">Vista Aplicación</span>
             </button>
           </nav>
         </aside>
@@ -329,26 +355,29 @@
         </div>
 
         <!-- Panel de noticias -->
-        <div id="ed-panel-news" class="grid grid-cols-1 xl:grid-cols-5 gap-6">
-          <form id="ed-form-news" class="ed-card xl:col-span-2 space-y-4" novalidate>
-            <div class="flex items-center justify-between">
-              <h3 id="ed-news-form-title" class="ed-card-title">Nueva noticia</h3>
-              <button id="ed-news-cancel" type="button" class="ed-link hidden">Cancelar edición</button>
+        <div id="ed-panel-news" class="space-y-6">
+          <form id="ed-form-news" class="ed-card hidden space-y-4 border-2 border-[#6c9339]/25 shadow-md" novalidate>
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#6c9339]"></span>
+                <h3 id="ed-news-form-title" class="ed-card-title">Nueva noticia</h3>
+              </div>
+              <button id="ed-news-cancel" type="button" class="ed-link text-xs">Cerrar / Cancelar</button>
             </div>
             <input type="hidden" id="ed-news-id">
             <div>
               <label class="ed-label" for="ed-news-title">Título *</label>
-              <input id="ed-news-title" class="ed-input" maxlength="255" autocomplete="off">
+              <input id="ed-news-title" class="ed-input" maxlength="255" autocomplete="off" placeholder="Título de la publicación institucional...">
               <p class="ed-field-error" data-error-for="news-title"></p>
             </div>
             <div>
               <label class="ed-label" for="ed-news-teaser">Teaser (resumen corto)</label>
-              <textarea id="ed-news-teaser" class="ed-input" rows="2" maxlength="300"></textarea>
+              <textarea id="ed-news-teaser" class="ed-input" rows="2" maxlength="300" placeholder="Resumen conciso visible en la vista previa del feed..."></textarea>
               <p class="ed-field-error" data-error-for="news-teaser"></p>
             </div>
             <div>
               <label class="ed-label" for="ed-news-content">Texto completo</label>
-              <textarea id="ed-news-content" class="ed-input" rows="6"></textarea>
+              <textarea id="ed-news-content" class="ed-input" rows="5" placeholder="Contenido detallado de la publicación..."></textarea>
               <p class="ed-field-error" data-error-for="news-content"></p>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -359,8 +388,10 @@
               </div>
               <fieldset>
                 <legend class="ed-label">Urgencia</legend>
-                <label class="ed-check"><input type="radio" name="ed-news-urgency" value="normal" checked> Normal</label>
-                <label class="ed-check"><input type="radio" name="ed-news-urgency" value="urgent"> Eilmeldung (envía notificación push)</label>
+                <div class="flex items-center gap-4 pt-1">
+                  <label class="ed-check"><input type="radio" name="ed-news-urgency" value="normal" checked> Normal</label>
+                  <label class="ed-check"><input type="radio" name="ed-news-urgency" value="urgent"> Eilmeldung (Push)</label>
+                </div>
               </fieldset>
             </div>
             <fieldset>
@@ -379,26 +410,36 @@
             <div>
               <span class="ed-label">Afiche o imagen</span>
               <div class="ed-dropzone" data-dropzone="news">
-              <input type="file" class="hidden" accept="image/jpeg,image/png,image/webp,application/pdf" data-dz-input>
-              <input type="hidden" data-dz-url id="ed-news-image-url">
-              <p class="text-xs text-slate-600">Arrastre aquí un afiche o imagen, o
-                <button type="button" class="ed-link" data-dz-pick>elija un archivo</button></p>
-              <p class="ed-subtle">JPG, PNG, WEBP o PDF &bull; máximo 10 MB</p>
-              <div class="ed-dz-status" data-dz-status role="status"></div>
-              <div class="hidden ed-dz-preview" data-dz-preview></div>
+                <input type="file" class="hidden" accept="image/jpeg,image/png,image/webp,application/pdf" data-dz-input>
+                <input type="hidden" data-dz-url id="ed-news-image-url">
+                <p class="text-xs text-slate-600">Arrastre aquí un afiche o imagen, o
+                  <button type="button" class="ed-link" data-dz-pick>elija un archivo</button></p>
+                <p class="ed-subtle">JPG, PNG, WEBP o PDF &bull; máximo 10 MB</p>
+                <div class="ed-dz-status" data-dz-status role="status"></div>
+                <div class="hidden ed-dz-preview" data-dz-preview></div>
+              </div>
             </div>
+            <div class="pt-2">
+              <button id="ed-news-submit" type="submit" class="ed-btn ed-btn-primary w-full cursor-pointer">Publicar noticia</button>
             </div>
-            <button id="ed-news-submit" type="submit" class="ed-btn ed-btn-primary w-full">Publicar noticia</button>
           </form>
 
-          <section class="ed-card xl:col-span-3">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="ed-card-title">Noticias publicadas</h3>
-              <button id="ed-news-reload" type="button" class="ed-btn ed-btn-secondary ed-btn-sm">Recargar</button>
+          <section class="ed-card">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+              <div>
+                <h3 class="ed-card-title text-base">Publicaciones Institucionales</h3>
+                <p class="text-xs text-slate-500 mt-0.5">Listado completo de noticias y comunicados con visualización clara de afiches.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="btn-toggle-new-news" type="button" class="px-3.5 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer">
+                  <span>+ Nueva Publicación</span>
+                </button>
+                <button id="ed-news-reload" type="button" class="ed-btn ed-btn-secondary ed-btn-sm cursor-pointer">Recargar</button>
+              </div>
             </div>
             <div class="overflow-x-auto">
-              <table class="ed-table">
-                <thead><tr><th>Título</th><th>Categoría</th><th>Tipo</th><th>Grupos</th><th>Acciones</th></tr></thead>
+              <table class="ed-table w-full">
+                <thead><tr><th>Título y Afiche</th><th>Categoría</th><th>Tipo</th><th>Grupos</th><th>Acciones</th></tr></thead>
                 <tbody id="ed-news-rows"></tbody>
               </table>
             </div>
@@ -406,26 +447,29 @@
         </div>
 
         <!-- Panel de eventos -->
-        <div id="ed-panel-events" class="hidden grid grid-cols-1 xl:grid-cols-5 gap-6">
-          <form id="ed-form-event" class="ed-card xl:col-span-2 space-y-4" novalidate>
-            <div class="flex items-center justify-between">
-              <h3 id="ed-event-form-title" class="ed-card-title">Nuevo evento</h3>
-              <button id="ed-event-cancel" type="button" class="ed-link hidden">Cancelar edición</button>
+        <div id="ed-panel-events" class="hidden space-y-6">
+          <form id="ed-form-event" class="ed-card hidden space-y-4 border-2 border-[#6c9339]/25 shadow-md" novalidate>
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#6c9339]"></span>
+                <h3 id="ed-event-form-title" class="ed-card-title">Nuevo evento</h3>
+              </div>
+              <button id="ed-event-cancel" type="button" class="ed-link text-xs">Cerrar / Cancelar</button>
             </div>
             <input type="hidden" id="ed-event-id">
             <div>
               <label class="ed-label" for="ed-event-title">Título *</label>
-              <input id="ed-event-title" class="ed-input" maxlength="255" autocomplete="off">
+              <input id="ed-event-title" class="ed-input" maxlength="255" autocomplete="off" placeholder="Título del evento...">
               <p class="ed-field-error" data-error-for="event-title"></p>
             </div>
             <div>
               <label class="ed-label" for="ed-event-description">Descripción</label>
-              <textarea id="ed-event-description" class="ed-input" rows="4"></textarea>
+              <textarea id="ed-event-description" class="ed-input" rows="3" placeholder="Descripción detallada del evento..."></textarea>
               <p class="ed-field-error" data-error-for="event-description"></p>
             </div>
             <div>
               <label class="ed-label" for="ed-event-location">Lugar</label>
-              <input id="ed-event-location" class="ed-input" maxlength="255" autocomplete="off">
+              <input id="ed-event-location" class="ed-input" maxlength="255" autocomplete="off" placeholder="Ej. Aula Magna, Campus UPA">
               <p class="ed-field-error" data-error-for="event-location"></p>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -454,30 +498,38 @@
             <div>
               <span class="ed-label">Afiche del evento</span>
               <div class="ed-dropzone" data-dropzone="event">
-              <input type="file" class="hidden" accept="image/jpeg,image/png,image/webp,application/pdf" data-dz-input>
-              <input type="hidden" data-dz-url id="ed-event-image-url">
-              <p class="text-xs text-slate-600">Arrastre aquí un afiche o imagen, o
-                <button type="button" class="ed-link" data-dz-pick>elija un archivo</button></p>
-              <p class="ed-subtle">JPG, PNG, WEBP o PDF &bull; máximo 10 MB</p>
-              <div class="ed-dz-status" data-dz-status role="status"></div>
-              <div class="hidden ed-dz-preview" data-dz-preview></div>
+                <input type="file" class="hidden" accept="image/jpeg,image/png,image/webp,application/pdf" data-dz-input>
+                <input type="hidden" data-dz-url id="ed-event-image-url">
+                <p class="text-xs text-slate-600">Arrastre aquí un afiche o imagen, o
+                  <button type="button" class="ed-link" data-dz-pick>elija un archivo</button></p>
+                <p class="ed-subtle">JPG, PNG, WEBP o PDF &bull; máximo 10 MB</p>
+                <div class="ed-dz-status" data-dz-status role="status"></div>
+                <div class="hidden ed-dz-preview" data-dz-preview></div>
+              </div>
             </div>
+            <div class="pt-2">
+              <button id="ed-event-submit" type="submit" class="ed-btn ed-btn-primary w-full cursor-pointer">Crear evento</button>
             </div>
-            <button id="ed-event-submit" type="submit" class="ed-btn ed-btn-primary w-full">Crear evento</button>
           </form>
 
-          <div class="xl:col-span-3 space-y-6">
+          <div class="space-y-6">
             <section class="ed-card">
-              <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <h3 class="ed-card-title">Eventos</h3>
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+                <div>
+                  <h3 class="ed-card-title text-base">Eventos y Calendario</h3>
+                  <p class="text-xs text-slate-500 mt-0.5">Listado de eventos activos y convocatorias institucionales.</p>
+                </div>
                 <div class="flex items-center gap-3">
                   <label class="ed-check"><input type="checkbox" id="ed-events-include-past"> Incluir pasados</label>
-                  <button id="ed-events-reload" type="button" class="ed-btn ed-btn-secondary ed-btn-sm">Recargar</button>
+                  <button id="btn-toggle-new-event" type="button" class="px-3.5 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer">
+                    <span>+ Nuevo Evento</span>
+                  </button>
+                  <button id="ed-events-reload" type="button" class="ed-btn ed-btn-secondary ed-btn-sm cursor-pointer">Recargar</button>
                 </div>
               </div>
               <div class="overflow-x-auto">
-                <table class="ed-table">
-                  <thead><tr><th>Evento</th><th>Fecha</th><th>RSVP</th><th>Grupos</th><th>Acciones</th></tr></thead>
+                <table class="ed-table w-full">
+                  <thead><tr><th>Evento y Afiche</th><th>Fecha</th><th>RSVP</th><th>Grupos</th><th>Acciones</th></tr></thead>
                   <tbody id="ed-event-rows"></tbody>
                 </table>
               </div>
@@ -489,22 +541,38 @@
 
         <!-- Módulo B: Gestión de Grupos y Audiencias -->
         <section id="view-groups" class="hidden space-y-6" aria-label="Gestión de Grupos y Audiencias">
-          <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4 mb-6">
+          <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-5">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
                 <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Módulo B &bull; Segmentación</span>
                 <h3 class="font-bold text-slate-900 text-base mt-0.5">Grupos y Audiencias Institucionales</h3>
-                <p class="text-xs text-slate-500 mt-1">Grupos internos para distribución de noticias y eventos hacia cuentas @upa.edu.py y Google Groups.</p>
+                <p class="text-xs text-slate-500 mt-1">Tabla administrativa integral para distribución de publicaciones hacia cuentas @upa.edu.py y Google Groups con guardado persistente en PostgreSQL.</p>
               </div>
-              <button id="btn-create-group" type="button" class="px-3.5 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 self-start sm:self-auto">
+              <button id="btn-create-group" type="button" class="px-3.5 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer">
                 <span>+ Crear Grupo</span>
               </button>
             </div>
 
-            <!-- Lista de Grupos Estándar y Personalizados -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="groups-list-container">
-              <!-- Renderizado dinámicamente -->
+            <!-- Tabla Integral de Grupos y Audiencias -->
+            <div class="overflow-x-auto rounded-xl border border-slate-200/80">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead class="bg-slate-50/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-3.5">ID</th>
+                    <th class="py-3 px-3.5">Nombre</th>
+                    <th class="py-3 px-3.5">Descripción</th>
+                    <th class="py-3 px-3.5">Google Group</th>
+                    <th class="py-3 px-3.5">Correos Autorizados</th>
+                    <th class="py-3 px-3.5 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="groups-table-rows" class="divide-y divide-slate-100 bg-white">
+                  <!-- Renderizado dinámicamente -->
+                </tbody>
+              </table>
             </div>
+            <!-- Contenedor de compatibilidad para selector existente -->
+            <div id="groups-list-container" class="hidden"></div>
           </div>
         </section>
 
@@ -513,124 +581,107 @@
           <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-6">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Módulo C &bull; Permisos</span>
-                <h3 class="font-bold text-slate-900 text-base mt-0.5">Consola de Administradores</h3>
-                <p class="text-xs text-slate-500 mt-1">Gestión de accesos y asignación granular de permisos a cuentas @upa.edu.py.</p>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Módulo C &bull; Matriz de Permisos</span>
+                <h3 class="font-bold text-slate-900 text-base mt-0.5">Consola de Roles y Permisos</h3>
+                <p class="text-xs text-slate-500 mt-1">Gestión directa de accesos y matriz interactiva de permisos por casilla de verificación para cuentas @upa.edu.py.</p>
               </div>
             </div>
 
-            <!-- Formulario para agregar nuevo administrador -->
-            <form id="form-add-admin" class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3.5">
-              <h4 class="text-xs font-bold text-slate-800">Autorizar Nuevo Administrador o Editor</h4>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div class="md:col-span-2">
-                  <label class="block text-[11px] font-semibold text-slate-700 mb-1" for="input-admin-email">Correo Institucional *</label>
-                  <input id="input-admin-email" type="email" placeholder="nombre.apellido@upa.edu.py" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-mono focus:ring-2 focus:ring-[#6c9339]" required>
-                </div>
-                <div>
-                  <label class="block text-[11px] font-semibold text-slate-700 mb-1" for="select-admin-role">Rol Asignado</label>
-                  <select id="select-admin-role" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-[#6c9339]">
-                    <option value="admin">Administrador Total</option>
-                    <option value="editor">Editor de Redacción</option>
-                  </select>
-                </div>
+            <!-- Barra Superior Minimalista para Añadir Administrador / Editor -->
+            <form id="form-add-admin" class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row items-center gap-3">
+              <div class="flex-1 w-full sm:w-auto">
+                <label for="input-admin-email" class="sr-only">Correo Institucional</label>
+                <input id="input-admin-email" type="email" placeholder="usuario.nuevo@upa.edu.py" class="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl bg-white font-mono focus:ring-2 focus:ring-[#6c9339]" required>
               </div>
-
-              <!-- Permisos granulares por pestaña -->
-              <div>
-                <span class="block text-[11px] font-semibold text-slate-700 mb-2">Permisos por Módulo:</span>
-                <div class="flex flex-wrap gap-4 text-xs text-slate-700">
-                  <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="perm-publications" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
-                    <span>Publicaciones y Eventos</span>
-                  </label>
-                  <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="perm-groups" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
-                    <span>Grupos y Audiencias</span>
-                  </label>
-                  <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="perm-admins" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
-                    <span>Gestión de Roles</span>
-                  </label>
-                  <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="perm-diagnostic" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
-                    <span>Diagnóstico de APIs</span>
-                  </label>
-                </div>
+              <div class="w-full sm:w-48">
+                <label for="select-admin-role" class="sr-only">Rol Asignado</label>
+                <select id="select-admin-role" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-[#6c9339]">
+                  <option value="editor">Editor de Redacción</option>
+                  <option value="admin">Administrador Total</option>
+                </select>
               </div>
-
-              <button type="submit" class="px-4 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition">
-                Autorizar Administrador
+              <button type="submit" class="w-full sm:w-auto px-4 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition whitespace-nowrap cursor-pointer">
+                + Autorizar Correo
               </button>
             </form>
 
-            <!-- Tabla de Administradores Registrados -->
-            <div class="overflow-x-auto">
+            <!-- Tabla de Roles con Matriz de Permisos -->
+            <div class="overflow-x-auto rounded-xl border border-slate-200/80">
               <table class="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr class="border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
-                    <th class="py-2.5 px-3">Usuario / Correo</th>
-                    <th class="py-2.5 px-3">Rol</th>
-                    <th class="py-2.5 px-3">Permisos</th>
-                    <th class="py-2.5 px-3 text-right">Acciones</th>
+                <thead class="bg-slate-50/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-3.5">Usuario / Correo</th>
+                    <th class="py-3 px-3.5">Rol</th>
+                    <th class="py-3 px-2 text-center">Publicaciones</th>
+                    <th class="py-3 px-2 text-center">Grupos</th>
+                    <th class="py-3 px-2 text-center">Roles</th>
+                    <th class="py-3 px-2 text-center">Diagnóstico</th>
+                    <th class="py-3 px-3.5 text-right">Revocar</th>
                   </tr>
                 </thead>
-                <tbody id="admin-table-rows" class="divide-y divide-slate-100">
-                  <!-- Renderizado dinámicamente -->
+                <tbody id="admin-table-rows" class="divide-y divide-slate-100 bg-white">
+                  <!-- Renderizado dinámicamente con checkboxes interactivos y papelera -->
                 </tbody>
               </table>
             </div>
           </div>
         </section>
 
-        <!-- Módulo D: Diagnóstico de APIs y Exportación de Datos -->
+        <!-- Módulo D: Diagnóstico de APIs y Panel de Telemetría -->
         <section id="view-diagnostic" class="hidden space-y-6" aria-label="Diagnóstico de APIs">
           <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-6">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
                 <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Módulo Diagnóstico</span>
-                <h3 class="font-bold text-slate-900 text-base mt-0.5">Diagnóstico de APIs y Payload Móvil</h3>
-                <p class="text-xs text-slate-500 mt-1">Inspección de contratos REST y datos agregados para la aplicación móvil nativa UPA.</p>
+                <h3 class="font-bold text-slate-900 text-base mt-0.5">Panel de Telemetría y Contratos REST</h3>
+                <p class="text-xs text-slate-500 mt-1">Supervisión en vivo de servicios centrales, base de datos relacional y payload consolidado para la aplicación móvil.</p>
               </div>
               <div class="flex items-center gap-2">
-                <button id="btn-copy-json" type="button" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl border border-slate-200 transition shadow-2xs">
+                <button id="btn-copy-json" type="button" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl border border-slate-200 transition shadow-2xs cursor-pointer">
                   Copiar JSON
                 </button>
-                <button id="btn-open-raw-json" type="button" class="px-3.5 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5">
+                <button id="btn-open-raw-json" type="button" class="px-3.5 py-2 bg-[#6c9339] hover:bg-[#5a7b2e] text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer">
                   <span>Abrir en nueva pestaña ↗</span>
                 </button>
               </div>
             </div>
 
-            <!-- Resumen de Estado de APIs -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                <div class="flex items-center justify-between mb-1">
-                  <span class="font-bold text-slate-700">OAuth 2.0</span>
-                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <!-- Tarjetas Informativas de Telemetría -->
+            <div id="telemetry-cards-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+              <div class="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/90 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-700">Base de Datos</span>
+                  <span id="telemetry-db-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Conectada</span>
                 </div>
-                <p class="text-[11px] text-slate-500">Google Workspace (@upa.edu.py)</p>
+                <div class="text-2xl font-black text-slate-900" id="telemetry-db-users">0</div>
+                <p class="text-[11px] text-slate-500" id="telemetry-db-detail">PostgreSQL / Usuarios Registrados</p>
               </div>
-              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                <div class="flex items-center justify-between mb-1">
-                  <span class="font-bold text-slate-700">Mailgruppen</span>
-                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+
+              <div class="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/90 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-700">Directory Sync</span>
+                  <span id="telemetry-dir-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Sincronizado</span>
                 </div>
-                <p class="text-[11px] text-slate-500">Google Directory API</p>
+                <div class="text-2xl font-black text-slate-900" id="telemetry-dir-groups">0</div>
+                <p class="text-[11px] text-slate-500" id="telemetry-dir-detail">Google Workspace Directory API</p>
               </div>
-              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                <div class="flex items-center justify-between mb-1">
+
+              <div class="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/90 space-y-2">
+                <div class="flex items-center justify-between">
                   <span class="font-bold text-slate-700">Classroom</span>
-                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span id="telemetry-classroom-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Verificado</span>
                 </div>
-                <p class="text-[11px] text-slate-500">Cursos y plazos académicos</p>
+                <div class="text-2xl font-black text-slate-900" id="telemetry-classroom-courses">0</div>
+                <p class="text-[11px] text-slate-500" id="telemetry-classroom-detail">Cursos Académicos Activos</p>
               </div>
-              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                <div class="flex items-center justify-between mb-1">
-                  <span class="font-bold text-slate-700">Instagram Feed</span>
-                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+
+              <div class="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/90 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-700">Servidor y Runtime</span>
+                  <span id="telemetry-server-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">100% Zero-Mock</span>
                 </div>
-                <p class="text-[11px] text-slate-500">Feed oficial (@upalemana)</p>
+                <div class="text-2xl font-black text-[#6c9339]">FastAPI</div>
+                <p class="text-[11px] text-slate-500">Doctrina Zero-Mock Verificada</p>
               </div>
             </div>
 
@@ -640,7 +691,75 @@
                 <span class="text-xs font-bold text-slate-800">Contrato de Datos Agregados (JSON)</span>
                 <span class="text-[11px] text-slate-400 font-mono">GET /api/v1/app-state</span>
               </div>
-              <pre id="raw-json-output" class="font-mono text-xs text-emerald-400 overflow-x-auto p-4 bg-slate-900 rounded-xl max-h-[500px] leading-relaxed border border-slate-800"></pre>
+              <pre id="raw-json-output" class="font-mono text-xs text-emerald-400 overflow-x-auto p-4 bg-slate-900 rounded-xl max-h-[450px] leading-relaxed border border-slate-800"></pre>
+            </div>
+          </div>
+        </section>
+
+        <!-- Módulo E: Vista Aplicación Móvil (/dashboard/app) -->
+        <section id="view-app" class="hidden space-y-6" aria-label="Vista Aplicación Móvil">
+          <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[#6c9339]">Módulo Móvil &bull; Contenedor Web</span>
+                <h3 class="font-bold text-slate-900 text-base mt-0.5">Vista Aplicación Campus (Mobile App Container)</h3>
+                <p class="text-xs text-slate-500 mt-1">Contenedor base para la experiencia web del cliente móvil UPA y verificación de componentes responsivos.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  Ruta /dashboard/app Activa
+                </span>
+              </div>
+            </div>
+
+            <!-- Contenedor Maqueta Dispositivo Móvil -->
+            <div class="max-w-sm mx-auto bg-slate-900 rounded-[2.5rem] p-4 shadow-2xl border-4 border-slate-800 text-slate-100">
+              <!-- Notch y Barra de Estado -->
+              <div class="flex items-center justify-between px-4 pt-1 pb-3 text-[11px] text-slate-400 font-medium">
+                <span>UPA Mobile</span>
+                <div class="w-16 h-4 bg-slate-800 rounded-full mx-auto"></div>
+                <div class="flex items-center gap-1 font-mono text-[10px]">
+                  <span>5G</span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              <!-- Pantalla de la Aplicación Móvil -->
+              <div class="bg-slate-50 text-slate-800 rounded-2xl overflow-hidden min-h-[480px] p-4 space-y-3.5 shadow-inner">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                  <div class="flex items-center gap-2">
+                    <img src="/dashboard/upa-logo.png" alt="UPA" class="h-6 w-auto">
+                    <span class="font-bold text-xs text-slate-900">Campus App</span>
+                  </div>
+                  <span class="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">En línea</span>
+                </div>
+
+                <div class="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                  <div class="text-[10px] font-bold uppercase text-[#6c9339]">Bienvenido al Campus UPA</div>
+                  <div class="text-xs font-semibold text-slate-800" id="app-preview-user-name">Estudiante UPA</div>
+                  <div class="text-[11px] text-slate-500 font-mono" id="app-preview-user-email">estudiante@upa.edu.py</div>
+                </div>
+
+                <div class="space-y-2">
+                  <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Publicaciones y Novedades</div>
+                  <div id="app-preview-feed" class="space-y-2 max-h-56 overflow-y-auto">
+                    <div class="p-2.5 bg-white rounded-xl border border-slate-200 text-xs">
+                      <div class="font-bold text-slate-900">Bienvenido al Portal UPA</div>
+                      <p class="text-[11px] text-slate-500 mt-0.5">Feed sincronizado en tiempo real con backend REST.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="p-3 bg-blue-50 rounded-xl border border-blue-200 text-xs text-blue-900">
+                  <div class="font-bold">Contenedor Base del Cliente Móvil</div>
+                  <p class="text-[10px] text-blue-700 mt-0.5">Integración con Android WebView y PWA lista para despliegue.</p>
+                </div>
+              </div>
+
+              <!-- Barra Inferior del Dispositivo -->
+              <div class="pt-3 pb-1 text-center">
+                <div class="w-32 h-1 bg-slate-700 rounded-full mx-auto"></div>
+              </div>
             </div>
           </div>
         </section>
@@ -657,6 +776,46 @@
     </section>
 
   </main>
+
+  <!-- Modal para Editar Grupo Institucional -->
+  <div id="modal-edit-group" class="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-8 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div>
+          <h3 class="text-base font-extrabold text-slate-900">Editar Grupo de Audiencia</h3>
+          <p class="text-[11px] text-slate-500 font-mono mt-0.5" id="modal-group-id-label">ID: grupo</p>
+        </div>
+        <button id="btn-close-group-modal" type="button" class="text-slate-400 hover:text-slate-600 text-2xl font-bold cursor-pointer">&times;</button>
+      </div>
+      <form id="form-edit-group" class="space-y-3.5">
+        <input type="hidden" id="edit-group-id">
+        <div>
+          <label for="edit-group-name" class="block text-xs font-semibold text-slate-700 mb-1">Nombre *</label>
+          <input type="text" id="edit-group-name" required class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6c9339]">
+        </div>
+        <div>
+          <label for="edit-group-description" class="block text-xs font-semibold text-slate-700 mb-1">Descripción</label>
+          <textarea id="edit-group-description" rows="2" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6c9339]"></textarea>
+        </div>
+        <div>
+          <label for="edit-group-google" class="block text-xs font-semibold text-slate-700 mb-1">Google Workspace Group</label>
+          <input type="text" id="edit-group-google" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6c9339]">
+        </div>
+        <div>
+          <label for="edit-group-emails" class="block text-xs font-semibold text-slate-700 mb-1">Correos autorizados (separados por coma)</label>
+          <input type="text" id="edit-group-emails" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-[#6c9339]">
+        </div>
+        <div class="flex justify-end gap-2.5 pt-2">
+          <button type="button" id="btn-cancel-group" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer">
+            Cancelar
+          </button>
+          <button type="submit" class="px-4 py-2 text-xs font-bold text-white bg-[#6c9339] hover:bg-[#5a7b2e] rounded-xl shadow-md transition cursor-pointer">
+            Guardar en PostgreSQL
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Modal para Vincular Token de Classroom Manual -->
   <div id="modal-classroom" class="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">

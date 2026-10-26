@@ -14,6 +14,12 @@ class UserRoleCreate(UserRoleBase):
     pass
 
 
+class UserRoleUpdate(BaseModel):
+    name: str | None = None
+    role: str | None = Field(None, pattern="^(admin|editor)$")
+    permissions: list[str] | None = None
+
+
 class UserRoleResponse(UserRoleBase):
     id: int
     is_primary: bool = False
