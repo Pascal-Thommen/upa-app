@@ -142,6 +142,12 @@ def test_cockpit_core_unit_tests_pass():
     assert summary["tests"] >= 15
 
 
+def test_web_admin_router_unit_tests_pass():
+    node = _require_node()
+    summary = _run_node_tests(node, [WEB_TESTS / "router.test.js"], dict(os.environ))
+    assert summary["tests"] >= 10
+
+
 def test_cockpit_end_to_end_against_real_backend(live_backend):
     node = _require_node()
     expired_token = create_access_token(

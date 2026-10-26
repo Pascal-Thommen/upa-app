@@ -74,4 +74,4 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
 7. **Enrutamiento URL Dedicado por Módulo y Persistencia de Subrutas (SRV-155):**  
    * **Enrutador History API:** Direcciones dedicadas para cada módulo (`/dashboard/publicaciones`, `/dashboard/grupos`, `/dashboard/roles`, `/dashboard/diagnostico`, `/dashboard/estudiantes`).  
    * **Navegación nativa:** Actualización fluida de la barra del navegador, historial de navegación (`popstate`) y persistencia del módulo activo tras recarga (F5).  
-   * **Compatibilidad de enlaces directos (Deep Linking):** Soporte en Nginx para resolver y cargar directamente cualquier pestaña solicitada sin error 404.
+   * **Compatibilidad de enlaces directos (Deep Linking):** Soporte en Nginx y backend FastAPI (`SPAStaticFiles`) para resolver y cargar directamente cualquier pestaña solicitada sin error 404, redirigiendo rutas no reconocidas a `/dashboard/publicaciones`.

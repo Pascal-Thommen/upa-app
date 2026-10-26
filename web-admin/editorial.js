@@ -110,6 +110,9 @@
     if ($("mode-btn-student")) {
       $("mode-btn-student").classList.toggle("is-active", !editorial);
     }
+    if (window.UpaRouter && typeof window.UpaRouter.syncNavClasses === "function") {
+      window.UpaRouter.syncNavClasses(editorial ? "publicaciones" : "estudiantes");
+    }
     try {
       localStorage.setItem(MODE_STORAGE_KEY, state.mode);
     } catch (_) {
@@ -549,8 +552,20 @@
     resetNewsForm();
     resetEventForm();
 
-    $("mode-btn-editorial").addEventListener("click", () => applyMode("editorial"));
-    $("mode-btn-student").addEventListener("click", () => applyMode("student"));
+    $("mode-btn-editorial").addEventListener("click", () => {
+      if (window.UpaRouter && typeof window.UpaRouter.navigate === "function") {
+        window.UpaRouter.navigate("/dashboard/publicaciones");
+      } else {
+        applyMode("editorial");
+      }
+    });
+    $("mode-btn-student").addEventListener("click", () => {
+      if (window.UpaRouter && typeof window.UpaRouter.navigate === "function") {
+        window.UpaRouter.navigate("/dashboard/estudiantes");
+      } else {
+        applyMode("student");
+      }
+    });
     $("ed-tab-news").addEventListener("click", () => applyPanel("news"));
     $("ed-tab-events").addEventListener("click", () => applyPanel("events"));
 
@@ -587,10 +602,24 @@
       state.allowed = EDITOR_ROLES.includes(String((user && user.role) || "").toLowerCase());
       $("mode-switch").classList.toggle("hidden", !state.allowed);
       if (!state.allowed) {
-        applyMode("student");
+        if (window.UpaRouter && typeof window.UpaRouter.navigate === "function") {
+          window.UpaRouter.navigate("/dashboard/estudiantes", { replace: true });
+        } else {
+          applyMode("student");
+        }
         return;
       }
       initOnce();
+      if (window.UpaRouter && typeof window.UpaRouter.getCurrentRoute === "function") {
+        const cur = window.UpaRouter.getCurrentRoute();
+        if (cur && cur !== "publicaciones") {
+          state.mode = cur === "estudiantes" ? "student" : "editorial";
+          if (typeof window.UpaRouter.reapplyCurrentRoute === "function") {
+            window.UpaRouter.reapplyCurrentRoute();
+          }
+          return;
+        }
+      }
       let stored = null;
       try {
         stored = localStorage.getItem(MODE_STORAGE_KEY);
@@ -613,6 +642,9 @@
       const student = $("student-workspace");
       if (student) student.classList.remove("hidden");
     },
+
+    applyMode,
+    loadPanelData,
   };
 
   window.UpaCockpit = UpaCockpit;
