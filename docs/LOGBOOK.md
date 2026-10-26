@@ -59,3 +59,9 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
    * Configuración de Nginx como Reverse Proxy en el puerto `8085` de la red NetBird: sirve el portal `/dashboard/` de manera estática y reenvía transparentemente el tráfico de `/api/`, `/health`, `/docs` y `/uploads/` hacia `http://backend:8000`.
    * Preservación intacta del flujo de autenticación Google OAuth 2.0 y su URI de redirección (`https://upa.eu1.netbird.services/api/auth/google`).
    * Infraestructura final en 3 contenedores productivos: `upa-postgres`, `upa-backend` y `upa-frontend`.
+5. **Hardening de Producción y Rediseño Institucional UPA (SRV-152):**  
+   * Incorporación del logotipo oficial de la UPA (Heidelberg - Asunción) y paleta institucional en verde oliva (#6c9339) en concordancia visual con la aplicación móvil.
+   * Corrección definitiva del bug de renderizado en API 2 (Google Mailgruppen), extrayendo propiedades de nombre y correo para eliminar el formato `[object Object]`.
+   * Optimización del flujo Google OAuth: cambio de `prompt=consent select_account` a `prompt=select_account`, eliminando la solicitud repetitiva de permisos cuando el usuario ya autorizó el acceso, preservando el `refresh_token` offline en PostgreSQL.
+   * Eliminación del parpadeo de inicio de sesión mediante detección inmediata de token en `localStorage`, cargando la interfaz administrativa de forma instantánea.
+   * Supresión radical de textos artificiales o marketing accesorio, adoptando un diseño minimalista y profesional.

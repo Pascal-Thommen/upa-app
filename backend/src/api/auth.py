@@ -255,9 +255,10 @@ def _build_user_response(user: User) -> UserResponse:
 
 
 @router.get("/login-google", summary="Iniciar flujo web OAuth 2.0 con Google")
-def login_google():
+def login_google(force_consent: bool = False):
     """Inicia el flujo oficial de redireccion Google OAuth 2.0 Web con permisos de Classroom."""
     client_id = settings.GOOGLE_CLIENT_ID
+    prompt_val = "consent select_account" if force_consent else "select_account"
     params = urllib.parse.urlencode(
         {
             "client_id": client_id,
@@ -265,7 +266,7 @@ def login_google():
             "response_type": "code",
             "scope": "openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly",
             "access_type": "offline",
-            "prompt": "consent select_account",
+            "prompt": prompt_val,
             "hd": settings.ALLOWED_EMAIL_DOMAIN,
         }
     )

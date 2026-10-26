@@ -7,11 +7,11 @@
  */
 
 :root {
-  /* Paleta principal */
-  --ed-primary: #1e40af;
-  --ed-primary-hover: #1e3a8a;
+  /* Paleta principal institucional UPA */
+  --ed-primary: #6c9339;
+  --ed-primary-hover: #5a7b2e;
   --ed-primary-contrast: #ffffff;
-  --ed-accent: #779a0b;
+  --ed-accent: #6c9339;
 
   /* Superficies y texto */
   --ed-surface: #ffffff;
