@@ -310,7 +310,6 @@ try:
 except OSError as upload_dir_error:
     print(f"[Startup Warning] Directorio de subidas no disponible, /uploads no montado: {upload_dir_error}")
 
-
 class SPAStaticFiles(StaticFiles):
     """StaticFiles con soporte SPA: resuelve subrutas sin extension hacia index.html."""
 

@@ -15,14 +15,6 @@ class AudienceGroupCreate(AudienceGroupBase):
     id: str | None = Field(None, min_length=2, max_length=50)
 
 
-class AudienceGroupUpdate(BaseModel):
-    name: str | None = Field(None, min_length=2, max_length=100)
-    description: str | None = Field(None, max_length=500)
-    badge_class: str | None = Field(None, max_length=100)
-    google_group: str | None = Field(None, max_length=255)
-    emails: list[str] | None = None
-
-
 class AudienceGroupResponse(AudienceGroupBase):
     id: str
     is_system: bool = False

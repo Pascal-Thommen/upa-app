@@ -68,21 +68,6 @@ def assign_role(
     return role_record
 
 
-@router.put(
-    "/{email}",
-    response_model=UserRoleResponse,
-    summary="Actualizar permisos de rol de administrador o editor",
-)
-def update_role_permissions(
-    email: str,
-    payload: UserRoleCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> UserRoleResponse:
-    payload.email = email
-    return assign_role(payload=payload, db=db, current_user=current_user)
-
-
 @router.delete("/{email}", summary="Revocar autorizacion de administrador o editor")
 def revoke_role(
     email: str,
