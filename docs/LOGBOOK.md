@@ -65,3 +65,9 @@ Este documento constituye el registro maestro cronológico de la plataforma UPA 
    * Optimización del flujo Google OAuth: cambio de `prompt=consent select_account` a `prompt=select_account`, eliminando la solicitud repetitiva de permisos cuando el usuario ya autorizó el acceso, preservando el `refresh_token` offline en PostgreSQL.
    * Eliminación del parpadeo de inicio de sesión mediante detección inmediata de token en `localStorage`, cargando la interfaz administrativa de forma instantánea.
    * Supresión radical de textos artificiales o marketing accesorio, adoptando un diseño minimalista y profesional.
+6. **Purga Radical de AI Slop, Separación de Diagnóstico y Alineación Visual con App UPA (SRV-153):**  
+   * **Encabezado institucional:** Eliminación definitiva de insignias de estado de APIs y etiquetas "EN VIVO", conservando logotipo oficial, título institucional y avatar con acción de logout.  
+   * **Barra lateral sobria:** Supresión de tarjeta informativa sobre stack móvil Kotlin/Compose y sustitución de emojis por iconografía SVG minimalista.  
+   * **Separación de diagnóstico y títulos funcionales:** Reubicación de visores y botones de volcado JSON al módulo exclusivo de Diagnóstico de APIs. Reemplazo de títulos técnicos de backend por títulos orientados a la gestión académica y universitaria.  
+   * **Agenda académica estilo app móvil:** Lista cronológica limpia con insignias de fecha (ej. VIE 16, VIE 23) idéntica a la interfaz nativa.  
+   * **Control de caché:** Cabeceras HTTP `Cache-Control: no-cache, must-revalidate` en Nginx y versionado `?v=1.1.0` en scripts y estilos.

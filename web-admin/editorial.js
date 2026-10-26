@@ -98,8 +98,18 @@
     const editorial = state.mode === "editorial";
     $("student-workspace").classList.toggle("hidden", editorial);
     $("view-editorial").classList.toggle("hidden", !editorial);
-    $("mode-btn-editorial").classList.toggle("is-active", editorial);
-    $("mode-btn-student").classList.toggle("is-active", !editorial);
+    const vGroups = $("view-groups");
+    if (vGroups) vGroups.classList.add("hidden");
+    const vAdmins = $("view-admins");
+    if (vAdmins) vAdmins.classList.add("hidden");
+    const vDiag = $("view-diagnostic");
+    if (vDiag) vDiag.classList.add("hidden");
+    if ($("mode-btn-editorial")) {
+      $("mode-btn-editorial").classList.toggle("is-active", editorial);
+    }
+    if ($("mode-btn-student")) {
+      $("mode-btn-student").classList.toggle("is-active", !editorial);
+    }
     try {
       localStorage.setItem(MODE_STORAGE_KEY, state.mode);
     } catch (_) {

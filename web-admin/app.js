@@ -232,6 +232,17 @@ function renderUserProfile(user) {
   // 2. Regla de Privacidad de Google Mailgruppen:
   // Estrictamente visible solo para pascal.thommen@upa.edu.py
   const isExclusiveUser = (user.email || "").toLowerCase() === "pascal.thommen@upa.edu.py";
+
+  // Control de visualización de barra lateral para estudiantes
+  const sidebar = document.getElementById("sidebar-menu");
+  if (sidebar) {
+    const isPrivileged = user && (user.role === "admin" || user.role === "editor");
+    if (isPrivileged) {
+      sidebar.classList.remove("hidden");
+    } else {
+      sidebar.classList.add("hidden");
+    }
+  }
   // Estrictamente los 3 grupos reales obtenidos de Google Workspace Directory API
   // Se excluyen los tags sintéticos internos (ALL, TIE)
   const realGoogleGroups = Array.isArray(user.google_groups) && user.google_groups.length > 0
@@ -354,27 +365,31 @@ async function loadClassroomDeadlines() {
     }
 
     if (!res.ok) {
-      DOM_ELEMENTS.deadlinesCount.textContent = "Error";
+      if (DOM_ELEMENTS.deadlinesCount) DOM_ELEMENTS.deadlinesCount.textContent = "Error";
       return;
     }
 
     const data = await res.json();
     state.deadlines = Array.isArray(data) ? data : data.deadlines || [];
-    DOM_ELEMENTS.deadlinesCount.textContent = `${state.deadlines.length} tareas`;
+    if (DOM_ELEMENTS.deadlinesCount) {
+      DOM_ELEMENTS.deadlinesCount.textContent = `${state.deadlines.length} tareas`;
+    }
 
     renderCalendar();
     renderDeadlinesList(state.deadlines);
   } catch (error) {
     console.error("Fallo al obtener plazos:", error);
-    DOM_ELEMENTS.deadlinesCount.textContent = "Error";
+    if (DOM_ELEMENTS.deadlinesCount) DOM_ELEMENTS.deadlinesCount.textContent = "Error";
   }
 }
 
 /**
- * Renderiza el calendario mensual interactivo.
+ * Renderiza el calendario mensual si el elemento existe en el DOM.
  */
 function renderCalendar() {
   const grid = DOM_ELEMENTS.calendarGrid;
+  if (!grid || !DOM_ELEMENTS.calMonthTitle) return;
+
   const monthNames = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
@@ -382,19 +397,16 @@ function renderCalendar() {
 
   DOM_ELEMENTS.calMonthTitle.textContent = `${monthNames[state.currentMonth]} ${state.currentYear}`;
 
-  // Encabezados de días
   const dayHeaders = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
   let html = dayHeaders.map((dh) => `<div class="cal-day-header">${dh}</div>`).join("");
 
   const firstDayIndex = (new Date(state.currentYear, state.currentMonth, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(state.currentYear, state.currentMonth + 1, 0).getDate();
 
-  // Días vacíos previos
   for (let i = 0; i < firstDayIndex; i++) {
     html += `<div class="cal-day is-empty"></div>`;
   }
 
-  // Mapear deadlines por día en formato YYYY-MM-DD
   const deadlineDaysMap = {};
   state.deadlines.forEach((d) => {
     const formatted = d.due_date_formatted || "";
@@ -404,7 +416,6 @@ function renderCalendar() {
     }
   });
 
-  // Días del mes
   for (let day = 1; day <= daysInMonth; day++) {
     const mm = String(state.currentMonth + 1).padStart(2, "0");
     const dd = String(day).padStart(2, "0");
@@ -423,17 +434,16 @@ function renderCalendar() {
 
   grid.innerHTML = html;
 
-  // Añadir listener para seleccionar fecha
   grid.querySelectorAll(".cal-day[data-date]").forEach((el) => {
     el.addEventListener("click", () => {
       const selected = el.getAttribute("data-date");
       if (state.selectedDate === selected) {
         state.selectedDate = null;
-        DOM_ELEMENTS.selectedDateLabel.textContent = "Próximas Entregas";
+        if (DOM_ELEMENTS.selectedDateLabel) DOM_ELEMENTS.selectedDateLabel.textContent = "Próximas Entregas";
         renderDeadlinesList(state.deadlines);
       } else {
         state.selectedDate = selected;
-        DOM_ELEMENTS.selectedDateLabel.textContent = `Entregas del ${selected}`;
+        if (DOM_ELEMENTS.selectedDateLabel) DOM_ELEMENTS.selectedDateLabel.textContent = `Entregas del ${selected}`;
         const filtered = state.deadlines.filter((d) => (d.due_date_formatted || "").startsWith(selected));
         renderDeadlinesList(filtered);
       }
@@ -443,15 +453,38 @@ function renderCalendar() {
 }
 
 /**
- * Renderiza la lista de tareas y deadlines.
+ * Obtiene la abreviación del día y número para el diseño nativo tipo tarjeta (ej. VIE 16).
+ */
+function formatDeadlineBadge(item) {
+  let dateObj = null;
+  if (item.due_date && item.due_date.year && item.due_date.month && item.due_date.day) {
+    dateObj = new Date(item.due_date.year, item.due_date.month - 1, item.due_date.day);
+  } else if (item.due_date_formatted) {
+    const parts = item.due_date_formatted.split(" ")[0].split("-");
+    if (parts.length === 3) {
+      dateObj = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    }
+  }
+  const dayNames = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
+  if (dateObj && !isNaN(dateObj.getTime())) {
+    const dayOfWeek = dayNames[dateObj.getDay()];
+    const dayNum = String(dateObj.getDate()).padStart(2, "0");
+    return { dayOfWeek, dayNum };
+  }
+  return { dayOfWeek: "PLAZO", dayNum: "--" };
+}
+
+/**
+ * Renderiza la lista cronológica limpia de tareas y entregas estilo App Móvil nativa.
  */
 function renderDeadlinesList(items) {
   const container = DOM_ELEMENTS.deadlinesContainer;
+  if (!container) return;
 
   if (!items || items.length === 0) {
     container.innerHTML = `
-      <div class="p-4 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-lg">
-        No hay entregas pendientes para esta fecha.
+      <div class="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
+        No hay entregas pendientes para este periodo.
       </div>
     `;
     return;
@@ -459,23 +492,31 @@ function renderDeadlinesList(items) {
 
   container.innerHTML = items
     .map((d) => {
-      const link = d.alternate_link || `https://classroom.google.com`;
-      const dateStr = d.due_date_formatted || "Sin fecha";
+      const link = d.alternate_link || "https://classroom.google.com";
+      const badge = formatDeadlineBadge(d);
+      const timeStr = d.due_time
+        ? `${String(d.due_time.hours || 0).padStart(2, "0")}:${String(d.due_time.minutes || 0).padStart(2, "0")} hs`
+        : (d.due_date_formatted ? d.due_date_formatted.split(" ")[1] || "" : "");
+
       return `
-        <div class="deadline-card is-normal flex flex-col justify-between gap-1.5">
-          <div>
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold text-blue-800 uppercase truncate">${d.course || "Classroom"}</span>
-              ${d.max_points ? `<span class="text-[10px] font-semibold text-slate-500">${d.max_points} pts</span>` : ""}
-            </div>
-            <h4 class="font-bold text-xs text-slate-900 mt-0.5">${d.title}</h4>
+        <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80 hover:bg-slate-100/60 transition shadow-2xs">
+          <div class="flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-white border border-slate-200 text-center flex-shrink-0 shadow-2xs">
+            <span class="text-[10px] font-extrabold text-[#6c9339] leading-tight uppercase">${badge.dayOfWeek}</span>
+            <span class="text-base font-extrabold text-slate-900 leading-tight">${badge.dayNum}</span>
           </div>
-          <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
-            <span class="text-amber-700 font-medium">📅 ${dateStr}</span>
-            <a href="${link}" target="_blank" rel="noopener noreferrer" class="btn-classroom-link">
-              <span>Ver Tarea</span>
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-            </a>
+          <div class="flex-1 min-w-0 space-y-1">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wide truncate">${d.course || "Classroom"}</span>
+              ${d.max_points ? `<span class="text-[10px] font-bold px-1.5 py-0.2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">${d.max_points} pts</span>` : ""}
+            </div>
+            <h4 class="font-bold text-xs text-slate-900 truncate" title="${d.title}">${d.title}</h4>
+            <div class="flex items-center justify-between pt-0.5 text-[11px] text-slate-400">
+              <span class="font-mono text-[10px] text-slate-500">${timeStr ? `⏰ ${timeStr}` : ""}</span>
+              <a href="${link}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-semibold text-blue-700 hover:text-blue-900 flex items-center gap-1">
+                <span>Ver tarea</span>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              </a>
+            </div>
           </div>
         </div>
       `;
@@ -758,38 +799,50 @@ function init() {
   DOM_ELEMENTS.formLogin.addEventListener("submit", handleLoginSubmit);
   DOM_ELEMENTS.btnRefresh.addEventListener("click", refreshDashboard);
 
-  DOM_ELEMENTS.calPrev.addEventListener("click", () => {
-    state.currentMonth--;
-    if (state.currentMonth < 0) {
-      state.currentMonth = 11;
-      state.currentYear--;
-    }
-    renderCalendar();
-  });
+  if (DOM_ELEMENTS.calPrev) {
+    DOM_ELEMENTS.calPrev.addEventListener("click", () => {
+      state.currentMonth--;
+      if (state.currentMonth < 0) {
+        state.currentMonth = 11;
+        state.currentYear--;
+      }
+      renderCalendar();
+    });
+  }
 
-  DOM_ELEMENTS.calNext.addEventListener("click", () => {
-    state.currentMonth++;
-    if (state.currentMonth > 11) {
-      state.currentMonth = 0;
-      state.currentYear++;
-    }
-    renderCalendar();
-  });
+  if (DOM_ELEMENTS.calNext) {
+    DOM_ELEMENTS.calNext.addEventListener("click", () => {
+      state.currentMonth++;
+      if (state.currentMonth > 11) {
+        state.currentMonth = 0;
+        state.currentYear++;
+      }
+      renderCalendar();
+    });
+  }
 
-  DOM_ELEMENTS.btnOpenClassroomModal.addEventListener("click", () => {
-    DOM_ELEMENTS.modalClassroom.classList.remove("hidden");
-    DOM_ELEMENTS.modalInputClassroomToken.focus();
-  });
+  if (DOM_ELEMENTS.btnOpenClassroomModal) {
+    DOM_ELEMENTS.btnOpenClassroomModal.addEventListener("click", () => {
+      if (DOM_ELEMENTS.modalClassroom) DOM_ELEMENTS.modalClassroom.classList.remove("hidden");
+      if (DOM_ELEMENTS.modalInputClassroomToken) DOM_ELEMENTS.modalInputClassroomToken.focus();
+    });
+  }
 
-  DOM_ELEMENTS.btnCloseClassroomModal.addEventListener("click", () => {
-    DOM_ELEMENTS.modalClassroom.classList.add("hidden");
-  });
+  if (DOM_ELEMENTS.btnCloseClassroomModal) {
+    DOM_ELEMENTS.btnCloseClassroomModal.addEventListener("click", () => {
+      if (DOM_ELEMENTS.modalClassroom) DOM_ELEMENTS.modalClassroom.classList.add("hidden");
+    });
+  }
 
-  DOM_ELEMENTS.btnCancelClassroom.addEventListener("click", () => {
-    DOM_ELEMENTS.modalClassroom.classList.add("hidden");
-  });
+  if (DOM_ELEMENTS.btnCancelClassroom) {
+    DOM_ELEMENTS.btnCancelClassroom.addEventListener("click", () => {
+      if (DOM_ELEMENTS.modalClassroom) DOM_ELEMENTS.modalClassroom.classList.add("hidden");
+    });
+  }
 
-  DOM_ELEMENTS.formClassroomToken.addEventListener("submit", handleClassroomTokenSubmit);
+  if (DOM_ELEMENTS.formClassroomToken) {
+    DOM_ELEMENTS.formClassroomToken.addEventListener("submit", handleClassroomTokenSubmit);
+  }
 
   const tabBtnDashboard = document.getElementById("tab-btn-dashboard");
   const tabBtnJson = document.getElementById("tab-btn-json");
@@ -1048,17 +1101,18 @@ function setupSidebarNavigation() {
   const viewEditorial = document.getElementById("view-editorial");
   const viewGroups = document.getElementById("view-groups");
   const viewAdmins = document.getElementById("view-admins");
-  const viewDiag = document.getElementById("student-workspace");
+  const viewDiag = document.getElementById("view-diagnostic");
+  const studentWorkspace = document.getElementById("student-workspace");
 
   const allNavBtns = [btnPubs, btnGroups, btnAdmins, btnDiag].filter(Boolean);
-  const allViews = [viewEditorial, viewGroups, viewAdmins, viewDiag].filter(Boolean);
+  const allViews = [viewEditorial, viewGroups, viewAdmins, viewDiag, studentWorkspace].filter(Boolean);
 
   function setActive(activeBtn, activeView) {
     allNavBtns.forEach(b => {
-      b.className = "sidebar-nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl font-bold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+      b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
     });
     if (activeBtn) {
-      activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
+      activeBtn.className = "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
     }
     allViews.forEach(v => v.classList.add("hidden"));
     if (activeView) {
@@ -1088,8 +1142,30 @@ function setupSidebarNavigation() {
   if (btnDiag) {
     btnDiag.addEventListener("click", () => {
       setActive(btnDiag, viewDiag);
-      const stBtn = document.getElementById("mode-btn-student");
-      if (stBtn) stBtn.click();
+      updateJsonView();
+    });
+  }
+
+  const modeBtnStudent = document.getElementById("mode-btn-student");
+  if (modeBtnStudent) {
+    modeBtnStudent.addEventListener("click", () => {
+      allNavBtns.forEach(b => {
+        b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+      });
+      [viewGroups, viewAdmins, viewDiag].forEach(v => v && v.classList.add("hidden"));
+    });
+  }
+
+  const modeBtnEditorial = document.getElementById("mode-btn-editorial");
+  if (modeBtnEditorial) {
+    modeBtnEditorial.addEventListener("click", () => {
+      if (btnPubs) {
+        allNavBtns.forEach(b => {
+          b.className = "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+        });
+        btnPubs.className = "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs";
+      }
+      [viewGroups, viewAdmins, viewDiag].forEach(v => v && v.classList.add("hidden"));
     });
   }
 
