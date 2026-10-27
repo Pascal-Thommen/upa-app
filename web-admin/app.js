@@ -1859,7 +1859,54 @@ function setupSidebarNavigation() {
   setupRolesFormHandlers();
 }
 
+/**
+ * Traduce los códigos de error del backend OAuth a mensajes legibles para el usuario.
+ */
+function translateOAuthError(code) {
+  const map = {
+    forbidden_domain:
+      "Acceso restringido. Solo se permiten cuentas institucionales (@upa.edu.py).",
+    token_exchange_failed:
+      "No se pudo completar la autenticación con Google. Intente nuevamente.",
+    missing_code:
+      "No se recibió el código de autorización de Google. Cierre esta ventana e intente de nuevo.",
+    access_denied:
+      "El acceso fue denegado por el usuario o el dominio no está autorizado.",
+    server_error:
+      "El servidor de autenticación encontró un error. Intente más tarde.",
+  };
+  return map[code] || `Error de autenticación (${code}). Intente nuevamente.`;
+}
+
 function init() {
+  /* ── 1. PRIORITÄT: Token und auth_error aus der URL extrahieren, BEVOR der
+     Router die URL umschreibt (setupSidebarNavigation → UpaRouter.init). ── */
+  let tokenFromUrl = null;
+  let authError = null;
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    tokenFromUrl = urlParams.get("token");
+    authError = urlParams.get("auth_error");
+  } catch (_) {}
+
+  if (tokenFromUrl) {
+    setStoredToken(tokenFromUrl);
+    document.documentElement.classList.add("has-auth");
+  }
+
+  if (authError) {
+    showLoginAlert(translateOAuthError(authError), "error");
+  }
+
+  /* URL-Bereinigung erst NACH der Extraktion, damit populäre Browser-
+     Erweiterungen den Parameter nicht vorher verfälschen können. */
+  if (tokenFromUrl || authError) {
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (_) {}
+  }
+
+  /* ── 2. UpaCockpit konfigurieren ── */
   if (window.UpaCockpit) {
     window.UpaCockpit.configure({
       getToken: getStoredToken,
@@ -1952,19 +1999,12 @@ function init() {
     });
   }
 
+  /* ── 3. Health-Check und Router-Init (darf jetzt die URL umschreiben, denn
+     Token/auth_error sind bereits gesichert) ── */
   checkHealth();
   setupSidebarNavigation();
 
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get("token");
-    if (tokenFromUrl) {
-      setStoredToken(tokenFromUrl);
-      document.documentElement.classList.add("has-auth");
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  } catch (_) {}
-
+  /* ── 4. Session-Wiederherstellung ── */
   const existingToken = getStoredToken();
   if (existingToken) {
     document.documentElement.classList.add("has-auth");
@@ -1974,6 +2014,8 @@ function init() {
   } else {
     document.documentElement.classList.remove("has-auth");
     showLoginView();
+    /* auth_error wurde bereits in Schritt 1 per showLoginAlert angezeigt –
+       showLoginView setzt das Alert nicht zurück, also bleibt es sichtbar. */
   }
 }
 
