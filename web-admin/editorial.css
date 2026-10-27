@@ -11,6 +11,8 @@
   --ed-primary: #6c9339;
   --ed-primary-hover: #5a7b2e;
   --ed-primary-contrast: #ffffff;
+  --ed-primary-dark: #4a6b26;
+  --ed-primary-dark-hover: #3d571f;
   --ed-accent: #6c9339;
 
   /* Superficies y texto */
@@ -82,7 +84,7 @@
 
 .ed-mode-btn.is-active {
   background: var(--ed-surface);
-  color: var(--ed-primary);
+  color: var(--ed-primary-dark);
   font-weight: 700;
   box-shadow: var(--ed-shadow);
 }
@@ -113,12 +115,12 @@
 }
 
 .ed-btn-primary {
-  background: var(--ed-primary);
+  background: var(--ed-primary-dark);
   color: var(--ed-primary-contrast);
 }
 
 .ed-btn-primary:hover:not(:disabled) {
-  background: var(--ed-primary-hover);
+  background: var(--ed-primary-dark-hover);
 }
 
 .ed-btn-secondary {
@@ -143,7 +145,7 @@
 }
 
 .ed-link {
-  color: var(--ed-primary);
+  color: var(--ed-primary-dark);
   font-weight: 600;
   font-size: 0.75rem;
   text-decoration: underline;
