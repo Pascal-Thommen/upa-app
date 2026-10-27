@@ -247,7 +247,7 @@ function setApiStatusBadge(elementId, statusKey) {
 /**
  * Carga el perfil del usuario autenticado.
  */
-async function loadUserProfile() {
+async function loadUserProfile(options = {}) {
   try {
     const res = await apiRequest("/api/auth/me");
     if (res.status === 401) {
@@ -264,7 +264,8 @@ async function loadUserProfile() {
     state.currentUser = user;
     renderUserProfile(user);
     showDashboardView(user);
-    applyUserPermissions(user);
+    if (window.UpaCockpit) window.UpaCockpit.onUserLoaded(user);
+    applyUserPermissions(user, { skipDataLoad: Boolean(options.deferRouteLoad) });
     return user;
   } catch (error) {
     console.error("Fallo al cargar perfil:", error);
@@ -716,70 +717,87 @@ function getAppJsonData() {
 /**
  * Actualiza los indicadores consistentes (Activo / Sin configurar / Error) y el contrato JSON.
  */
+let diagnosticsInFlight = null;
+
 async function updateJsonView() {
+  if (diagnosticsInFlight) {
+    return diagnosticsInFlight;
+  }
   const rawJsonOutput = document.getElementById("raw-json-output");
   if (rawJsonOutput) {
     rawJsonOutput.textContent = "Consultando telemetría del sistema en tiempo real...";
   }
-  try {
-    const res = await apiRequest("/api/system/diagnostics");
-    if (res.ok) {
-      const diag = await res.json();
-      state.diagnostics = diag;
+  diagnosticsInFlight = (async () => {
+    try {
+      const res = await apiRequest("/api/system/diagnostics");
+      if (res.ok) {
+        const diag = await res.json();
+        state.diagnostics = diag;
 
-      setApiStatusBadge("api-status-oauth", "active");
-      setApiStatusBadge(
-        "api-status-directory",
-        diag.directory_sync && (diag.directory_sync.service_account_configured || diag.directory_sync.enabled)
-          ? "active"
-          : "unconfigured"
-      );
-
-      const classroomActive = Boolean(
-        (state.currentUser && state.currentUser.has_classroom_token) ||
-          (diag.classroom_api && diag.classroom_api.user_token_present)
-      );
-      setApiStatusBadge("api-status-classroom", classroomActive ? "active" : "unconfigured");
-
-      const igConfigured = Boolean(
-        (diag.application && diag.application.instagram_configured) ||
-          (diag.instagram_api && diag.instagram_api.configured)
-      );
-      const igHasPosts = Array.isArray(state.feedPosts) && state.feedPosts.some((p) => p.post_type === "INSTAGRAM");
-      setApiStatusBadge("api-status-instagram", igConfigured || igHasPosts ? "active" : "unconfigured");
-
-      if (rawJsonOutput) {
-        rawJsonOutput.textContent = JSON.stringify(
-          {
-            diagnostico_sistema: diag,
-            contrato_app_movil: getAppJsonData(),
-          },
-          null,
-          2
+        setApiStatusBadge("api-status-oauth", "active");
+        setApiStatusBadge(
+          "api-status-directory",
+          diag.directory_sync && (diag.directory_sync.service_account_configured || diag.directory_sync.enabled)
+            ? "active"
+            : "unconfigured"
         );
+
+        const classroomActive = Boolean(
+          (state.currentUser && state.currentUser.has_classroom_token) ||
+            (diag.classroom_api && diag.classroom_api.user_token_present)
+        );
+        setApiStatusBadge("api-status-classroom", classroomActive ? "active" : "unconfigured");
+
+        const igConfigured = Boolean(
+          (diag.application && diag.application.instagram_configured) ||
+            (diag.instagram_api && diag.instagram_api.configured)
+        );
+        const igHasPosts = Array.isArray(state.feedPosts) && state.feedPosts.some((p) => p.post_type === "INSTAGRAM");
+        setApiStatusBadge("api-status-instagram", igConfigured || igHasPosts ? "active" : "unconfigured");
+
+        if (rawJsonOutput) {
+          rawJsonOutput.textContent = JSON.stringify(
+            {
+              diagnostico_sistema: diag,
+              contrato_app_movil: getAppJsonData(),
+            },
+            null,
+            2
+          );
+        }
+        return;
       }
-      return;
+      setApiStatusBadge("api-status-directory", "error");
+    } catch (err) {
+      console.error("Error consultando diagnósticos:", err);
+      setApiStatusBadge("api-status-directory", "error");
+    } finally {
+      diagnosticsInFlight = null;
     }
-    setApiStatusBadge("api-status-directory", "error");
-  } catch (err) {
-    console.error("Error consultando diagnósticos:", err);
-    setApiStatusBadge("api-status-directory", "error");
-  }
-  if (rawJsonOutput) {
-    rawJsonOutput.textContent = JSON.stringify(getAppJsonData(), null, 2);
-  }
+    if (rawJsonOutput) {
+      rawJsonOutput.textContent = JSON.stringify(getAppJsonData(), null, 2);
+    }
+  })();
+  return diagnosticsInFlight;
 }
 
 async function refreshDashboard() {
-  await checkHealth();
-  const user = await loadUserProfile();
+  const [, user] = await Promise.all([checkHealth(), loadUserProfile({ deferRouteLoad: true })]);
   if (user) {
-    if (window.UpaCockpit) window.UpaCockpit.onUserLoaded(user);
-    if (window.UpaRouter && typeof window.UpaRouter.reapplyCurrentRoute === "function") {
-      window.UpaRouter.reapplyCurrentRoute();
+    const routeTask =
+      window.UpaRouter && typeof window.UpaRouter.reapplyCurrentRoute === "function"
+        ? Promise.resolve(window.UpaRouter.reapplyCurrentRoute())
+        : Promise.resolve();
+    const tasks = [
+      routeTask,
+      loadClassroomCourses(),
+      loadClassroomDeadlines(),
+      loadCampusFeed(),
+    ];
+    if (currentActiveRoute !== "apis") {
+      tasks.push(updateJsonView());
     }
-    await Promise.all([loadClassroomCourses(), loadClassroomDeadlines(), loadCampusFeed()]);
-    await updateJsonView();
+    await Promise.all(tasks);
   }
 }
 
@@ -1226,9 +1244,11 @@ async function renderGroupsModule() {
   const container = document.getElementById("groups-list-container");
   if (!container) return;
   container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">Cargando grupos...</div>`;
-  const groups = await fetchAppGroups();
+  const [groups] = await Promise.all([
+    fetchAppGroups(),
+    loadAuditTrailInto("groups-list-history", "group"),
+  ]);
   renderGroupsListItems(groups);
-  loadAuditTrailInto("groups-list-history", "group");
 }
 
 // ===========================================================================
@@ -1446,7 +1466,7 @@ function syncNavClasses(routeName) {
   }
 }
 
-function applyUserPermissions(user) {
+function applyUserPermissions(user, options = {}) {
   const perms = normalizeUserPermissions(user);
   allowedModulePerms = perms;
 
@@ -1470,7 +1490,7 @@ function applyUserPermissions(user) {
 
   if (perms.length === 0) {
     if (currentActiveRoute !== "apis") {
-      applyRoute("apis", { updateUrl: true, replace: true });
+      applyRoute("apis", { updateUrl: true, replace: true, skipDataLoad: Boolean(options.skipDataLoad) });
     }
     return;
   }
@@ -1478,7 +1498,7 @@ function applyUserPermissions(user) {
   const currentCfg = ROUTE_CONFIG[currentActiveRoute];
   if (!currentCfg || !perms.includes(currentCfg.perm)) {
     const fallback = CANONICAL_PERMS.find((p) => perms.includes(p)) || "apis";
-    applyRoute(fallback, { updateUrl: true, replace: true });
+    applyRoute(fallback, { updateUrl: true, replace: true, skipDataLoad: Boolean(options.skipDataLoad) });
   } else {
     syncNavClasses(currentActiveRoute);
   }
@@ -1533,21 +1553,27 @@ function applyRoute(routeName, options = {}) {
   if (effectiveRoute === "publicaciones") {
     if (edBtn) edBtn.classList.add("is-active");
     if (stBtn) stBtn.classList.remove("is-active");
-    if (window.UpaCockpit && typeof window.UpaCockpit.loadPanelData === "function") {
+    if (!options.skipDataLoad && window.UpaCockpit && typeof window.UpaCockpit.loadPanelData === "function") {
       window.UpaCockpit.loadPanelData();
     }
   } else if (effectiveRoute === "apis") {
     if (stBtn) stBtn.classList.add("is-active");
     if (edBtn) edBtn.classList.remove("is-active");
-    updateJsonView();
+    if (!options.skipDataLoad) {
+      updateJsonView();
+    }
   } else if (effectiveRoute === "grupos") {
     if (edBtn) edBtn.classList.remove("is-active");
     if (stBtn) stBtn.classList.remove("is-active");
-    renderGroupsModule();
+    if (!options.skipDataLoad) {
+      renderGroupsModule();
+    }
   } else if (effectiveRoute === "roles") {
     if (edBtn) edBtn.classList.remove("is-active");
     if (stBtn) stBtn.classList.remove("is-active");
-    renderAdminsModule();
+    if (!options.skipDataLoad) {
+      renderAdminsModule();
+    }
   }
 }
 
@@ -1591,6 +1617,7 @@ const UpaRouter = {
       push: false,
       replace: initialResolved.isRedirect,
       isRedirect: initialResolved.isRedirect,
+      skipDataLoad: true,
     });
 
     if (typeof window !== "undefined") {
@@ -1831,7 +1858,48 @@ function setupSidebarNavigation() {
   setupRolesFormHandlers();
 }
 
+function translateOAuthError(code) {
+  const map = {
+    forbidden_domain:
+      "Acceso restringido. Solo se permiten cuentas institucionales (@upa.edu.py).",
+    token_exchange_failed:
+      "No se pudo completar la autenticación con Google. Intente nuevamente.",
+    missing_code:
+      "No se recibió el código de autorización de Google. Cierre esta ventana e intente de nuevo.",
+    missing_client_id:
+      "La configuración OAuth del servidor no tiene Client ID configurado.",
+    access_denied:
+      "El acceso fue denegado por el usuario o el dominio no está autorizado.",
+    server_error:
+      "El servidor de autenticación encontró un error. Intente más tarde.",
+  };
+  return map[code] || `Error de autenticación (${code}). Intente nuevamente.`;
+}
+
 function init() {
+  let tokenFromUrl = null;
+  let authError = null;
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    tokenFromUrl = urlParams.get("token");
+    authError = urlParams.get("auth_error");
+  } catch (_) {}
+
+  if (tokenFromUrl) {
+    setStoredToken(tokenFromUrl);
+    document.documentElement.classList.add("has-auth");
+  }
+
+  if (authError) {
+    showLoginAlert(translateOAuthError(authError), "error");
+  }
+
+  if (tokenFromUrl || authError) {
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (_) {}
+  }
+
   if (window.UpaCockpit) {
     window.UpaCockpit.configure({
       getToken: getStoredToken,
@@ -1924,18 +1992,7 @@ function init() {
     });
   }
 
-  checkHealth();
   setupSidebarNavigation();
-
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get("token");
-    if (tokenFromUrl) {
-      setStoredToken(tokenFromUrl);
-      document.documentElement.classList.add("has-auth");
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  } catch (_) {}
 
   const existingToken = getStoredToken();
   if (existingToken) {
@@ -1944,6 +2001,7 @@ function init() {
     if (DOM_ELEMENTS.viewDashboard) DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
     refreshDashboard();
   } else {
+    checkHealth();
     document.documentElement.classList.remove("has-auth");
     showLoginView();
   }
