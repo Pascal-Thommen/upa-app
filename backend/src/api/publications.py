@@ -183,10 +183,23 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
     notify_groups = _filter_subset_groups(payload.notify_groups, target_groups) if is_news else []
 
     now = datetime.now(UTC)
+    was_already_published = (
+        not is_create
+        and post.published_at is not None
+        and ensure_utc_datetime(post.published_at) <= now
+    )
     if final_type == "INSTAGRAM" and not is_create:
         published_at = post.published_at or post.created_at or now
+    elif was_already_published:
+        published_at = ensure_utc_datetime(post.published_at)
     elif payload.published_at is not None:
-        published_at = ensure_utc_datetime(payload.published_at)
+        candidate_pub = ensure_utc_datetime(payload.published_at)
+        if candidate_pub < now - timedelta(minutes=2):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La fecha de publicación programada no puede estar en el pasado.",
+            )
+        published_at = candidate_pub
     elif not is_create and post.published_at is not None:
         published_at = ensure_utc_datetime(post.published_at)
     else:
@@ -426,8 +439,11 @@ def update_publication(
 
     before = _snapshot_post(post)
     prev_notify_groups = set(post.notify_groups or [])
+    was_future_scheduled = (
+        post.published_at is not None and ensure_utc_datetime(post.published_at) > datetime.now(UTC)
+    )
     merged_write, reset_publish_to_now = _merge_update_into_write(post, payload)
-    if reset_publish_to_now and (post.post_type or "").upper() != "INSTAGRAM":
+    if reset_publish_to_now and was_future_scheduled and (post.post_type or "").upper() != "INSTAGRAM":
         post.published_at = None
     _validate_and_apply(post, merged_write, is_create=False)
     changes = changed_fields(before, _snapshot_post(post))

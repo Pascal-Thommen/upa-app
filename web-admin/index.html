@@ -27,8 +27,8 @@
     }
   </script>
 
-  <link rel="stylesheet" href="/dashboard/style.css?v=2.0.0">
-  <link rel="stylesheet" href="/dashboard/editorial.css?v=2.0.0">
+  <link rel="stylesheet" href="/dashboard/style.css?v=2.1.0">
+  <link rel="stylesheet" href="/dashboard/editorial.css?v=2.1.0">
   <script>
     if (localStorage.getItem("upa_access_token") || localStorage.getItem("upa_auth_token") || window.location.search.includes("token=")) {
       document.documentElement.classList.add("has-auth");
@@ -342,7 +342,13 @@
                       </div>
                       <div>
                         <label class="ed-label" for="ed-pub-link-url">URL del enlace (opcional)</label>
-                        <input id="ed-pub-link-url" class="ed-input" maxlength="1024" placeholder="https://...">
+                        <div class="flex items-center gap-2">
+                          <input id="ed-pub-link-url" class="ed-input flex-1" maxlength="1024" placeholder="https://...">
+                          <a id="ed-pub-link-preview" href="#" target="_blank" rel="noopener noreferrer" class="ed-btn ed-btn-secondary whitespace-nowrap opacity-50 pointer-events-none" aria-disabled="true" title="Abrir enlace en una pestaña nueva">
+                            <span>Probar enlace</span>
+                            <span aria-hidden="true">&nearr;</span>
+                          </a>
+                        </div>
                       </div>
                     </div>
 
@@ -454,11 +460,12 @@
                 <button id="btn-group-delete" type="button" class="ed-btn ed-btn-danger ed-btn-sm hidden">Eliminar</button>
               </div>
 
-              <form id="form-group-editor" class="space-y-4">
+              <form id="form-group-editor" class="space-y-4" novalidate>
                 <input type="hidden" id="group-edit-id">
                 <div>
                   <label class="ed-label" for="group-input-name">Nombre *</label>
                   <input id="group-input-name" class="ed-input" maxlength="100" required placeholder="Ej. Docentes / Ingeniería Empresarial">
+                  <p id="group-name-error" class="ed-field-error" data-error-for="group-name"></p>
                 </div>
 
                 <div>
@@ -471,20 +478,22 @@
                   <div>
                     <span class="ed-label">Grupos de Google Workspace (@upa.edu.py)</span>
                     <input id="group-workspace-filter" type="search" class="ed-input mt-1.5 mb-2" placeholder="Filtrar grupos de Google Workspace...">
-                    <div id="group-workspace-picker" class="flex flex-wrap gap-2 mt-1.5"></div>
+                    <div id="group-workspace-picker" class="mt-1.5 bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-60 overflow-y-auto"></div>
                     <div class="flex gap-2 mt-2.5">
-                      <input id="group-input-ws-custom" type="text" class="ed-input" placeholder="Otro grupo de Google Workspace (ej. cohorte2026@upa.edu.py)">
+                      <input id="group-input-ws-custom" type="email" class="ed-input font-mono" placeholder="Otro grupo de Google Workspace (ej. cohorte2026@upa.edu.py)">
                       <button id="btn-add-ws-custom" type="button" class="ed-btn ed-btn-secondary whitespace-nowrap">Agregar</button>
                     </div>
+                    <p id="group-ws-custom-error" class="ed-field-error" data-error-for="group-ws-custom"></p>
                   </div>
 
                   <div class="pt-3 border-t border-slate-200">
                     <label class="ed-label" for="group-input-email">Cuentas individuales (@upa.edu.py)</label>
-                    <div id="group-emails-chips" class="flex flex-wrap gap-1.5 mb-2"></div>
+                    <div id="group-emails-chips" class="mb-2 bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-48 overflow-y-auto"></div>
                     <div class="flex gap-2">
                       <input id="group-input-email" type="email" class="ed-input font-mono" placeholder="nombre.apellido@upa.edu.py">
                       <button id="btn-add-group-email" type="button" class="ed-btn ed-btn-secondary whitespace-nowrap">Agregar correo</button>
                     </div>
+                    <p id="group-email-error" class="ed-field-error" data-error-for="group-email"></p>
                   </div>
                 </div>
 
@@ -510,35 +519,16 @@
                 <p class="text-xs text-slate-500 mt-0.5">Matriz de permisos por módulo para cuentas institucionales @upa.edu.py.</p>
               </div>
 
-              <!-- Barra rápida para autorizar nueva cuenta -->
-              <form id="form-add-admin" class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 flex flex-col lg:flex-row lg:items-end gap-4">
-                <div class="flex-1 min-w-[220px]">
-                  <label class="block text-[11px] font-semibold text-slate-700 mb-1" for="input-admin-email">Correo institucional</label>
-                  <input id="input-admin-email" type="email" placeholder="nombre.apellido@upa.edu.py" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-mono focus:ring-2 focus:ring-[#6c9339]" required>
+              <!-- Barra rápida para autorizar nueva cuenta (solo correo; permisos se asignan en la tabla) -->
+              <form id="form-add-admin" class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-1.5" novalidate>
+                <label class="block text-[11px] font-semibold text-slate-700" for="input-admin-email">Correo institucional</label>
+                <div class="flex flex-col sm:flex-row gap-2.5">
+                  <input id="input-admin-email" type="email" placeholder="nombre.apellido@upa.edu.py" class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-mono focus:ring-2 focus:ring-[#6c9339]" required>
+                  <button type="submit" class="ed-btn ed-btn-primary whitespace-nowrap">
+                    Autorizar
+                  </button>
                 </div>
-
-                <div class="flex flex-wrap items-center gap-4 py-1.5 text-xs text-slate-700">
-                  <label class="inline-flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input type="checkbox" id="perm-publications" class="rounded text-[#6c9339] focus:ring-[#6c9339]">
-                    <span>Publicaciones</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input type="checkbox" id="perm-groups" class="rounded text-[#6c9339] focus:ring-[#6c9339]">
-                    <span>Grupos</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input type="checkbox" id="perm-admins" class="rounded text-[#6c9339] focus:ring-[#6c9339]">
-                    <span>Roles</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input type="checkbox" id="perm-diagnostic" class="rounded text-[#6c9339] focus:ring-[#6c9339]">
-                    <span>APIs</span>
-                  </label>
-                </div>
-
-                <button type="submit" class="ed-btn ed-btn-primary whitespace-nowrap">
-                  Autorizar
-                </button>
+                <p id="admin-email-error" class="ed-field-error" data-error-for="admin-email"></p>
               </form>
 
               <!-- Matriz interactiva de permisos -->
@@ -692,12 +682,6 @@
 
         </div>
       </div>
-
-      <!-- Pie de estado técnico -->
-      <div class="text-center text-[11px] text-slate-400 pt-2 pb-6">
-        <span>Servicio: <span id="diag-backend" class="font-mono text-slate-600">Verificando...</span></span>
-        <span> &bull; Entorno: <span id="diag-env" class="font-mono text-slate-600">Producción</span></span>
-      </div>
     </section>
 
   </main>
@@ -731,8 +715,8 @@
     </div>
   </div>
 
-  <script src="/dashboard/editorial-core.js?v=2.0.0"></script>
-  <script src="/dashboard/editorial.js?v=2.0.0"></script>
-  <script src="/dashboard/app.js?v=2.0.0"></script>
+  <script src="/dashboard/editorial-core.js?v=2.1.0"></script>
+  <script src="/dashboard/editorial.js?v=2.1.0"></script>
+  <script src="/dashboard/app.js?v=2.1.0"></script>
 </body>
 </html>

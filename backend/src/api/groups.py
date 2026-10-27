@@ -200,12 +200,6 @@ def delete_group(
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grupo no encontrado")
 
-    if group.is_system:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se puede eliminar un grupo institucional del sistema.",
-        )
-
     log_audit(
         db,
         current_user,

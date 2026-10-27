@@ -506,6 +506,54 @@
   padding-top: 0.75rem;
   border-top: 1px solid var(--ed-border);
   font-size: 0.68rem;
-  line-height: 1.5;
+  line-height: 1.45;
+  color: var(--ed-text-faint);
+}
+
+.ed-audit-heading {
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ed-text-faint);
+  margin-bottom: 0.3rem;
+}
+
+.ed-audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.68rem;
+  color: var(--ed-text-muted);
+}
+
+.ed-audit-table tr {
+  border-bottom: 1px solid var(--ed-surface-subtle);
+}
+
+.ed-audit-table tr:last-child {
+  border-bottom: none;
+}
+
+.ed-audit-table td {
+  padding: 0.22rem 0.65rem 0.22rem 0;
+  vertical-align: baseline;
+}
+
+.ed-audit-time {
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.65rem;
+  color: var(--ed-text-faint);
+  width: 1%;
+}
+
+.ed-audit-who {
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--ed-text-muted);
+  width: 1%;
+}
+
+.ed-audit-action {
   color: var(--ed-text-faint);
 }

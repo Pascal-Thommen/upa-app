@@ -23,7 +23,8 @@
     mode: "editorial",
     filter: "all",
     publications: [],
-    groupCatalog: Core ? Core.TARGET_GROUPS.slice() : [],
+    publicationsLoaded: false,
+    groupCatalog: [],
     editingItem: null,
     reminders: [30],
     participantsPubId: null,
@@ -96,21 +97,21 @@
   let groupsSyncPromise = null;
 
   function refreshGroupsCatalog(groups) {
-    const merged = Core.TARGET_GROUPS.map((g) => ({ value: g.value, label: g.label }));
-    const seen = new Set(merged.map((g) => g.value.toUpperCase()));
-    if (Array.isArray(groups)) {
-      groups.forEach((g) => {
-        if (!g || !g.id) return;
-        const val = String(g.id).toUpperCase();
-        if (!seen.has(val)) {
-          seen.add(val);
-          merged.push({ value: val, label: g.name || val });
-        }
-      });
-      groupsSynced = true;
-    }
-    merged.sort((a, b) => String(a.label || "").localeCompare(String(b.label || ""), "es", { sensitivity: "base" }));
-    state.groupCatalog = merged;
+    if (!Array.isArray(groups)) return;
+    const catalog = [];
+    const seen = new Set();
+    groups.forEach((g) => {
+      if (!g || !g.id) return;
+      const val = String(g.id).trim();
+      const key = val.toLowerCase();
+      if (val && !seen.has(key)) {
+        seen.add(key);
+        catalog.push({ value: val, label: String(g.name || val).trim() });
+      }
+    });
+    catalog.sort((a, b) => String(a.label || "").localeCompare(String(b.label || ""), "es", { sensitivity: "base" }));
+    state.groupCatalog = catalog;
+    groupsSynced = true;
   }
 
   async function syncAvailableGroups(force) {
@@ -121,7 +122,7 @@
         const groups = await getClient().listGroups();
         refreshGroupsCatalog(groups);
       } catch (_) {
-        /* mantiene catálogo base si falla la red */
+        /* mantiene catálogo actual si falla la red */
       } finally {
         groupsSyncPromise = null;
       }
@@ -130,24 +131,37 @@
     return groupsSyncPromise;
   }
 
-  function resolveGroupOptions(selected) {
-    const chosen = Array.isArray(selected) ? selected : [];
-    const options = state.groupCatalog.slice();
-    const known = new Set(options.map((g) => g.value));
-    chosen.forEach((val) => {
-      if (val && !known.has(val)) {
-        known.add(val);
-        options.push({ value: val, label: val });
-      }
+  function resolveGroupOptions() {
+    return state.groupCatalog.slice();
+  }
+
+  function normalizeSelectedTargetGroups(selected, options) {
+    const list = Array.isArray(selected) ? selected : [];
+    const opts = Array.isArray(options) ? options : resolveGroupOptions();
+    const allIds = opts.map((g) => g.value);
+    if (list.length === 0) return [];
+    const upperSet = new Set(list.map((v) => String(v || "").trim().toUpperCase()));
+    if (upperSet.has("ALL")) {
+      return allIds;
+    }
+    const lowerMap = new Map(opts.map((g) => [g.value.toLowerCase(), g.value]));
+    const matched = [];
+    list.forEach((v) => {
+      const found = lowerMap.get(String(v || "").trim().toLowerCase());
+      if (found && !matched.includes(found)) matched.push(found);
     });
-    return options;
+    return matched;
   }
 
   function renderTargetGroupCheckboxes(selected) {
     const container = $("ed-pub-target-groups");
     if (!container) return;
-    const chosen = Array.isArray(selected) && selected.length ? selected : ["ALL"];
-    const options = resolveGroupOptions(chosen);
+    const options = resolveGroupOptions();
+    if (options.length === 0) {
+      container.innerHTML = `<span class="ed-subtle">No hay grupos registrados en el módulo Grupos.</span>`;
+      return;
+    }
+    const chosen = normalizeSelectedTargetGroups(selected, options);
     container.innerHTML = options
       .map(
         (g) =>
@@ -175,14 +189,14 @@
   function renderSubsetGroupCheckboxes(containerId, targetGroups, selectedSubset) {
     const container = $(containerId);
     if (!container) return;
-    const targets = Array.isArray(targetGroups) ? targetGroups : [];
-    const chosen = Array.isArray(selectedSubset) ? selectedSubset : [];
+    const options = resolveGroupOptions();
+    const targets = normalizeSelectedTargetGroups(targetGroups, options);
+    const chosen = normalizeSelectedTargetGroups(selectedSubset, options).filter((g) => targets.includes(g));
     if (targets.length === 0) {
       container.innerHTML = `<span class="ed-subtle">Seleccione primero al menos un grupo destinatario arriba.</span>`;
       return;
     }
-    const catalog = resolveGroupOptions(targets);
-    const subsetOptions = targets.map((val) => catalog.find((c) => c.value === val) || { value: val, label: val });
+    const subsetOptions = targets.map((val) => options.find((c) => c.value === val) || { value: val, label: val });
     container.innerHTML = subsetOptions
       .map(
         (g) =>
@@ -410,8 +424,45 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Reglas dinámicas de fecha de publicación, vigencia, secciones e Instagram
+  // Vista previa directa del enlace de acción y reglas de fecha / secciones
   // ---------------------------------------------------------------------------
+
+  function resolveTestableLinkUrl(rawVal) {
+    const clean = String(rawVal || "").trim();
+    if (!clean) return "";
+    const direct = Core.safeUrl(clean);
+    if (direct) return direct;
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(clean)) {
+      return `https://${clean}`;
+    }
+    return "";
+  }
+
+  function syncLinkPreview() {
+    const linkInput = $("ed-pub-link-url");
+    const previewEl = $("ed-pub-link-preview");
+    if (!previewEl) return;
+    const targetUrl = resolveTestableLinkUrl(linkInput ? linkInput.value : "");
+    if (targetUrl) {
+      previewEl.setAttribute("href", targetUrl);
+      previewEl.setAttribute("target", "_blank");
+      previewEl.setAttribute("rel", "noopener noreferrer");
+      previewEl.setAttribute("aria-disabled", "false");
+      previewEl.classList.remove("opacity-50", "pointer-events-none");
+    } else {
+      previewEl.setAttribute("href", "#");
+      previewEl.setAttribute("aria-disabled", "true");
+      previewEl.classList.add("opacity-50", "pointer-events-none");
+    }
+  }
+
+  function isEditingAlreadyPublished() {
+    if (!state.editingItem || !state.editingItem.id) return false;
+    const rawPub = state.editingItem.published_at || state.editingItem.created_at;
+    if (!rawPub) return true;
+    const ms = new Date(rawPub).getTime();
+    return Number.isNaN(ms) || ms <= Date.now() + 60000;
+  }
 
   function applyTypeAndSectionRules() {
     const scheduledCb = $("ed-pub-scheduled");
@@ -441,6 +492,7 @@
         ? String(state.editingItem.post_type).toUpperCase()
         : Core.POST_TYPE_NORMAL;
     const isInstagramItem = postType === Core.POST_TYPE_INSTAGRAM;
+    const alreadyPublished = isEditingAlreadyPublished();
 
     // Reglas de fecha de publicación programada (ed-pub-scheduled + ed-pub-published-at)
     if (isInstagramItem) {
@@ -459,21 +511,34 @@
           ? `Fecha original de Instagram: ${origDate} (bloqueada)`
           : "Fecha original de Instagram (bloqueada)";
       }
+    } else if (alreadyPublished) {
+      if (scheduledCb) {
+        scheduledCb.checked = false;
+        scheduledCb.disabled = true;
+      }
+      if (publishedInput) {
+        publishedInput.classList.add("hidden");
+        publishedInput.disabled = true;
+        publishedInput.readOnly = true;
+      }
+      if (publishedHint) {
+        const origDate = Core.formatDateTime(state.editingItem.published_at || state.editingItem.created_at);
+        publishedHint.textContent = origDate
+          ? `Publicada: ${origDate} (ya publicada)`
+          : "Publicación activa (ya publicada)";
+      }
     } else {
       if (scheduledCb) scheduledCb.disabled = false;
       const scheduled = Boolean(scheduledCb && scheduledCb.checked);
       if (publishedInput) {
-        publishedInput.disabled = false;
-        publishedInput.readOnly = false;
+        publishedInput.disabled = !scheduled;
+        publishedInput.readOnly = !scheduled;
+        publishedInput.min = Core.isoToDatetimeLocal(new Date().toISOString());
         publishedInput.classList.toggle("hidden", !scheduled);
       }
       if (publishedHint) {
         if (scheduled) {
           publishedHint.textContent = "La publicación será visible a partir de esa fecha y hora.";
-        } else if (state.editingItem && (state.editingItem.published_at || state.editingItem.created_at)) {
-          publishedHint.textContent = `Publicada: ${Core.formatDateTime(
-            state.editingItem.published_at || state.editingItem.created_at
-          )}`;
         } else {
           publishedHint.textContent = "Se registrará la fecha exacta al guardar.";
         }
@@ -539,6 +604,7 @@
     if (newsBox) newsBox.classList.toggle("is-open", showNews);
     if (eventFields) eventFields.classList.toggle("hidden", !showEvent);
     if (eventBox) eventBox.classList.toggle("is-open", showEvent);
+    syncLinkPreview();
   }
 
   // ---------------------------------------------------------------------------
@@ -547,7 +613,8 @@
 
   function readPublicationForm() {
     syncRemindersFromDom();
-    const scheduled = Boolean($("ed-pub-scheduled") && $("ed-pub-scheduled").checked);
+    const alreadyPublished = isEditingAlreadyPublished();
+    const scheduled = !alreadyPublished && Boolean($("ed-pub-scheduled") && $("ed-pub-scheduled").checked);
     const postType =
       state.editingItem && state.editingItem.post_type
         ? String(state.editingItem.post_type).toUpperCase()
@@ -558,7 +625,8 @@
       hasRegistration: Boolean($("ed-pub-rsvp") && $("ed-pub-rsvp").checked),
       targetGroups: readCheckedValues("ed-pub-target-groups"),
       scheduled,
-      publishMode: scheduled ? "scheduled" : "on_save",
+      isPublished: alreadyPublished,
+      publishMode: scheduled ? "scheduled" : alreadyPublished ? "published" : "on_save",
       publishedAt: $("ed-pub-published-at") ? $("ed-pub-published-at").value : "",
       isNews: Boolean($("ed-pub-is-news") && $("ed-pub-is-news").checked),
       notifyGroups: readCheckedValues("ed-pub-notify-groups"),
@@ -700,14 +768,17 @@
   }
 
   async function openNewPublication() {
-    await syncAvailableGroups();
+    await syncAvailableGroups(true);
+    const allGroupIds = state.groupCatalog.map((g) => g.value);
     const defaults = Core.publicationToFormValues({
       post_type: Core.POST_TYPE_NORMAL,
       is_news: true,
       is_event: false,
-      target_groups: ["ALL"],
+      target_groups: allGroupIds,
       reminders: [30],
     });
+    defaults.targetGroups = allGroupIds.slice();
+    defaults.eventNotifyGroups = allGroupIds.slice();
     fillPublicationForm(defaults, null);
     const histEl = $("ed-pub-history");
     if (histEl) {
@@ -719,7 +790,7 @@
   }
 
   async function openEditPublication(id) {
-    await syncAvailableGroups();
+    await syncAvailableGroups(true);
     let item = state.publications.find((p) => String(p.id) === String(id)) || null;
     try {
       item = await getClient().getPublication(id);
@@ -756,19 +827,27 @@
     renderFilteredRows();
   }
 
-  async function loadPublications() {
+  async function loadPublications(options) {
+    const opts = options || {};
     const tbody = $("ed-pub-rows");
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="5" class="ed-empty">Cargando publicaciones...</td></tr>`;
+    if (state.publicationsLoaded || state.publications.length > 0) {
+      renderFilteredRows();
+    } else if (!opts.silent) {
+      tbody.innerHTML = `<tr><td colspan="5" class="ed-empty">Cargando publicaciones...</td></tr>`;
+    }
     try {
       const [pubs] = await Promise.all([
         getClient().listPublications({ include_scheduled: true }),
         loadListHistory(),
       ]);
       state.publications = pubs || [];
+      state.publicationsLoaded = true;
       renderFilteredRows();
     } catch (error) {
-      tbody.innerHTML = `<tr><td colspan="5" class="ed-empty">${Core.escapeHtml(Core.describeError(error))}</td></tr>`;
+      if (!state.publicationsLoaded) {
+        tbody.innerHTML = `<tr><td colspan="5" class="ed-empty">${Core.escapeHtml(Core.describeError(error))}</td></tr>`;
+      }
     }
   }
 
@@ -939,6 +1018,17 @@
     if ($("ed-pub-scheduled")) $("ed-pub-scheduled").addEventListener("change", applyTypeAndSectionRules);
     if ($("ed-pub-pinned")) $("ed-pub-pinned").addEventListener("change", applyTypeAndSectionRules);
     if ($("ed-pub-is-news")) $("ed-pub-is-news").addEventListener("change", applyTypeAndSectionRules);
+    if ($("ed-pub-link-url")) {
+      $("ed-pub-link-url").addEventListener("input", syncLinkPreview);
+      $("ed-pub-link-url").addEventListener("change", syncLinkPreview);
+    }
+    if ($("ed-pub-link-preview")) {
+      $("ed-pub-link-preview").addEventListener("click", (e) => {
+        if ($("ed-pub-link-preview").getAttribute("aria-disabled") === "true") {
+          e.preventDefault();
+        }
+      });
+    }
     if ($("ed-pub-is-event")) {
       $("ed-pub-is-event").addEventListener("change", () => {
         if ($("ed-pub-is-event").checked) {
@@ -1005,6 +1095,8 @@
       state.allowed = false;
       state.isAdmin = false;
       state.publications = [];
+      state.publicationsLoaded = false;
+      state.groupCatalog = [];
       state.editingItem = null;
       state.participantsPubId = null;
       groupsSynced = false;

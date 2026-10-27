@@ -510,3 +510,20 @@ test("oauth redirect: auth_error=missing_client_id und forbidden_domain zeigen k
   assert.ok(!envForbidden.elements["view-login"].classList.contains("hidden"));
   assert.ok(envForbidden.elements["login-alert"].textContent.includes("@upa.edu.py"));
 });
+
+test("ux feinschliff: reiterwechsel zeigt keine zwischengeschalteten Cargando-Ladebildschirme", () => {
+  const env = createTestEnvironment("/dashboard/publicaciones");
+  const { elements, document } = env;
+
+  elements["nav-mod-groups"].click();
+  const groupsList = document.getElementById("groups-list-container");
+  assert.ok(!groupsList.innerHTML.includes("Cargando"), "Grupos darf keinen Cargando-Placeholder einblenden");
+
+  elements["nav-mod-admins"].click();
+  const adminRows = document.getElementById("admin-table-rows");
+  assert.ok(!adminRows.innerHTML.includes("Cargando"), "Roles darf keinen Cargando-Placeholder einblenden");
+
+  elements["nav-mod-students"].click();
+  const rawJson = document.getElementById("raw-json-output");
+  assert.ok(!rawJson.textContent.includes("Consultando telemetría"), "APIs darf keinen Ladeplatzhalter zeigen");
+});

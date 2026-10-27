@@ -446,10 +446,57 @@ test("renderPublicationRows y renderHistoryEntries muestran etiquetas, metricas 
         changes: ["título", "recordatorios"],
         created_at: "2030-06-15T12:00:00Z",
       },
+      {
+        admin_name: "Ana",
+        verb: "creó",
+        target_label: "Foro UPA",
+        changes: [],
+        created_at: "2030-06-14T09:00:00Z",
+      },
     ],
     { showTarget: true, timeZone: "UTC" }
   );
-  assert.ok(hist.includes("Historial:"));
+  assert.ok(hist.includes("Historial"));
+  assert.ok(hist.includes('<table class="ed-audit-table"'));
+  assert.equal((hist.match(/<tr class="ed-audit-row">/g) || []).length, 2);
   assert.ok(hist.includes("Pascal &lt;b&gt;"));
   assert.ok(hist.includes("(título, recordatorios)"));
+});
+
+test("programacion diferida: rechaza fechas en el pasado y bloquea reprogramacion incoherente en publicaciones ya emitidas", () => {
+  const base = {
+    title: "Comunicado oficial",
+    postType: "MANUAL",
+    targetGroups: ["estudiantes"],
+    publishMode: "scheduled",
+    publishedAt: "2020-01-01T08:00",
+    isNews: true,
+    isEvent: false,
+  };
+  const errs = Core.validatePublicationValues(base);
+  assert.ok(errs.publishedAt, "Una fecha de publicación programada en el pasado debe ser rechazada");
+
+  const alreadyPublishedForm = Core.publicationToFormValues({
+    id: 10,
+    title: "Post ya publicado",
+    post_type: "MANUAL",
+    is_news: true,
+    is_event: false,
+    target_groups: ["estudiantes"],
+    published_at: "2024-05-01T10:00:00Z",
+  });
+  assert.equal(alreadyPublishedForm.scheduled, false, "Un post ya publicado no debe abrirse como programado");
+  assert.equal(alreadyPublishedForm.isPublished, true);
+
+  const futureScheduledForm = Core.publicationToFormValues({
+    id: 11,
+    title: "Post futuro",
+    post_type: "MANUAL",
+    is_news: true,
+    is_event: false,
+    target_groups: ["estudiantes"],
+    published_at: "2035-05-01T10:00:00Z",
+  });
+  assert.equal(futureScheduledForm.scheduled, true, "Un post con fecha futura debe abrirse como programado");
+  assert.equal(futureScheduledForm.isPublished, false);
 });
