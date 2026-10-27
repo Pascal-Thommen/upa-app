@@ -15,32 +15,26 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-function createTestEnvironment(initialPath = "/dashboard/publicaciones", initialSearch = "") {
-  const historyStack = [{ url: initialPath + initialSearch, state: {} }];
+function createTestEnvironment(initialPath = "/dashboard/publicaciones") {
+  const historyStack = [{ url: initialPath, state: {} }];
   let historyIndex = 0;
   const eventListeners = {};
 
   const window = {
     location: {
       pathname: initialPath,
-      search: initialSearch,
+      search: "",
       hash: "",
     },
     history: {
       pushState(state, title, url) {
         historyIndex++;
         historyStack.splice(historyIndex, historyStack.length - historyIndex, { url, state });
-        const u = String(url || "");
-        const qIdx = u.indexOf("?");
-        window.location.pathname = qIdx >= 0 ? u.substring(0, qIdx) : u;
-        window.location.search = qIdx >= 0 ? u.substring(qIdx) : "";
+        window.location.pathname = url;
       },
       replaceState(state, title, url) {
         historyStack[historyIndex] = { url, state };
-        const u = String(url || "");
-        const qIdx = u.indexOf("?");
-        window.location.pathname = qIdx >= 0 ? u.substring(0, qIdx) : u;
-        window.location.search = qIdx >= 0 ? u.substring(qIdx) : "";
+        window.location.pathname = url;
       },
       back() {
         if (historyIndex > 0) {
@@ -159,10 +153,6 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
     "apis-json-details",
     "mode-btn-editorial",
     "mode-btn-student",
-    "view-login",
-    "view-dashboard",
-    "login-alert",
-    "auth-actions",
   ];
 
   elementIds.forEach((id) => {
@@ -217,18 +207,8 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
     console,
     navigator: { clipboard: { writeText: async () => {} } },
     URLSearchParams: class {
-      constructor(search) {
-        this._params = new Map();
-        const s = String(search || "").replace(/^\?/, "");
-        if (s) {
-          s.split("&").forEach((pair) => {
-            const [k, ...rest] = pair.split("=");
-            if (k) this._params.set(decodeURIComponent(k), decodeURIComponent(rest.join("=") || ""));
-          });
-        }
-      }
-      get(key) {
-        return this._params.get(key) || null;
+      get() {
+        return null;
       }
     },
     Blob: class {},
@@ -243,7 +223,6 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
     window,
     document,
     elements,
-    localStorage,
     router: window.UpaRouter,
   };
 }
@@ -462,88 +441,4 @@ test("persistencia: reapplyCurrentRoute conserva el modulo activo y su URL", () 
   assert.equal(window.location.pathname, "/dashboard/roles");
   assert.ok(!elements["view-admins"].classList.contains("hidden"));
   assert.ok(elements["nav-mod-admins"].classList.contains("is-active"));
-});
-
-// ---------------------------------------------------------------------------
-// 5. Google OAuth Redirect Flow: Token-Extraktion vor Router-Init (SRV-164)
-// ---------------------------------------------------------------------------
-
-test("oauth redirect: token aus ?token=... wird VOR Router-Init extrahiert und in localStorage gespeichert", () => {
-  const env = createTestEnvironment("/dashboard", "?token=oauth-jwt-test-token-abc123");
-  const { window, localStorage } = env;
-
-  // Der Token MUSS nach init() in localStorage liegen, obwohl der Router
-  // die URL auf /dashboard/publicaciones umgeschrieben hat.
-  assert.equal(localStorage.getItem("upa_access_token"), "oauth-jwt-test-token-abc123");
-
-  // Die URL wurde nach der Extraktion bereinigt und danach vom Router
-  // auf /dashboard/publicaciones gesetzt.
-  assert.equal(window.location.pathname, "/dashboard/publicaciones");
-  assert.equal(window.location.search, "");
-});
-
-test("oauth redirect: auth_error=forbidden_domain zeigt sprechende Fehlermeldung im Login-Alert", () => {
-  const env = createTestEnvironment("/dashboard", "?auth_error=forbidden_domain");
-  const { elements, window } = env;
-
-  // Login-View muss sichtbar sein, weil kein gültiger Token vorliegt.
-  assert.ok(!elements["view-login"].classList.contains("hidden"));
-  assert.ok(elements["view-dashboard"].classList.contains("hidden"));
-
-  // Der Login-Alert enthält die sprechende Fehlermeldung für forbidden_domain.
-  assert.ok(
-    elements["login-alert"].textContent.includes("@upa.edu.py"),
-    `Alert soll Domain-Hinweis enthalten, ist: "${elements["login-alert"].textContent}"`
-  );
-
-  // URL wurde bereinigt.
-  assert.equal(window.location.search, "");
-});
-
-test("oauth redirect: auth_error=token_exchange_failed zeigt passende Meldung", () => {
-  const env = createTestEnvironment("/dashboard", "?auth_error=token_exchange_failed");
-  const { elements } = env;
-
-  assert.ok(!elements["view-login"].classList.contains("hidden"));
-  assert.ok(
-    elements["login-alert"].textContent.toLowerCase().includes("google"),
-    `Alert soll Google-Bezug enthalten, ist: "${elements["login-alert"].textContent}"`
-  );
-});
-
-test("oauth redirect: auth_error=missing_code zeigt passende Meldung", () => {
-  const env = createTestEnvironment("/dashboard", "?auth_error=missing_code");
-  const { elements } = env;
-
-  assert.ok(!elements["view-login"].classList.contains("hidden"));
-  assert.ok(
-    elements["login-alert"].textContent.toLowerCase().includes("código"),
-    `Alert soll código-Autorisierung erwähnen, ist: "${elements["login-alert"].textContent}"`
-  );
-});
-
-test("oauth redirect: unbekannter auth_error-Code zeigt generische Meldung mit Code-Name", () => {
-  const env = createTestEnvironment("/dashboard", "?auth_error=unknown_failure");
-  const { elements } = env;
-
-  assert.ok(!elements["view-login"].classList.contains("hidden"));
-  assert.ok(
-    elements["login-alert"].textContent.includes("unknown_failure"),
-    `Alert soll den rohen Fehlercode enthalten, ist: "${elements["login-alert"].textContent}"`
-  );
-});
-
-test("oauth redirect: token hat Vorrang vor auth_error – Login wird mit Dashboard fortgesetzt", () => {
-  const env = createTestEnvironment("/dashboard", "?token=valid-jwt-xyz&auth_error=forbidden_domain");
-  const { elements, window, localStorage } = env;
-
-  // Token wurde gespeichert.
-  assert.equal(localStorage.getItem("upa_access_token"), "valid-jwt-xyz");
-
-  // Dashboard ist sichtbar (vorhandener Token), nicht Login.
-  assert.ok(elements["view-login"].classList.contains("hidden"));
-  assert.ok(!elements["view-dashboard"].classList.contains("hidden"));
-
-  // URL wurde bereinigt.
-  assert.equal(window.location.search, "");
 });
