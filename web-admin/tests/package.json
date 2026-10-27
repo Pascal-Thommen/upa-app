@@ -2,6 +2,9 @@
   "name": "upa-web-admin-tests",
   "private": true,
   "description": "Dependencias de desarrollo para las pruebas del Cockpit de Redaccion (web-admin).",
+  "scripts": {
+    "test": "node --test editorial-core.test.js router.test.js"
+  },
   "devDependencies": {
     "jsdom": "26.1.0"
   }

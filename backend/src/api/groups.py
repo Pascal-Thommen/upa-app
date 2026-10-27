@@ -41,8 +41,8 @@ def list_groups(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> list[AudienceGroupResponse]:
-    groups = db.query(AudienceGroup).order_by(AudienceGroup.is_system.desc(), AudienceGroup.name.asc()).all()
-    return groups
+    groups = db.query(AudienceGroup).all()
+    return sorted(groups, key=lambda g: ((g.name or "").strip().lower(), (g.id or "").lower()))
 
 
 @router.get(
@@ -93,7 +93,7 @@ async def list_google_workspace_groups(
         return WorkspaceGroupsResponse(
             source="known_users",
             message=f"{exc} Se muestran los grupos ya registrados; también puede agregar correos manualmente.",
-            groups=sorted(known.values(), key=lambda g: g.name.lower()),
+            groups=sorted(known.values(), key=lambda g: (g.name.lower(), g.email.lower())),
         )
 
 

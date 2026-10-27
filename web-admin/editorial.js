@@ -105,6 +105,7 @@
         }
       });
     }
+    merged.sort((a, b) => String(a.label || "").localeCompare(String(b.label || ""), "es", { sensitivity: "base" }));
     state.groupCatalog = merged;
   }
 
@@ -147,11 +148,14 @@
       cb.addEventListener("change", () => {
         const currentTargets = readCheckedValues("ed-pub-target-groups");
         const currentNotify = readCheckedValues("ed-pub-notify-groups").filter((g) => currentTargets.includes(g));
-        const currentEventNotify = readCheckedValues("ed-pub-event-notify-groups").filter((g) =>
+        const prevEventNotify = readCheckedValues("ed-pub-event-notify-groups").filter((g) =>
           currentTargets.includes(g)
         );
+        if (cb.checked && !prevEventNotify.includes(cb.value)) {
+          prevEventNotify.push(cb.value);
+        }
         renderSubsetGroupCheckboxes("ed-pub-notify-groups", currentTargets, currentNotify);
-        renderSubsetGroupCheckboxes("ed-pub-event-notify-groups", currentTargets, currentEventNotify);
+        renderSubsetGroupCheckboxes("ed-pub-event-notify-groups", currentTargets, prevEventNotify);
       });
     });
   }
@@ -184,15 +188,23 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Recordatorios dinámicos del evento
+  // Recordatorios dinámicos del evento (valor numérico + unidad de tiempo)
   // ---------------------------------------------------------------------------
 
   function syncRemindersFromDom() {
     const container = $("ed-reminders-list");
     if (!container) return;
-    const inputs = Array.from(container.querySelectorAll("input[data-reminder-idx]"));
-    if (inputs.length > 0) {
-      state.reminders = inputs.map((inp) => inp.value);
+    const rows = Array.from(container.querySelectorAll("[data-reminder-row]"));
+    if (rows.length > 0) {
+      state.reminders = rows
+        .map((row) => {
+          const valInput = row.querySelector("input[data-reminder-value]");
+          const unitSelect = row.querySelector("select[data-reminder-unit]");
+          const val = valInput ? valInput.value : 30;
+          const unit = unitSelect ? unitSelect.value : "minutes";
+          return Core.partsToReminderMinutes(val, unit);
+        })
+        .filter((m) => m !== null);
     }
   }
 
@@ -204,24 +216,50 @@
       container.innerHTML = `<span class="ed-subtle">Sin recordatorios activos.</span>`;
       return;
     }
+    const units = Core.REMINDER_UNITS || [
+      { value: "minutes", label: "minutos" },
+      { value: "hours", label: "horas" },
+      { value: "days", label: "días" },
+    ];
     container.innerHTML = state.reminders
-      .map(
-        (mins, idx) => `
-        <div class="ed-reminder-row">
-          <input type="number" min="0" max="43200" step="5" data-reminder-idx="${idx}" value="${Core.escapeHtml(
-            mins
-          )}" aria-label="Minutos antes del evento">
-          <span>min antes</span>
+      .map((mins, idx) => {
+        const parts = Core.reminderToParts ? Core.reminderToParts(mins) : { value: mins, unit: "minutes" };
+        const unitOptions = units
+          .map(
+            (u) =>
+              `<option value="${Core.escapeHtml(u.value)}"${
+                u.value === parts.unit ? " selected" : ""
+              }>${Core.escapeHtml(u.label)}</option>`
+          )
+          .join("");
+        return `
+        <div class="ed-reminder-row" data-reminder-row="${idx}">
+          <input type="number" min="1" max="43200" step="1" data-reminder-value="${idx}" value="${Core.escapeHtml(
+            parts.value
+          )}" aria-label="Cantidad de tiempo antes del evento">
+          <select data-reminder-unit="${idx}" class="ed-input py-1 px-2 text-xs w-auto" aria-label="Unidad de tiempo del recordatorio">
+            ${unitOptions}
+          </select>
+          <span>antes</span>
           <button type="button" class="text-slate-400 hover:text-red-600 font-bold px-1" data-remove-reminder="${idx}" title="Quitar recordatorio">&times;</button>
-        </div>`
-      )
+        </div>`;
+      })
       .join("");
 
-    container.querySelectorAll("input[data-reminder-idx]").forEach((inp) => {
-      inp.addEventListener("input", () => {
-        const idx = Number(inp.getAttribute("data-reminder-idx"));
-        if (!Number.isNaN(idx)) state.reminders[idx] = inp.value;
-      });
+    container.querySelectorAll("[data-reminder-row]").forEach((row) => {
+      const idx = Number(row.getAttribute("data-reminder-row"));
+      const valInput = row.querySelector("input[data-reminder-value]");
+      const unitSelect = row.querySelector("select[data-reminder-unit]");
+      const updateIdx = () => {
+        if (Number.isNaN(idx)) return;
+        const mins = Core.partsToReminderMinutes(
+          valInput ? valInput.value : 30,
+          unitSelect ? unitSelect.value : "minutes"
+        );
+        if (mins !== null) state.reminders[idx] = mins;
+      };
+      if (valInput) valInput.addEventListener("input", updateIdx);
+      if (unitSelect) unitSelect.addEventListener("change", updateIdx);
     });
 
     container.querySelectorAll("button[data-remove-reminder]").forEach((btn) => {
@@ -258,11 +296,22 @@
 
     const dz = {
       uploading: false,
+      readOnly: false,
       getUrl: () => (urlField ? urlField.value : ""),
       setStatus(type, message) {
         if (!status) return;
         status.textContent = message || "";
         status.className = `ed-dz-status${type ? ` is-${type}` : ""}`;
+      },
+      setReadOnly(locked) {
+        dz.readOnly = Boolean(locked);
+        if (input) input.disabled = dz.readOnly;
+        if (pick) pick.disabled = dz.readOnly;
+        zone.classList.toggle("opacity-75", dz.readOnly);
+        if (preview) {
+          const removeBtn = preview.querySelector("[data-dz-remove]");
+          if (removeBtn) removeBtn.classList.toggle("hidden", dz.readOnly);
+        }
       },
       setUrl(url, label) {
         if (urlField) urlField.value = url || "";
@@ -273,14 +322,21 @@
           return;
         }
         const safe = Core.safeUrl(url);
-        const media = Core.isImageUrl(safe)
-          ? `<img src="${Core.escapeHtml(safe)}" alt="Vista previa">`
-          : `<a class="ed-link" href="${Core.escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${Core.escapeHtml(
-              label || "Documento adjunto"
-            )}</a>`;
-        preview.innerHTML = `${media}<button type="button" class="ed-btn ed-btn-secondary ed-btn-sm" data-dz-remove>Quitar</button>`;
+        let media = "";
+        if (Core.isVideoUrl && Core.isVideoUrl(safe)) {
+          media = `<video src="${Core.escapeHtml(safe)}" controls class="max-h-28 rounded-lg"></video>`;
+        } else if (Core.isImageUrl(safe)) {
+          media = `<img src="${Core.escapeHtml(safe)}" alt="Vista previa">`;
+        } else {
+          media = `<a class="ed-link" href="${Core.escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${Core.escapeHtml(
+            label || "Documento adjunto"
+          )}</a>`;
+        }
+        const hideRemove = dz.readOnly ? " hidden" : "";
+        preview.innerHTML = `${media}<button type="button" class="ed-btn ed-btn-secondary ed-btn-sm${hideRemove}" data-dz-remove>Quitar</button>`;
         preview.classList.remove("hidden");
         preview.querySelector("[data-dz-remove]").addEventListener("click", () => {
+          if (dz.readOnly) return;
           dz.setUrl("");
           dz.setStatus("", "");
         });
@@ -292,7 +348,7 @@
     };
 
     async function handleFile(file) {
-      if (dz.uploading) return;
+      if (dz.uploading || dz.readOnly) return;
       const check = Core.validateUploadFile(file);
       if (!check.ok) {
         dz.setStatus("error", check.message);
@@ -342,16 +398,22 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Reglas dinámicas de tipo, fecha de publicación y secciones
+  // Reglas dinámicas de fecha de publicación, vigencia, secciones e Instagram
   // ---------------------------------------------------------------------------
 
   function applyTypeAndSectionRules() {
-    const typeSelect = $("ed-pub-type");
-    const publishMode = $("ed-pub-publish-mode");
+    const scheduledCb = $("ed-pub-scheduled");
     const publishedInput = $("ed-pub-published-at");
     const publishedHint = $("ed-pub-published-hint");
     const isNewsCb = $("ed-pub-is-news");
     const isEventCb = $("ed-pub-is-event");
+    const pinnedCb = $("ed-pub-pinned");
+    const expiresWrap = $("ed-pub-expires-wrap");
+    const expiresInput = $("ed-pub-expires");
+    const captionInput = $("ed-pub-caption");
+    const contentInput = $("ed-pub-content");
+    const linkLabelInput = $("ed-pub-link-label");
+    const linkUrlInput = $("ed-pub-link-url");
     const newsLockHint = $("ed-news-lock-hint");
     const eventLockHint = $("ed-event-lock-hint");
     const newsNotifyHint = $("ed-news-notify-hint");
@@ -360,86 +422,111 @@
     const newsFields = $("ed-news-fields");
     const eventFields = $("ed-event-fields");
 
-    if (!typeSelect || !isNewsCb || !isEventCb) return;
+    if (!isNewsCb || !isEventCb) return;
 
-    const isInstagramItem = Boolean(state.editingItem && state.editingItem.post_type === Core.POST_TYPE_INSTAGRAM);
-    const igOpt = typeSelect.querySelector('option[value="INSTAGRAM"]');
-    if (igOpt) igOpt.disabled = !isInstagramItem;
+    const postType =
+      state.editingItem && state.editingItem.post_type
+        ? String(state.editingItem.post_type).toUpperCase()
+        : Core.POST_TYPE_NORMAL;
+    const isInstagramItem = postType === Core.POST_TYPE_INSTAGRAM;
 
+    // Reglas de fecha de publicación programada (ed-pub-scheduled + ed-pub-published-at)
     if (isInstagramItem) {
-      typeSelect.value = Core.POST_TYPE_INSTAGRAM;
-      typeSelect.disabled = true;
-    } else {
-      if (typeSelect.value === Core.POST_TYPE_INSTAGRAM) {
-        typeSelect.value = Core.POST_TYPE_NORMAL;
+      if (scheduledCb) {
+        scheduledCb.checked = false;
+        scheduledCb.disabled = true;
       }
-      typeSelect.disabled = false;
+      if (publishedInput) {
+        publishedInput.classList.add("hidden");
+        publishedInput.disabled = true;
+        publishedInput.readOnly = true;
+      }
+      if (publishedHint) {
+        const origDate = Core.formatDateTime(state.editingItem.published_at || state.editingItem.created_at);
+        publishedHint.textContent = origDate
+          ? `Fecha original de Instagram: ${origDate} (bloqueada)`
+          : "Fecha original de Instagram (bloqueada)";
+      }
+    } else {
+      if (scheduledCb) scheduledCb.disabled = false;
+      const scheduled = Boolean(scheduledCb && scheduledCb.checked);
+      if (publishedInput) {
+        publishedInput.disabled = false;
+        publishedInput.readOnly = false;
+        publishedInput.classList.toggle("hidden", !scheduled);
+      }
+      if (publishedHint) {
+        if (scheduled) {
+          publishedHint.textContent = "La publicación será visible a partir de esa fecha y hora.";
+        } else if (state.editingItem && (state.editingItem.published_at || state.editingItem.created_at)) {
+          publishedHint.textContent = `Publicada: ${Core.formatDateTime(
+            state.editingItem.published_at || state.editingItem.created_at
+          )}`;
+        } else {
+          publishedHint.textContent = "Se registrará la fecha exacta al guardar.";
+        }
+      }
     }
 
-    const postType = typeSelect.value;
+    // Reglas de fijar arriba (ed-pub-pinned) y fecha de vigencia obligatoria (ed-pub-expires)
+    const isPinned = Boolean(pinnedCb && pinnedCb.checked);
+    if (expiresWrap) expiresWrap.classList.toggle("hidden", !isPinned);
+    if (expiresInput) expiresInput.required = isPinned;
 
-    // Reglas de fecha de publicación
-    if (isInstagramItem) {
-      publishMode.value = "on_save";
-      publishMode.disabled = true;
-      publishedInput.classList.add("hidden");
-      publishedInput.disabled = true;
-      const origDate = Core.formatDateTime(state.editingItem.published_at || state.editingItem.created_at);
-      publishedHint.textContent = origDate
-        ? `Fecha original de Instagram: ${origDate} (bloqueada)`
-        : "Fecha original de Instagram (bloqueada)";
-    } else {
-      publishMode.disabled = false;
-      publishedInput.disabled = false;
-      const scheduled = publishMode.value === "scheduled";
-      publishedInput.classList.toggle("hidden", !scheduled);
-      if (scheduled) {
-        publishedHint.textContent = "La publicación será visible a partir de esa fecha y hora.";
-      } else if (state.editingItem && (state.editingItem.published_at || state.editingItem.created_at)) {
-        publishedHint.textContent = `Publicada: ${Core.formatDateTime(
-          state.editingItem.published_at || state.editingItem.created_at
-        )}`;
-      } else {
-        publishedHint.textContent = "Se registrará la fecha exacta al guardar.";
+    // Barrera de protección de solo lectura para campos sincronizados de Instagram
+    [captionInput, contentInput, linkLabelInput, linkUrlInput].forEach((field) => {
+      if (!field) return;
+      field.readOnly = isInstagramItem;
+      field.disabled = isInstagramItem;
+    });
+    if (state.dropzones.pub && typeof state.dropzones.pub.setReadOnly === "function") {
+      state.dropzones.pub.setReadOnly(isInstagramItem);
+    }
+    if (isInstagramItem && state.editingItem) {
+      if (captionInput && Core.extractInstagramTeaser) {
+        captionInput.value = Core.extractInstagramTeaser(state.editingItem.content || state.editingItem.caption);
+      }
+      if (linkUrlInput) {
+        linkUrlInput.value = state.editingItem.permalink || state.editingItem.link_url || "";
       }
     }
 
     // Reglas de sección Noticia vs Evento
-    if (postType === Core.POST_TYPE_INSTAGRAM) {
+    if (isInstagramItem) {
       isNewsCb.checked = true;
       isNewsCb.disabled = true;
-      newsLockHint.textContent = "Obligatoria en publicaciones de Instagram";
+      if (newsLockHint) newsLockHint.textContent = "Campos sincronizados de Instagram en modo lectura";
       if (newsNotifyHint) {
         newsNotifyHint.textContent = "Al guardar se enviará notificación a los grupos marcados.";
       }
       isEventCb.disabled = false;
-      eventLockHint.textContent = "";
+      if (eventLockHint) eventLockHint.textContent = "";
     } else if (postType === Core.POST_TYPE_URGENT) {
       isNewsCb.checked = true;
       isNewsCb.disabled = true;
-      newsLockHint.textContent = "Obligatoria en avisos urgentes";
+      if (newsLockHint) newsLockHint.textContent = "Obligatoria en avisos urgentes";
       if (newsNotifyHint) {
         newsNotifyHint.textContent = "El aviso urgente enviará notificación push al publicar.";
       }
       isEventCb.checked = false;
       isEventCb.disabled = true;
-      eventLockHint.textContent = "No disponible en avisos urgentes";
+      if (eventLockHint) eventLockHint.textContent = "No disponible en avisos urgentes";
     } else {
       isNewsCb.disabled = false;
-      newsLockHint.textContent = "";
+      if (newsLockHint) newsLockHint.textContent = "";
       if (newsNotifyHint) {
         newsNotifyHint.textContent = "Seleccione los grupos que recibirán notificación al publicar.";
       }
       isEventCb.disabled = false;
-      eventLockHint.textContent = "";
+      if (eventLockHint) eventLockHint.textContent = "";
     }
 
     const showNews = isNewsCb.checked;
     const showEvent = isEventCb.checked;
-    newsFields.classList.toggle("hidden", !showNews);
-    newsBox.classList.toggle("is-open", showNews);
-    eventFields.classList.toggle("hidden", !showEvent);
-    eventBox.classList.toggle("is-open", showEvent);
+    if (newsFields) newsFields.classList.toggle("hidden", !showNews);
+    if (newsBox) newsBox.classList.toggle("is-open", showNews);
+    if (eventFields) eventFields.classList.toggle("hidden", !showEvent);
+    if (eventBox) eventBox.classList.toggle("is-open", showEvent);
   }
 
   // ---------------------------------------------------------------------------
@@ -448,28 +535,32 @@
 
   function readPublicationForm() {
     syncRemindersFromDom();
+    const scheduled = Boolean($("ed-pub-scheduled") && $("ed-pub-scheduled").checked);
+    const postType =
+      state.editingItem && state.editingItem.post_type
+        ? String(state.editingItem.post_type).toUpperCase()
+        : Core.POST_TYPE_NORMAL;
     return {
-      title: $("ed-pub-title").value,
-      postType: $("ed-pub-type").value,
-      hasRegistration: $("ed-pub-rsvp").checked,
+      title: $("ed-pub-title") ? $("ed-pub-title").value : "",
+      postType,
+      hasRegistration: Boolean($("ed-pub-rsvp") && $("ed-pub-rsvp").checked),
       targetGroups: readCheckedValues("ed-pub-target-groups"),
-      publishMode: $("ed-pub-publish-mode").value,
-      publishedAt: $("ed-pub-published-at").value,
-      isNews: $("ed-pub-is-news").checked,
+      scheduled,
+      publishMode: scheduled ? "scheduled" : "on_save",
+      publishedAt: $("ed-pub-published-at") ? $("ed-pub-published-at").value : "",
+      isNews: Boolean($("ed-pub-is-news") && $("ed-pub-is-news").checked),
       notifyGroups: readCheckedValues("ed-pub-notify-groups"),
-      caption: $("ed-pub-caption").value,
-      content: $("ed-pub-content").value,
-      detailText: $("ed-pub-detail-text").value,
-      category: $("ed-pub-category").value,
-      pinned: $("ed-pub-pinned").checked,
-      expiresAt: $("ed-pub-expires").value,
+      caption: $("ed-pub-caption") ? $("ed-pub-caption").value : "",
+      content: $("ed-pub-content") ? $("ed-pub-content").value : "",
+      pinned: Boolean($("ed-pub-pinned") && $("ed-pub-pinned").checked),
+      expiresAt: $("ed-pub-expires") ? $("ed-pub-expires").value : "",
       imageUrl: state.dropzones.pub ? state.dropzones.pub.getUrl() : "",
-      linkLabel: $("ed-pub-link-label").value,
-      linkUrl: $("ed-pub-link-url").value,
-      isEvent: $("ed-pub-is-event").checked,
-      eventStart: $("ed-pub-event-start").value,
-      eventEnd: $("ed-pub-event-end").value,
-      location: $("ed-pub-location").value,
+      linkLabel: $("ed-pub-link-label") ? $("ed-pub-link-label").value : "",
+      linkUrl: $("ed-pub-link-url") ? $("ed-pub-link-url").value : "",
+      isEvent: Boolean($("ed-pub-is-event") && $("ed-pub-is-event").checked),
+      eventStart: $("ed-pub-event-start") ? $("ed-pub-event-start").value : "",
+      eventEnd: $("ed-pub-event-end") ? $("ed-pub-event-end").value : "",
+      location: $("ed-pub-location") ? $("ed-pub-location").value : "",
       eventNotifyGroups: readCheckedValues("ed-pub-event-notify-groups"),
       reminders: state.reminders.slice(),
     };
@@ -479,40 +570,43 @@
     state.editingItem = rawItem || null;
     const editing = Boolean(values.id);
 
-    $("ed-pub-id").value = values.id || "";
-    $("ed-pub-title").value = values.title || "";
+    if ($("ed-pub-id")) $("ed-pub-id").value = values.id || "";
+    if ($("ed-pub-title")) $("ed-pub-title").value = values.title || "";
 
-    const igOpt = $("ed-pub-type").querySelector('option[value="INSTAGRAM"]');
-    if (igOpt) igOpt.disabled = values.postType !== Core.POST_TYPE_INSTAGRAM;
-    $("ed-pub-type").value = values.postType || Core.POST_TYPE_NORMAL;
-
-    $("ed-pub-rsvp").checked = Boolean(values.hasRegistration);
-    $("ed-pub-publish-mode").value = values.publishMode || "on_save";
-    $("ed-pub-published-at").value = values.publishedAt || "";
+    if ($("ed-pub-rsvp")) $("ed-pub-rsvp").checked = Boolean(values.hasRegistration);
+    if ($("ed-pub-scheduled")) {
+      $("ed-pub-scheduled").checked = Boolean(values.scheduled || values.publishMode === "scheduled");
+    }
+    if ($("ed-pub-published-at")) $("ed-pub-published-at").value = values.publishedAt || "";
 
     renderTargetGroupCheckboxes(values.targetGroups);
     renderSubsetGroupCheckboxes("ed-pub-notify-groups", values.targetGroups, values.notifyGroups);
-    renderSubsetGroupCheckboxes("ed-pub-event-notify-groups", values.targetGroups, values.eventNotifyGroups);
+    renderSubsetGroupCheckboxes(
+      "ed-pub-event-notify-groups",
+      values.targetGroups,
+      Array.isArray(values.eventNotifyGroups) && values.eventNotifyGroups.length
+        ? values.eventNotifyGroups
+        : values.targetGroups
+    );
 
-    $("ed-pub-is-news").checked = Boolean(values.isNews);
-    $("ed-pub-caption").value = values.caption || "";
-    $("ed-pub-content").value = values.content || "";
-    $("ed-pub-detail-text").value = values.detailText || "";
-    $("ed-pub-category").value = values.category || "";
-    $("ed-pub-pinned").checked = Boolean(values.pinned);
-    $("ed-pub-expires").value = values.expiresAt || "";
-    $("ed-pub-link-label").value = values.linkLabel || "";
-    $("ed-pub-link-url").value = values.linkUrl || "";
+    if ($("ed-pub-is-news")) $("ed-pub-is-news").checked = Boolean(values.isNews);
+    if ($("ed-pub-caption")) $("ed-pub-caption").value = values.caption || "";
+    if ($("ed-pub-content")) $("ed-pub-content").value = values.content || "";
+    if ($("ed-pub-pinned")) $("ed-pub-pinned").checked = Boolean(values.pinned);
+    if ($("ed-pub-expires")) $("ed-pub-expires").value = values.expiresAt || "";
+    if ($("ed-pub-link-label")) $("ed-pub-link-label").value = values.linkLabel || "";
+    if ($("ed-pub-link-url")) $("ed-pub-link-url").value = values.linkUrl || "";
 
     if (state.dropzones.pub) {
+      state.dropzones.pub.setReadOnly(false);
       state.dropzones.pub.reset();
       if (values.imageUrl) state.dropzones.pub.setUrl(values.imageUrl);
     }
 
-    $("ed-pub-is-event").checked = Boolean(values.isEvent);
-    $("ed-pub-event-start").value = values.eventStart || "";
-    $("ed-pub-event-end").value = values.eventEnd || "";
-    $("ed-pub-location").value = values.location || "";
+    if ($("ed-pub-is-event")) $("ed-pub-is-event").checked = Boolean(values.isEvent);
+    if ($("ed-pub-event-start")) $("ed-pub-event-start").value = values.eventStart || "";
+    if ($("ed-pub-event-end")) $("ed-pub-event-end").value = values.eventEnd || "";
+    if ($("ed-pub-location")) $("ed-pub-location").value = values.location || "";
     renderRemindersList(Array.isArray(values.reminders) ? values.reminders : [30]);
 
     $("ed-pub-form-title").textContent = editing ? "Editar publicación" : "Nueva publicación";
@@ -810,13 +904,6 @@
     if (state.ready) return;
     state.ready = true;
 
-    const catSelect = $("ed-pub-category");
-    if (catSelect) {
-      catSelect.innerHTML =
-        `<option value="">Sin categoría</option>` +
-        Core.CATEGORIES.map((c) => `<option value="${Core.escapeHtml(c.value)}">${Core.escapeHtml(c.label)}</option>`).join("");
-    }
-
     document.querySelectorAll("[data-dropzone]").forEach(bindDropzone);
 
     ["all", "news", "events"].forEach((key) => {
@@ -834,13 +921,20 @@
     if ($("ed-btn-sync")) $("ed-btn-sync").addEventListener("click", syncInstagram);
     if ($("ed-form-pub")) $("ed-form-pub").addEventListener("submit", submitPublication);
 
-    if ($("ed-pub-type")) $("ed-pub-type").addEventListener("change", applyTypeAndSectionRules);
-    if ($("ed-pub-publish-mode")) $("ed-pub-publish-mode").addEventListener("change", applyTypeAndSectionRules);
+    if ($("ed-pub-scheduled")) $("ed-pub-scheduled").addEventListener("change", applyTypeAndSectionRules);
+    if ($("ed-pub-pinned")) $("ed-pub-pinned").addEventListener("change", applyTypeAndSectionRules);
     if ($("ed-pub-is-news")) $("ed-pub-is-news").addEventListener("change", applyTypeAndSectionRules);
     if ($("ed-pub-is-event")) {
       $("ed-pub-is-event").addEventListener("change", () => {
-        if ($("ed-pub-is-event").checked && state.reminders.length === 0 && !state.editingItem) {
-          renderRemindersList([30]);
+        if ($("ed-pub-is-event").checked) {
+          if (state.reminders.length === 0 && !state.editingItem) {
+            renderRemindersList([30]);
+          }
+          const currentTargets = readCheckedValues("ed-pub-target-groups");
+          const currentEventNotify = readCheckedValues("ed-pub-event-notify-groups");
+          if (currentEventNotify.length === 0 && currentTargets.length > 0) {
+            renderSubsetGroupCheckboxes("ed-pub-event-notify-groups", currentTargets, currentTargets);
+          }
         }
         applyTypeAndSectionRules();
       });

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Post
+from ..schemas.publication import extract_instagram_teaser
 
 logger = logging.getLogger(__name__)
 
@@ -215,9 +216,10 @@ class InstagramSyncService:
                     continue
 
                 existing = db.query(Post).filter(Post.instagram_id == item.instagram_id).first()
+                teaser = extract_instagram_teaser(item.caption)
                 if existing:
                     if not existing.is_edited:
-                        existing.caption = item.caption
+                        existing.caption = teaser
                         existing.content = item.caption
                     existing.media_type = item.media_type
                     existing.media_url = item.media_url
@@ -235,7 +237,7 @@ class InstagramSyncService:
                     pub_ts = item.timestamp or datetime.now(UTC)
                     new_post = Post(
                         title=title,
-                        caption=item.caption,
+                        caption=teaser,
                         content=item.caption,
                         post_type="INSTAGRAM",
                         is_news=True,

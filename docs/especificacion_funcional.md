@@ -29,12 +29,12 @@ Documento vivo de ingenieria | Universidad Paraguayo Alemana (UPA)
 ## 3. Panel de Administracion y Marketing (Escritorio)
 
 ### A. Feed de Entradas Unificadas (Single Source of Truth)
-* Terminologia: Cada elemento se denomina **Entrada** (con etiquetas de tipo: Aviso, Noticia de Instagram, Evento o Hibrido).
-* Orden: Estrictamente cronologico (lo mas reciente arriba).
-* Metricas de Alcance Real: Muestra impresiones unicas (cuantos estudiantes individuales vieron la entrada, no recuento bruto de clics).
-* Metricas de Eventos: Contador de inscritos y desinscritos en tiempo real.
-* Detalle de Participantes: Al abrir la entrada, se despliega la lista con nombres de los estudiantes confirmados y cancelados, junto con las carreras involucradas.
+* Terminologia: Cada elemento es una **Publicacion** unificada que puede activar la seccion de Noticia, la seccion de Evento o ambas simultaneamente.
+* Editor Simplificado: Titulo obligatorio, publicacion programada opcional, inscripcion RSVP desactivada por defecto, campo unico de carga multimedia para imagen o video (`JPG`, `PNG`, `WEBP`, `MP4`, `WEBM`, `PDF`), resumen corto (`caption`), texto principal unico (`content`), enlace de accion modular y fecha de vigencia (`expires_at`) obligatoria exclusivamente al fijar la publicacion arriba (`is_pinned`).
+* Barrera de Proteccion de Instagram: En publicaciones sincronizadas desde Instagram, el resumen corto toma automaticamente las dos primeras lineas del post y todos los campos sincronizados (`caption`, `content`, `media_url`, `permalink`, `published_at`) permanecen en modo de solo lectura.
+* Seccion de Evento: Hora de inicio obligatoria, hora de fin y lugar opcionales, grupos destinatarios preseleccionados por defecto para recordatorios y configuracion flexible de recordatorios en minutos, horas o dias (30 minutos por defecto).
+* Metricas de Alcance Real y Participantes: Muestra vistas unicas por usuario y conteo en tiempo real de inscritos y bajas.
 
-### B. Ventana Independiente de Gestion de Grupos
-* Modulo separado para administradores.
-* Permite crear meta-grupos combinando correos manuales con grupos sincronizados de Google Workspace Admin Console.
+### B. Gestion Alfabetica de Grupos y Matriz Segura de Roles
+* Grupos Ordenados Alfabeticamente: Lista plana sin jerarquias plegables artificiales de los grupos institucionales y de Google Workspace (`@upa.edu.py`), con filtro instantaneo en vivo y cache local en el servidor para evitar latencias y limites de cuota de Google Directory API.
+* Seguridad de Roles: Inicio de sesion limpio sin botones de acceso rapido de desarrollo y creacion de nuevos roles con todas las casillas de permisos (`publicaciones`, `grupos`, `roles`, `apis`) desmarcadas por defecto.

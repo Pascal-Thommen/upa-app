@@ -28,6 +28,8 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "image/png": ".png",
     "image/webp": ".webp",
     "application/pdf": ".pdf",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
 }
 
 
@@ -80,6 +82,10 @@ def sniff_content_type(header: bytes) -> str | None:
         return "image/webp"
     if header.startswith(b"%PDF-"):
         return "application/pdf"
+    if len(header) >= 8 and header[4:8] == b"ftyp":
+        return "video/mp4"
+    if header.startswith(b"\x1a\x45\xdf\xa3"):
+        return "video/webm"
     return None
 
 

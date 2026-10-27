@@ -27,7 +27,14 @@
   const PERMISSION_KEYS = ["publicaciones", "grupos", "roles", "apis"];
 
   /** Tipos MIME aceptados por POST /api/media/upload (el servidor ademas valida por contenido). */
-  const ALLOWED_UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  const ALLOWED_UPLOAD_TYPES = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "application/pdf",
+  ];
 
   const CATEGORIES = [
     { value: "MELDUNG", label: "Comunicado del campus" },
@@ -67,7 +74,7 @@
     errNotFound: "El elemento ya no existe (posiblemente fue eliminado).",
     errServer: "Error interno del servidor. Intente nuevamente más tarde.",
     errUploadTooLarge: "El archivo supera el límite de 10 MB.",
-    errUploadType: "Tipo de archivo no permitido. Formatos válidos: JPG, PNG, WEBP y PDF.",
+    errUploadType: "Tipo de archivo no permitido. Formatos válidos: JPG, PNG, WEBP, MP4, WEBM y PDF.",
     errUploadEmpty: "El archivo está vacío.",
     errUploadMissing: "Seleccione un archivo para subir.",
     errTitleRequired: "El título es obligatorio.",
@@ -77,6 +84,7 @@
     errEndBeforeStart: "La hora de finalización no puede ser anterior al inicio.",
     errGroupRequired: "Seleccione al menos un grupo destinatario.",
     errCategoryInvalid: "Categoría no válida.",
+    errExpiresRequired: "Indique la fecha y hora de vigencia para fijar la publicación.",
     errExpiresInvalid: "La fecha de vigencia no es válida.",
     errPublishedInvalid: "La fecha programada de publicación no es válida.",
     errSectionRequired: "Active al menos una sección: Noticia o Evento.",
@@ -174,8 +182,48 @@
     return /\.(jpe?g|png|webp)(\?.*)?$/i.test(String(url || "").trim());
   }
 
+  function isVideoUrl(url) {
+    return /\.(mp4|webm|mov)(\?.*)?$/i.test(String(url || "").trim());
+  }
+
   function mediaTypeForUrl(url) {
-    return isImageUrl(url) ? "IMAGE" : "";
+    if (isVideoUrl(url)) return "VIDEO";
+    if (isImageUrl(url)) return "IMAGE";
+    return "";
+  }
+
+  function extractInstagramTeaser(text) {
+    if (!text) return "";
+    const lines = String(text)
+      .replace(/\r/g, "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (!lines.length) return "";
+    return lines.slice(0, 2).join("\n").slice(0, LIMITS.teaser);
+  }
+
+  const REMINDER_UNITS = [
+    { value: "minutes", label: "minutos", factor: 1 },
+    { value: "hours", label: "horas", factor: 60 },
+    { value: "days", label: "días", factor: 1440 },
+  ];
+
+  function reminderToParts(totalMinutes) {
+    const mins = Number(totalMinutes);
+    if (!Number.isFinite(mins) || mins <= 0) {
+      return { value: 30, unit: "minutes" };
+    }
+    if (mins % 1440 === 0) return { value: mins / 1440, unit: "days" };
+    if (mins % 60 === 0) return { value: mins / 60, unit: "hours" };
+    return { value: mins, unit: "minutes" };
+  }
+
+  function partsToReminderMinutes(value, unit) {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 0) return null;
+    const found = REMINDER_UNITS.find((u) => u.value === unit) || REMINDER_UNITS[0];
+    return Math.round(num * found.factor);
   }
 
   function pad2(n) {
@@ -293,7 +341,8 @@
       errors.targetGroups = TEXTS.errGroupRequired;
     }
 
-    if (v.publishMode === "scheduled" && postType !== POST_TYPE_INSTAGRAM) {
+    const isScheduled = Boolean(v.scheduled) || v.publishMode === "scheduled";
+    if (isScheduled && postType !== POST_TYPE_INSTAGRAM) {
       const pubIso = datetimeLocalToIso(v.publishedAt);
       if (!pubIso) errors.publishedAt = TEXTS.errPublishedInvalid;
     }
@@ -311,7 +360,11 @@
       if (v.category && !CATEGORIES.some((c) => c.value === v.category)) {
         errors.category = TEXTS.errCategoryInvalid;
       }
-      if (v.expiresAt && !datetimeLocalToIso(v.expiresAt)) {
+      if (v.pinned) {
+        if (!v.expiresAt || !datetimeLocalToIso(v.expiresAt)) {
+          errors.expiresAt = v.expiresAt ? TEXTS.errExpiresInvalid : TEXTS.errExpiresRequired;
+        }
+      } else if (v.expiresAt && !datetimeLocalToIso(v.expiresAt)) {
         errors.expiresAt = TEXTS.errExpiresInvalid;
       }
     }
@@ -340,6 +393,12 @@
     const isEvent = postType === POST_TYPE_URGENT ? false : Boolean(v.isEvent);
     const targetGroups = cleanGroups(v.targetGroups);
     const imageUrl = String(v.imageUrl || "").trim();
+    const isScheduled = Boolean(v.scheduled) || v.publishMode === "scheduled";
+    const rawCaption = isNews
+      ? postType === POST_TYPE_INSTAGRAM
+        ? extractInstagramTeaser(v.content || v.caption)
+        : String(v.caption || "").trim()
+      : "";
 
     const payload = {
       title: String(v.title || "").trim(),
@@ -347,10 +406,10 @@
       has_registration: Boolean(v.hasRegistration),
       target_groups: targetGroups.length ? targetGroups : ["ALL"],
       published_at:
-        postType !== POST_TYPE_INSTAGRAM && v.publishMode === "scheduled" ? datetimeLocalToIso(v.publishedAt) : null,
+        postType !== POST_TYPE_INSTAGRAM && isScheduled ? datetimeLocalToIso(v.publishedAt) : null,
       is_news: isNews,
       notify_groups: isNews ? cleanGroups(v.notifyGroups) : [],
-      caption: isNews ? String(v.caption || "").trim() : "",
+      caption: rawCaption,
       content: isNews ? String(v.content || "").trim() : "",
       detail_text: isNews ? String(v.detailText || "").trim() : "",
       category: isNews ? String(v.category || "").trim() : "",
@@ -375,22 +434,30 @@
     const postType = String(p.post_type || POST_TYPE_NORMAL).toUpperCase();
     const isNews = p.is_news !== undefined ? Boolean(p.is_news) : true;
     const isEvent = Boolean(p.is_event);
-    const reminders = Array.isArray(p.reminders) ? p.reminders.slice() : isEvent ? [30] : [30];
+    const reminders = Array.isArray(p.reminders) ? p.reminders.slice() : [30];
+    const targetGroups = Array.isArray(p.target_groups) && p.target_groups.length ? p.target_groups.slice() : ["ALL"];
     const linkUrl = p.link_url || (postType === POST_TYPE_INSTAGRAM ? p.permalink || "" : "");
     const linkLabel = p.link_label || (postType === POST_TYPE_INSTAGRAM && linkUrl ? "Ver en Instagram" : "");
+    const caption =
+      postType === POST_TYPE_INSTAGRAM ? extractInstagramTeaser(p.content || p.caption) : p.caption || "";
+    const eventNotifyGroups =
+      Array.isArray(p.event_notify_groups) && p.event_notify_groups.length
+        ? p.event_notify_groups.slice()
+        : targetGroups.slice();
 
     return {
       id: p.id || "",
       title: p.title || "",
       postType,
       hasRegistration: Boolean(p.has_registration),
-      targetGroups: Array.isArray(p.target_groups) && p.target_groups.length ? p.target_groups.slice() : ["ALL"],
+      targetGroups,
+      scheduled: Boolean(p.published_at),
       publishMode: p.published_at ? "scheduled" : "on_save",
       publishedAt: isoToDatetimeLocal(p.published_at),
       publishedAtIso: p.published_at || p.created_at || "",
       isNews,
       notifyGroups: Array.isArray(p.notify_groups) ? p.notify_groups.slice() : [],
-      caption: p.caption || "",
+      caption,
       content: p.content || "",
       detailText: p.detail_text || "",
       category: p.category || "",
@@ -404,7 +471,7 @@
       eventStart: isoToDatetimeLocal(p.event_start),
       eventEnd: isoToDatetimeLocal(p.event_end),
       location: p.location || "",
-      eventNotifyGroups: Array.isArray(p.event_notify_groups) ? p.event_notify_groups.slice() : [],
+      eventNotifyGroups,
       reminders,
       viewsCount: Number(p.views_count || 0),
       attendingCount: Number(p.attending_count || 0),
@@ -885,6 +952,7 @@
     PERMISSION_KEYS,
     CATEGORIES,
     TARGET_GROUPS,
+    REMINDER_UNITS,
     POST_TYPE_NORMAL,
     POST_TYPE_URGENT,
     POST_TYPE_INSTAGRAM,
@@ -896,6 +964,11 @@
     escapeHtml,
     safeUrl,
     isImageUrl,
+    isVideoUrl,
+    mediaTypeForUrl,
+    extractInstagramTeaser,
+    reminderToParts,
+    partsToReminderMinutes,
     localDateTimeToIso,
     isoToLocalParts,
     isoToDatetimeLocal,

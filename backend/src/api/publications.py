@@ -27,6 +27,7 @@ from ..schemas.publication import (
     PublicationUpdate,
     PublicationWrite,
     clean_group_codes,
+    extract_instagram_teaser,
 )
 from ..services.audit import AUDIT_TARGET_POST, changed_fields, log_audit
 from ..services.push import (
@@ -93,6 +94,19 @@ def _snapshot_post(post: Post) -> dict:
     }
 
 
+def _infer_media_type(media_url: str | None, declared_type: str | None) -> str | None:
+    if declared_type and declared_type.strip():
+        return declared_type.strip().upper()
+    if not media_url or not media_url.strip():
+        return None
+    lower = media_url.strip().lower().split("?")[0]
+    if lower.endswith((".mp4", ".webm", ".mov")):
+        return "VIDEO"
+    if lower.endswith((".jpg", ".jpeg", ".png", ".webp")):
+        return "IMAGE"
+    return None
+
+
 def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: bool) -> None:
     clean_title = (payload.title or "").strip()
     if not clean_title:
@@ -153,6 +167,13 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
             detail="Active al menos una sección: Noticia o Evento.",
         )
 
+    is_pinned = bool(payload.is_pinned)
+    if is_pinned and payload.expires_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las publicaciones fijadas requieren una fecha de vigencia (expires_at).",
+        )
+
     try:
         clean_category = normalize_category(payload.category)
     except ValueError as exc:
@@ -205,7 +226,7 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
     clean_link_label = payload.link_label.strip() if payload.link_label and payload.link_label.strip() else None
     if final_type == "INSTAGRAM":
         insta_permalink = (post.permalink or payload.permalink or "").strip()
-        if not clean_link_url and insta_permalink:
+        if insta_permalink:
             clean_link_url = insta_permalink
         if clean_link_url and not clean_link_label:
             clean_link_label = "Ver en Instagram"
@@ -215,25 +236,31 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
     post.category = clean_category
     post.is_news = is_news
     post.is_event = is_event
-    post.is_pinned = bool(payload.is_pinned)
+    post.is_pinned = is_pinned
     post.is_edited = True
     post.has_registration = bool(payload.has_registration)
     post.target_groups = target_groups
     post.notify_groups = notify_groups
     post.event_notify_groups = event_notify_groups
     post.published_at = published_at
-    post.expires_at = ensure_utc_datetime(payload.expires_at) if payload.expires_at else None
+    post.expires_at = ensure_utc_datetime(payload.expires_at) if is_pinned and payload.expires_at else (
+        ensure_utc_datetime(payload.expires_at) if payload.expires_at else None
+    )
 
-    post.caption = payload.caption.strip() if payload.caption and payload.caption.strip() else None
-    post.content = payload.content.strip() if payload.content and payload.content.strip() else None
-    post.detail_text = payload.detail_text.strip() if payload.detail_text and payload.detail_text.strip() else None
+    if final_type == "INSTAGRAM" and not is_create:
+        raw_ig_text = post.content or post.caption or ""
+        post.caption = extract_instagram_teaser(raw_ig_text) or None
+    else:
+        post.caption = payload.caption.strip() if payload.caption and payload.caption.strip() else None
+        post.content = payload.content.strip() if payload.content and payload.content.strip() else None
+        post.detail_text = payload.detail_text.strip() if payload.detail_text and payload.detail_text.strip() else None
 
-    if payload.media_url is not None:
-        post.media_url = payload.media_url.strip() or None
-    if payload.media_type is not None:
-        post.media_type = payload.media_type.strip() or None
-    if payload.permalink is not None and final_type != "INSTAGRAM":
-        post.permalink = payload.permalink.strip() or None
+    if final_type != "INSTAGRAM" or is_create:
+        if payload.media_url is not None:
+            post.media_url = payload.media_url.strip() or None
+        post.media_type = _infer_media_type(post.media_url, payload.media_type)
+        if payload.permalink is not None:
+            post.permalink = payload.permalink.strip() or None
 
     post.link_url = clean_link_url
     post.link_label = clean_link_label

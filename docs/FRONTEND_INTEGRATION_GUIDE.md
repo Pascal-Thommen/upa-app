@@ -387,9 +387,9 @@ Permite registrar el token FCM de Android / iOS / Web del dispositivo del usuari
 Entrega por separado los avisos de emergencia (`urgent_banners`) y las publicaciones generales (`posts`).
 * **Encabezado Opcional:** `Authorization: Bearer <token>`
 
-### 3.9 Subida de Archivos: Carteles, Banners y Documentos (`POST /api/media/upload`)
+### 3.9 Subida de Archivos: Carteles, Videos y Documentos (`POST /api/media/upload`)
 
-Sube una imagen (JPG, PNG, WEBP) o un documento PDF de hasta **10 MB** y devuelve la URL final para usarla en `media_url` de una publicacion.
+Sube una imagen (`JPG`, `PNG`, `WEBP`), un video (`MP4`, `WEBM`) o un documento `PDF` de hasta **10 MB** y devuelve la URL final para usarla en `media_url` de una publicacion (con deteccion automatica de `media_type` como `IMAGE` o `VIDEO`).
 
 * **Autenticacion:** obligatoria. Cualquier usuario autenticado o administrador (`Authorization: Bearer <token>`).
 * **Formato:** `multipart/form-data` con un unico campo `file`.

@@ -127,6 +127,9 @@ def test_list_groups():
     ids = [g["id"] for g in data]
     assert "estudiantes" in ids
     assert "robotica" in ids
+    # Orden alfabético por nombre ("Club de Robótica" antes que "Estudiantes")
+    names = [g["name"] for g in data]
+    assert names == sorted(names, key=lambda n: n.lower())
 
 
 def test_editor_without_groups_permission_cannot_modify_groups():
@@ -186,6 +189,28 @@ def test_google_workspace_groups_discovery_and_permissions():
     assert body["source"] in ("directory", "known_users")
     emails = [g["email"] for g in body["groups"]]
     assert "estudiantes-tie@upa.edu.py" in emails
+    names = [g["name"].lower() for g in body["groups"]]
+    assert names == sorted(names)
+
+
+@pytest.mark.anyio
+async def test_google_workspace_directory_cache_and_alphabetical_sorting():
+    import time
+
+    from src.services import google_groups
+
+    google_groups.clear_workspace_groups_cache()
+    google_groups._workspace_groups_cache["upa.edu.py"] = (
+        time.monotonic(),
+        [
+            {"id": "2", "name": "Zootecnia", "email": "zootecnia@upa.edu.py", "description": ""},
+            {"id": "1", "name": "Arquitectura", "email": "arquitectura@upa.edu.py", "description": ""},
+        ],
+    )
+
+    cached = await google_groups.list_workspace_groups()
+    assert [g["name"] for g in cached] == ["Arquitectura", "Zootecnia"]
+    google_groups.clear_workspace_groups_cache()
 
 
 def test_create_group_duplicate_rejected():
@@ -251,6 +276,15 @@ def test_assign_role_new_account_normalizes_permissions():
     assert data["email"] == "nuevo.admin@upa.edu.py"
     assert data["role"] == "admin"
     assert data["permissions"] == ["publicaciones", "roles"]
+
+    # Al crear un rol sin especificar permisos, inicia con todas las casillas vacías ([])
+    empty_res = client.post(
+        "/api/roles",
+        json={"email": "sin.permisos@upa.edu.py", "name": "Cuenta Nueva"},
+        headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"),
+    )
+    assert empty_res.status_code == 200
+    assert empty_res.json()["permissions"] == []
 
 
 def test_assign_role_forbidden_domain_rejected():

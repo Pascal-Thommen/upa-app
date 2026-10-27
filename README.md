@@ -31,9 +31,10 @@ upa-app/
    * Preferencias locales del usuario (modo oscuro/claro, notificaciones, filtro de carrera).
 
 4. **Administracion Web (Portal de Escritorio):**
-   * Sistema de gestion de contenidos para el equipo de marketing.
-   * Fuente unica de verdad (Single Source of Truth): una publicacion puede ser post, evento de agenda o ambos.
-   * Segmentacion de destinatarios basada en Google Groups mediante Google Workspace Admin API.
+   * Sistema de gestion de contenidos para el equipo de marketing con cuatro modulos: `Publicaciones`, `Grupos`, `Roles` y `APIs`.
+   * Fuente unica de verdad (Single Source of Truth): editor unificado donde una publicacion puede ser noticia, evento de agenda o ambos, con soporte de imagen o video (`MP4`, `WEBM`), fecha de vigencia obligatoria al fijar arriba, recordatorios flexibles (minutos, horas, dias) y proteccion de solo lectura para campos sincronizados de Instagram.
+   * Segmentacion de destinatarios con lista plana ordenada alfabeticamente de grupos reales de Google Workspace (`@upa.edu.py`), filtro instantaneo y cache local de consultas a Google Directory API.
+   * Matriz de permisos por rol bajo principio de privilegio minimo (casillas desmarcadas por defecto al crear nuevas cuentas).
 
 ## Politica de Seguridad y Codigo Abierto
 

@@ -35,7 +35,7 @@ def override_get_db():
 
 client = TestClient(app)
 
-UUID_FILENAME = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp|pdf)$")
+UUID_FILENAME = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp|mp4|webm|pdf)$")
 
 
 def _png_bytes() -> bytes:
@@ -57,6 +57,8 @@ def _png_bytes() -> bytes:
 PNG = _png_bytes()
 JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + b"\x00" * 64 + b"\xff\xd9"
 WEBP = b"RIFF" + struct.pack("<I", 4 + 8 + 10) + b"WEBPVP8 " + struct.pack("<I", 10) + b"\x00" * 10
+MP4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2mp41" + b"\x00" * 32
+WEBM = b"\x1a\x45\xdf\xa3" + b"\x01\x00\x00\x00\x00\x00\x00\x1f\x42\x82\x84webm" + b"\x00" * 32
 PDF = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
 
 
@@ -112,6 +114,8 @@ def clean_upload_dir():
         (PNG, "image/png", ".png"),
         (JPEG, "image/jpeg", ".jpg"),
         (WEBP, "image/webp", ".webp"),
+        (MP4, "video/mp4", ".mp4"),
+        (WEBM, "video/webm", ".webm"),
         (PDF, "application/pdf", ".pdf"),
     ],
 )
