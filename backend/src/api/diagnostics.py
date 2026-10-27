@@ -70,10 +70,7 @@ def get_system_diagnostics(
     }
 
     # 3. Estado real de Google Classroom API
-    oauth_configured = bool(
-        settings.GOOGLE_CLIENT_ID
-        and "placeholder" not in settings.GOOGLE_CLIENT_ID.lower()
-    )
+    oauth_configured = settings.google_client_id_configured
     user_has_classroom = bool(
         current_user is not None
         and (
@@ -104,6 +101,9 @@ def get_system_diagnostics(
         "server_time_utc": datetime.now(UTC).isoformat(),
         "instagram_configured": instagram_configured,
         "fcm_configured": fcm_configured,
+        "oauth_configured": settings.oauth_credentials_complete,
+        "oauth_client_id_configured": settings.google_client_id_configured,
+        "oauth_client_secret_configured": settings.google_client_secret_configured,
         "zero_mock_certified": True,
     }
 

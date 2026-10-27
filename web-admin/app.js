@@ -568,7 +568,7 @@ function renderDeadlinesList(items) {
       return `
         <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80 hover:bg-slate-100/60 transition">
           <div class="flex flex-col items-center justify-center w-11 h-11 rounded-xl bg-white border border-slate-200 text-center flex-shrink-0">
-            <span class="text-[10px] font-extrabold text-[#6c9339] leading-tight uppercase">${escapeHtml(
+            <span class="text-[10px] font-extrabold text-[#4a6b26] leading-tight uppercase">${escapeHtml(
               badge.dayOfWeek
             )}</span>
             <span class="text-sm font-extrabold text-slate-900 leading-tight">${escapeHtml(badge.dayNum)}</span>
@@ -727,7 +727,10 @@ async function updateJsonView() {
       const diag = await res.json();
       state.diagnostics = diag;
 
-      setApiStatusBadge("api-status-oauth", "active");
+      setApiStatusBadge(
+        "api-status-oauth",
+        diag.application && diag.application.oauth_configured ? "active" : "unconfigured"
+      );
       setApiStatusBadge(
         "api-status-directory",
         diag.directory_sync && (diag.directory_sync.service_account_configured || diag.directory_sync.enabled)
