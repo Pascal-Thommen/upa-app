@@ -184,20 +184,42 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Recordatorios dinámicos del evento
+  // Recordatorios dinámicos del evento (número + unidad: minutos, horas, días)
   // ---------------------------------------------------------------------------
+
+  const REMINDER_UNITS = [
+    { key: "minutos", factor: 1, label: "minutos antes" },
+    { key: "horas", factor: 60, label: "horas antes" },
+    { key: "dias", factor: 1440, label: "días antes" },
+  ];
+
+  function reminderToParts(mins) {
+    const n = Number(mins) || 0;
+    if (n > 0 && n % 1440 === 0) return { value: n / 1440, unit: "dias" };
+    if (n > 0 && n % 60 === 0) return { value: n / 60, unit: "horas" };
+    return { value: n, unit: "minutos" };
+  }
+
+  function partsToMinutes(value, unit) {
+    const unitDef = REMINDER_UNITS.find((u) => u.key === unit) || REMINDER_UNITS[0];
+    return Math.round((Number(value) || 0) * unitDef.factor);
+  }
 
   function syncRemindersFromDom() {
     const container = $("ed-reminders-list");
     if (!container) return;
-    const inputs = Array.from(container.querySelectorAll("input[data-reminder-idx]"));
-    if (inputs.length > 0) {
-      state.reminders = inputs.map((inp) => inp.value);
+    const rows = Array.from(container.querySelectorAll("[data-reminder-idx]"));
+    if (rows.length > 0) {
+      state.reminders = rows.map((row) => {
+        const valueEl = row.querySelector("[data-reminder-value]");
+        const unitEl = row.querySelector("[data-reminder-unit]");
+        return partsToMinutes(valueEl ? valueEl.value : 0, unitEl ? unitEl.value : "minutos");
+      });
     }
   }
 
   function renderRemindersList(reminders) {
-    state.reminders = Array.isArray(reminders) ? reminders.slice() : [];
+    state.reminders = Array.isArray(reminders) ? reminders.map((r) => Number(r) || 0) : [];
     const container = $("ed-reminders-list");
     if (!container) return;
     if (state.reminders.length === 0) {
@@ -205,23 +227,25 @@
       return;
     }
     container.innerHTML = state.reminders
-      .map(
-        (mins, idx) => `
-        <div class="ed-reminder-row">
-          <input type="number" min="0" max="43200" step="5" data-reminder-idx="${idx}" value="${Core.escapeHtml(
-            mins
-          )}" aria-label="Minutos antes del evento">
-          <span>min antes</span>
+      .map((mins, idx) => {
+        const parts = reminderToParts(mins);
+        const unitOptions = REMINDER_UNITS.map(
+          (u) => `<option value="${u.key}"${parts.unit === u.key ? " selected" : ""}>${u.label}</option>`
+        ).join("");
+        return `
+        <div class="ed-reminder-row" data-reminder-idx="${idx}">
+          <input type="number" min="0" max="43200" step="1" data-reminder-value value="${Core.escapeHtml(
+            parts.value
+          )}" aria-label="Cantidad de tiempo antes del evento">
+          <select data-reminder-unit aria-label="Unidad de tiempo">${unitOptions}</select>
           <button type="button" class="text-slate-400 hover:text-red-600 font-bold px-1" data-remove-reminder="${idx}" title="Quitar recordatorio">&times;</button>
-        </div>`
-      )
+        </div>`;
+      })
       .join("");
 
-    container.querySelectorAll("input[data-reminder-idx]").forEach((inp) => {
-      inp.addEventListener("input", () => {
-        const idx = Number(inp.getAttribute("data-reminder-idx"));
-        if (!Number.isNaN(idx)) state.reminders[idx] = inp.value;
-      });
+    container.querySelectorAll("[data-reminder-value], [data-reminder-unit]").forEach((el) => {
+      el.addEventListener("input", () => syncRemindersFromDom());
+      el.addEventListener("change", () => syncRemindersFromDom());
     });
 
     container.querySelectorAll("button[data-remove-reminder]").forEach((btn) => {

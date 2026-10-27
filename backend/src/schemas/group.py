@@ -23,6 +23,7 @@ class AudienceGroupBase(BaseModel):
     google_group: str | None = Field(None, max_length=255)
     google_groups: list[str] = Field(default_factory=list, description="Correos de grupos de Google Workspace")
     emails: list[str] = Field(default_factory=list, description="Direcciones de correo agregadas manualmente")
+    parent_id: str | None = Field(None, max_length=50, description="Identificador del grupo contenedor (jerarquia)")
 
     @field_validator("google_groups", "emails")
     @classmethod
@@ -45,6 +46,7 @@ class AudienceGroupUpdate(BaseModel):
     description: str | None = Field(None, max_length=500)
     google_groups: list[str] = Field(default_factory=list)
     emails: list[str] = Field(default_factory=list)
+    parent_id: str | None = Field(None, max_length=50, description="Identificador del grupo contenedor (jerarquia)")
 
     @field_validator("google_groups", "emails")
     @classmethod
@@ -67,6 +69,7 @@ class AudienceGroupResponse(BaseModel):
     google_groups: list[str] = Field(default_factory=list)
     emails: list[str] = Field(default_factory=list)
     is_system: bool = False
+    parent_id: str | None = None
     created_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
