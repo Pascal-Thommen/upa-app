@@ -5,7 +5,6 @@
 :root {
   --color-upa-green: #6c9339;
   --color-upa-green-hover: #5a7b2e;
-  --color-upa-green-dark: #4a6b26;
   --color-upa-green-light: #f2f7ec;
   --color-upa-green-border: #d3e4bc;
   --color-navy-900: #0f172a;
@@ -210,14 +209,14 @@ body {
 .calendar-day.is-today {
   border-color: #6c9339;
   font-weight: 700;
-  color: var(--color-upa-green-dark);
+  color: #6c9339;
 }
 
 .calendar-day.is-selected {
-  background-color: var(--color-upa-green-dark) !important;
+  background-color: #6c9339 !important;
   color: #ffffff !important;
   font-weight: 700;
-  border-color: var(--color-upa-green-dark);
+  border-color: #6c9339;
 }
 
 .calendar-day.has-deadline::after {

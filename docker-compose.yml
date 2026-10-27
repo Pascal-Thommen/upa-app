@@ -37,9 +37,6 @@ services:
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://upa_user:upa_password@postgres:5432/upa_app
       ALLOWED_EMAIL_DOMAIN: upa.edu.py
-      # Fallbacks publicos (no secretos) para sobrevivir reinicios sin .env.
-      # GOOGLE_CLIENT_SECRET permanece solo en backend/.env (nunca en el repositorio).
-      GOOGLE_CLIENT_ID: 50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com
     ports:
       - "8000:8000"
     volumes:

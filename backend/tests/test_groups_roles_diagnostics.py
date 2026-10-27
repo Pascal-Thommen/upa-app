@@ -406,7 +406,3 @@ def test_system_diagnostics_live():
     assert data["database"]["total_users"] >= 4
     assert data["database"]["total_groups"] >= 2
     assert data["application"]["zero_mock_certified"] is True
-    # Telemetria OAuth real: refleja el estado de las credenciales (fallback + secreto).
-    assert data["application"]["oauth_client_id_configured"] is True
-    assert isinstance(data["application"]["oauth_client_secret_configured"], bool)
-    assert data["application"]["oauth_configured"] is data["application"]["oauth_client_secret_configured"]
