@@ -314,6 +314,50 @@ def test_scheduled_publication_hidden_from_students_until_publish_time():
         headers=headers,
     )
     assert publish_now.status_code == 200
+    published_ts = publish_now.json()["published_at"]
+    assert pub_id in [n["id"] for n in client.get("/api/news", headers=student_headers).json()]
+
+    # Rechazar fechas programadas en el pasado al crear o reprogramar
+    in_the_past = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
+    past_create = client.post(
+        "/api/publications",
+        json={
+            "title": "Publicación con fecha pasada inválida",
+            "is_news": True,
+            "is_event": False,
+            "published_at": in_the_past,
+            "target_groups": ["ALL"],
+        },
+        headers=headers,
+    )
+    assert past_create.status_code == 400
+
+    # Una publicación ya emitida conserva su fecha original aunque el cliente envíe otra fecha
+    re_edit = client.put(
+        f"/api/publications/{pub_id}",
+        json={"title": "Comunicado ya emitido actualizado", "published_at": in_two_hours},
+        headers=headers,
+    )
+    assert re_edit.status_code == 200
+    assert re_edit.json()["published_at"] == published_ts
+
+
+def test_dynamic_audience_groups_grant_student_access():
+    headers = auth(ADMIN_ID, ADMIN_EMAIL, "admin")
+    student_headers = auth(STUDENT_A_ID, STUDENT_A_EMAIL, "user")
+
+    created = client.post(
+        "/api/publications",
+        json={
+            "title": "Aviso exclusivo para grupo dinámico estudiantes",
+            "is_news": True,
+            "is_event": False,
+            "target_groups": ["estudiantes"],
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    pub_id = created.json()["id"]
     assert pub_id in [n["id"] for n in client.get("/api/news", headers=student_headers).json()]
 
 
@@ -528,20 +572,29 @@ def test_web_admin_ux_invariants_clean_labels_and_no_legacy_noise():
         assert removed_field not in index_html
         assert removed_field not in editorial_js
 
-    # Casillas de permisos en Roles desmarcadas por defecto
-    assert 'id="perm-publications" checked' not in index_html
-    assert 'id="perm-groups" checked' not in index_html
-    assert 'id="perm-admins" checked' not in index_html
-    assert 'id="perm-diagnostic" checked' not in index_html
+    # Roles: formulario simplificado solo con correo institucional (sin checkboxes al crear)
+    for removed_role_cb in ("perm-publications", "perm-groups", "perm-admins", "perm-diagnostic"):
+        assert removed_role_cb not in index_html
 
-    # Elementos clave de la arquitectura UX vigente
+    # Footer técnico de estado eliminado
+    for removed_footer_id in ("diag-backend", "diag-env"):
+        assert removed_footer_id not in index_html
+        assert removed_footer_id not in app_js
+
+    # Elementos clave de la arquitectura UX vigente (SRV-174)
     assert "Recargar datos" in index_html
     assert 'id="user-menu-btn"' in index_html
     assert 'id="ed-form-pub"' in index_html
     assert 'id="ed-pub-scheduled"' in index_html
     assert 'id="ed-pub-expires-wrap"' in index_html
+    assert 'id="ed-pub-link-preview"' in index_html
+    assert 'id="group-name-error"' in index_html
+    assert 'id="group-ws-custom-error"' in index_html
+    assert 'id="group-email-error"' in index_html
+    assert 'id="admin-email-error"' in index_html
     assert "Notificar por push" in index_html
     assert 'id="groups-filter-input"' in index_html
     assert 'id="group-workspace-filter"' in index_html
     assert 'id="form-group-editor"' in index_html
     assert 'id="apis-json-details"' in index_html
+    assert "Core.TARGET_GROUPS" not in editorial_js

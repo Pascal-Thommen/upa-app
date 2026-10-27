@@ -112,7 +112,7 @@ def seed_database():
                 "google_group": "estudiantes@upa.edu.py",
                 "google_groups": ["estudiantes@upa.edu.py", "tie2025@upa.edu.py"],
                 "emails": [],
-                "is_system": True,
+                "is_system": False,
             },
             {
                 "id": "docentes",
@@ -122,7 +122,7 @@ def seed_database():
                 "google_group": "docentes@upa.edu.py",
                 "google_groups": ["docentes@upa.edu.py"],
                 "emails": [],
-                "is_system": True,
+                "is_system": False,
             },
             {
                 "id": "staff",
@@ -132,7 +132,7 @@ def seed_database():
                 "google_group": "staff@upa.edu.py",
                 "google_groups": ["staff@upa.edu.py"],
                 "emails": ["rectorado@upa.edu.py"],
-                "is_system": True,
+                "is_system": False,
             },
             {
                 "id": "egresados",
@@ -142,16 +142,22 @@ def seed_database():
                 "google_group": "egresados@upa.edu.py",
                 "google_groups": ["egresados@upa.edu.py"],
                 "emails": [],
-                "is_system": True,
+                "is_system": False,
             },
         ]
-        for grp_data in default_groups:
-            existing_grp = db.query(AudienceGroup).filter(AudienceGroup.id == grp_data["id"]).first()
-            if not existing_grp:
+        existing_groups = db.query(AudienceGroup).all()
+        if not existing_groups:
+            for grp_data in default_groups:
                 db.add(AudienceGroup(**grp_data))
                 print(f"[Seed] Grupo institucional creado: {grp_data['id']}")
-            elif not existing_grp.google_groups and grp_data.get("google_groups"):
-                existing_grp.google_groups = list(grp_data["google_groups"])
+        else:
+            default_by_id = {g["id"]: g for g in default_groups}
+            for existing_grp in existing_groups:
+                if existing_grp.is_system:
+                    existing_grp.is_system = False
+                grp_defaults = default_by_id.get(existing_grp.id)
+                if grp_defaults and not existing_grp.google_groups and grp_defaults.get("google_groups"):
+                    existing_grp.google_groups = list(grp_defaults["google_groups"])
 
         primary_admin_role = db.query(UserRole).filter(UserRole.email == "pascal.thommen@upa.edu.py").first()
         if not primary_admin_role:

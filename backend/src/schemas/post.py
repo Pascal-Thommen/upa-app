@@ -73,20 +73,22 @@ def extra_detail_fields(post: Any) -> dict[str, str]:
 def user_can_access_post(user: Any, raw_groups: Any) -> bool:
     """
     Aplica el filtrado estricto basado en roles y grupos del servidor:
-    - Sin usuario autenticado: solo publicaciones dirigidas a ALL.
-    - Rol admin: acceso completo a todas las publicaciones.
+    - Sin usuario autenticado: solo publicaciones dirigidas a ALL o a todas las audiencias base.
+    - Rol admin/editor: acceso completo a todas las publicaciones.
     - Rol user (estudiante/docente): acceso solo si la publicacion incluye ALL
       o intersecta con los grupos asignados al usuario.
     """
     post_groups = {g.upper() for g in normalize_target_groups(raw_groups)}
-    if "ALL" in post_groups:
+    if "ALL" in post_groups or {"DOCENTES", "EGRESADOS", "ESTUDIANTES", "STAFF"}.issubset(post_groups):
         return True
     if user is None:
         return False
     if getattr(user, "role", "user") in ("admin", "editor"):
         return True
     raw_user_groups = getattr(user, "groups", None) or []
-    user_groups = {"ALL"} | {str(g).strip().upper() for g in raw_user_groups if g is not None and str(g).strip()}
+    user_groups = {"ALL", "ESTUDIANTES"} | {
+        str(g).strip().upper() for g in raw_user_groups if g is not None and str(g).strip()
+    }
     return bool(post_groups & user_groups)
 
 

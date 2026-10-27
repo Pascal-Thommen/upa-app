@@ -49,15 +49,18 @@ const DOM_ELEMENTS = {
   btnCloseClassroomModal: document.getElementById("btn-close-classroom-modal"),
   btnCancelClassroom: document.getElementById("btn-cancel-classroom"),
   btnRefresh: document.getElementById("btn-refresh"),
-  diagBackend: document.getElementById("diag-backend"),
-  diagEnv: document.getElementById("diag-env"),
 };
 
 const state = {
   currentUser: null,
   courses: [],
+  coursesLoaded: false,
   deadlines: [],
+  deadlinesLoaded: false,
   feedPosts: [],
+  feedLoaded: false,
+  groupsLoaded: false,
+  adminsLoaded: false,
   diagnostics: null,
   currentMonth: new Date().getMonth(),
   currentYear: new Date().getFullYear(),
@@ -148,6 +151,17 @@ function closeUserDropdown() {
 function logout() {
   setStoredToken(null);
   state.currentUser = null;
+  state.courses = [];
+  state.coursesLoaded = false;
+  state.deadlines = [];
+  state.deadlinesLoaded = false;
+  state.feedPosts = [];
+  state.feedLoaded = false;
+  state.groupsLoaded = false;
+  state.adminsLoaded = false;
+  state.diagnostics = null;
+  appGroupsCache = [];
+  appAdminsCache = [];
   closeUserDropdown();
   document.documentElement.classList.remove("has-auth");
   showLoginView();
@@ -214,19 +228,9 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 async function checkHealth() {
-  if (!DOM_ELEMENTS.diagBackend) return;
   try {
-    const res = await fetch("/health");
-    if (res.ok) {
-      const data = await res.json();
-      DOM_ELEMENTS.diagBackend.textContent = data.service || "Activo";
-      if (DOM_ELEMENTS.diagEnv) DOM_ELEMENTS.diagEnv.textContent = data.environment || "Producción";
-    } else {
-      DOM_ELEMENTS.diagBackend.textContent = "Error";
-    }
-  } catch (_) {
-    DOM_ELEMENTS.diagBackend.textContent = "Error";
-  }
+    await fetch("/health");
+  } catch (_) {}
 }
 
 function setApiStatusBadge(elementId, statusKey) {
@@ -368,12 +372,6 @@ function renderUserProfile(user) {
 async function loadClassroomCourses() {
   const container = DOM_ELEMENTS.coursesContainer;
   if (!container) return;
-  container.innerHTML = `
-    <div class="flex items-center justify-center p-6 text-slate-400 gap-2">
-      <div class="spinner"></div>
-      <span class="text-xs">Consultando cursos...</span>
-    </div>
-  `;
 
   try {
     const res = await apiRequest("/api/classroom/courses");
@@ -383,11 +381,13 @@ async function loadClassroomCourses() {
     }
 
     if (!res.ok) {
-      container.innerHTML = `
-        <div class="p-4 rounded-lg bg-slate-50 text-slate-600 text-xs">
-          Classroom sin configurar o sin acceso activo (HTTP ${res.status}).
-        </div>
-      `;
+      if (!state.coursesLoaded) {
+        container.innerHTML = `
+          <div class="p-4 rounded-lg bg-slate-50 text-slate-600 text-xs">
+            Classroom sin configurar o sin acceso activo (HTTP ${res.status}).
+          </div>
+        `;
+      }
       if (DOM_ELEMENTS.coursesCount) DOM_ELEMENTS.coursesCount.textContent = "0";
       if (res.status >= 500) setApiStatusBadge("api-status-classroom", "error");
       return;
@@ -395,6 +395,7 @@ async function loadClassroomCourses() {
 
     const courses = await res.json();
     state.courses = Array.isArray(courses) ? courses : [];
+    state.coursesLoaded = true;
     if (DOM_ELEMENTS.coursesCount) DOM_ELEMENTS.coursesCount.textContent = `${state.courses.length}`;
     if (state.currentUser && state.currentUser.has_classroom_token) {
       setApiStatusBadge("api-status-classroom", "active");
@@ -433,11 +434,13 @@ async function loadClassroomCourses() {
       .join("");
   } catch (error) {
     console.error("Fallo al obtener cursos:", error);
-    container.innerHTML = `
-      <div class="p-4 rounded-lg bg-red-50 text-red-700 text-xs">
-        Error de red al consultar Google Classroom.
-      </div>
-    `;
+    if (!state.coursesLoaded) {
+      container.innerHTML = `
+        <div class="p-4 rounded-lg bg-red-50 text-red-700 text-xs">
+          Error de red al consultar Google Classroom.
+        </div>
+      `;
+    }
     if (DOM_ELEMENTS.coursesCount) DOM_ELEMENTS.coursesCount.textContent = "Error";
     setApiStatusBadge("api-status-classroom", "error");
   }
@@ -456,12 +459,13 @@ async function loadClassroomDeadlines() {
 
     if (!res.ok) {
       if (DOM_ELEMENTS.deadlinesCount) DOM_ELEMENTS.deadlinesCount.textContent = "0";
-      renderDeadlinesList([]);
+      if (!state.deadlinesLoaded) renderDeadlinesList([]);
       return;
     }
 
     const data = await res.json();
     state.deadlines = Array.isArray(data) ? data : data.deadlines || [];
+    state.deadlinesLoaded = true;
     if (DOM_ELEMENTS.deadlinesCount) {
       DOM_ELEMENTS.deadlinesCount.textContent = `${state.deadlines.length}`;
     }
@@ -602,21 +606,16 @@ async function loadCampusFeed() {
   const badge = DOM_ELEMENTS.feedCountBadge;
   if (!container) return;
 
-  container.innerHTML = `
-    <div class="col-span-full flex items-center justify-center p-8 text-slate-400 gap-2">
-      <div class="spinner"></div>
-      <span class="text-xs">Cargando publicaciones del feed...</span>
-    </div>
-  `;
-
   try {
     const res = await apiRequest("/api/v1/feed");
     if (!res.ok) {
-      container.innerHTML = `
-        <div class="col-span-full p-4 rounded-lg bg-red-50 text-red-700 text-xs">
-          Error al consultar el feed institucional (HTTP ${res.status}).
-        </div>
-      `;
+      if (!state.feedLoaded) {
+        container.innerHTML = `
+          <div class="col-span-full p-4 rounded-lg bg-red-50 text-red-700 text-xs">
+            Error al consultar el feed institucional (HTTP ${res.status}).
+          </div>
+        `;
+      }
       if (badge) {
         badge.textContent = "Error";
         badge.className = "ed-badge ed-badge-urgent";
@@ -628,6 +627,7 @@ async function loadCampusFeed() {
     const data = await res.json();
     const posts = Array.isArray(data && data.posts) ? data.posts : [];
     state.feedPosts = posts;
+    state.feedLoaded = true;
     if (badge) {
       badge.textContent = posts.length > 0 ? `Activo · ${posts.length}` : "0 publicaciones";
       badge.className = posts.length > 0 ? "ed-badge ed-badge-ok" : "ed-badge ed-badge-neutral";
@@ -689,11 +689,13 @@ async function loadCampusFeed() {
       .join("");
   } catch (error) {
     console.error("Fallo al obtener feed:", error);
-    container.innerHTML = `
-      <div class="col-span-full p-4 rounded-lg bg-red-50 text-red-700 text-xs">
-        Error de red al consultar el feed del campus.
-      </div>
-    `;
+    if (!state.feedLoaded) {
+      container.innerHTML = `
+        <div class="col-span-full p-4 rounded-lg bg-red-50 text-red-700 text-xs">
+          Error de red al consultar el feed del campus.
+        </div>
+      `;
+    }
     if (badge) {
       badge.textContent = "Error";
       badge.className = "ed-badge ed-badge-urgent";
@@ -720,12 +722,19 @@ function getAppJsonData() {
 let diagnosticsInFlight = null;
 
 async function updateJsonView() {
+  const rawJsonOutput = document.getElementById("raw-json-output");
+  if (rawJsonOutput && state.diagnostics) {
+    rawJsonOutput.textContent = JSON.stringify(
+      {
+        diagnostico_sistema: state.diagnostics,
+        contrato_app_movil: getAppJsonData(),
+      },
+      null,
+      2
+    );
+  }
   if (diagnosticsInFlight) {
     return diagnosticsInFlight;
-  }
-  const rawJsonOutput = document.getElementById("raw-json-output");
-  if (rawJsonOutput) {
-    rawJsonOutput.textContent = "Consultando telemetría del sistema en tiempo real...";
   }
   diagnosticsInFlight = (async () => {
     try {
@@ -784,6 +793,7 @@ async function updateJsonView() {
 async function refreshDashboard() {
   const [, user] = await Promise.all([checkHealth(), loadUserProfile({ deferRouteLoad: true })]);
   if (user) {
+    const perms = normalizeUserPermissions(user);
     const routeTask =
       window.UpaRouter && typeof window.UpaRouter.reapplyCurrentRoute === "function"
         ? Promise.resolve(window.UpaRouter.reapplyCurrentRoute())
@@ -796,6 +806,12 @@ async function refreshDashboard() {
     ];
     if (currentActiveRoute !== "apis") {
       tasks.push(updateJsonView());
+    }
+    if (currentActiveRoute !== "grupos" && (perms.includes("grupos") || perms.includes("publicaciones"))) {
+      tasks.push(fetchAppGroups());
+    }
+    if (currentActiveRoute !== "roles" && perms.includes("roles")) {
+      tasks.push(fetchAppAdmins());
     }
     await Promise.all(tasks);
   }
@@ -945,6 +961,28 @@ async function handleClassroomTokenSubmit(event) {
 
 let appGroupsCache = [];
 
+function setInlineFieldError(errorId, inputId, message) {
+  const errEl = document.getElementById(errorId);
+  const inputEl = inputId ? document.getElementById(inputId) : null;
+  if (errEl) {
+    errEl.textContent = message || "";
+    errEl.classList.toggle("hidden", !message);
+  }
+  if (inputEl && inputEl.classList) {
+    inputEl.classList.toggle("is-invalid", Boolean(message));
+  }
+}
+
+function clearGroupEditorInlineErrors() {
+  setInlineFieldError("group-name-error", "group-input-name", "");
+  setInlineFieldError("group-ws-custom-error", "group-input-ws-custom", "");
+  setInlineFieldError("group-email-error", "group-input-email", "");
+}
+
+function isValidEmailAddress(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
 async function fetchAppGroups() {
   try {
     const res = await apiRequest("/api/groups");
@@ -954,6 +992,7 @@ async function fetchAppGroups() {
         appGroupsCache = data
           .slice()
           .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "es", { sensitivity: "base" }));
+        state.groupsLoaded = true;
         if (window.UpaCockpit && typeof window.UpaCockpit.refreshGroupsCatalog === "function") {
           window.UpaCockpit.refreshGroupsCatalog(appGroupsCache);
         }
@@ -1022,6 +1061,7 @@ function showGroupsListPanel() {
   const editorPanel = document.getElementById("group-editor-panel");
   if (listPanel) listPanel.classList.remove("hidden");
   if (editorPanel) editorPanel.classList.add("hidden");
+  clearGroupEditorInlineErrors();
   showModuleNotice("groups-notice", "", "");
 }
 
@@ -1043,7 +1083,7 @@ function renderWorkspacePicker() {
   );
 
   if (catalog.length === 0) {
-    container.innerHTML = `<span class="ed-subtle">No hay grupos detectados aún; agregue uno abajo si corresponde.</span>`;
+    container.innerHTML = `<div class="p-3 text-xs text-slate-400">No hay grupos detectados aún; agregue uno abajo si corresponde.</div>`;
     return;
   }
 
@@ -1058,18 +1098,22 @@ function renderWorkspacePicker() {
     : catalog;
 
   if (visibleCatalog.length === 0) {
-    container.innerHTML = `<span class="ed-subtle">Ningún grupo de Google Workspace coincide con el filtro.</span>`;
+    container.innerHTML = `<div class="p-3 text-xs text-slate-400">Ningún grupo de Google Workspace coincide con el filtro.</div>`;
     return;
   }
 
   container.innerHTML = visibleCatalog
     .map((g) => {
       const value = g.email || g.name;
-      const label = g.email && g.name && g.name !== g.email ? `${g.name} (${g.email})` : value;
+      const displayName = g.name || g.email || value;
+      const displayEmail = g.email && g.email !== displayName ? g.email : "";
       const checked = selected.includes(value);
-      return `<label class="ed-check bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-        <input type="checkbox" data-ws-group="${escapeHtml(value)}"${checked ? " checked" : ""}>
-        <span>${escapeHtml(label)}</span>
+      return `<label class="flex items-center justify-between gap-3 px-3.5 py-2.5 hover:bg-slate-50 cursor-pointer text-xs">
+        <span class="flex items-center gap-2.5 min-w-0">
+          <input type="checkbox" data-ws-group="${escapeHtml(value)}"${checked ? " checked" : ""} class="w-4 h-4 rounded text-[#6c9339] focus:ring-[#6c9339]">
+          <span class="font-semibold text-slate-800 truncate">${escapeHtml(displayName)}</span>
+        </span>
+        ${displayEmail ? `<span class="font-mono text-[11px] text-slate-500 truncate">${escapeHtml(displayEmail)}</span>` : ""}
       </label>`;
     })
     .join("");
@@ -1093,16 +1137,16 @@ function renderGroupEmailsChips() {
   if (!container) return;
   const emails = state.groupEditor.emails;
   if (emails.length === 0) {
-    container.innerHTML = `<span class="ed-subtle">Sin cuentas individuales agregadas.</span>`;
+    container.innerHTML = `<div class="p-3 text-xs text-slate-400">Sin cuentas individuales agregadas.</div>`;
     return;
   }
   container.innerHTML = emails
     .map(
       (email, idx) => `
-      <span class="chip-tag">
-        <span class="font-mono">${escapeHtml(email)}</span>
-        <button type="button" data-remove-email="${idx}" aria-label="Quitar ${escapeHtml(email)}">&times;</button>
-      </span>`
+      <div class="flex items-center justify-between gap-3 px-3.5 py-2 text-xs hover:bg-slate-50">
+        <span class="font-mono text-slate-800 truncate">${escapeHtml(email)}</span>
+        <button type="button" data-remove-email="${idx}" class="text-red-600 hover:text-red-800 font-semibold text-xs" aria-label="Quitar ${escapeHtml(email)}">Quitar</button>
+      </div>`
     )
     .join("");
 
@@ -1117,7 +1161,7 @@ function renderGroupEmailsChips() {
 
 async function openGroupEditor(group) {
   showModuleNotice("groups-notice", "", "");
-  await fetchWorkspaceDirectoryGroups();
+  clearGroupEditorInlineErrors();
 
   const editing = Boolean(group && group.id);
   state.groupEditor.editingId = editing ? group.id : "";
@@ -1135,14 +1179,18 @@ async function openGroupEditor(group) {
   const idInput = document.getElementById("group-edit-id");
   const nameInput = document.getElementById("group-input-name");
   const descInput = document.getElementById("group-input-description");
+  const wsCustomInput = document.getElementById("group-input-ws-custom");
+  const emailInput = document.getElementById("group-input-email");
   const titleEl = document.getElementById("group-editor-title");
   const deleteBtn = document.getElementById("btn-group-delete");
 
   if (idInput) idInput.value = editing ? group.id : "";
   if (nameInput) nameInput.value = editing ? group.name || "" : "";
   if (descInput) descInput.value = editing ? group.description || "" : "";
+  if (wsCustomInput) wsCustomInput.value = "";
+  if (emailInput) emailInput.value = "";
   if (titleEl) titleEl.textContent = editing ? "Editar grupo" : "Nuevo grupo";
-  if (deleteBtn) deleteBtn.classList.toggle("hidden", !editing || state.groupEditor.isSystem);
+  if (deleteBtn) deleteBtn.classList.toggle("hidden", !editing);
 
   renderWorkspacePicker();
   renderGroupEmailsChips();
@@ -1160,6 +1208,34 @@ async function openGroupEditor(group) {
       hist.classList.add("hidden");
       hist.innerHTML = "";
     }
+  }
+
+  await fetchWorkspaceDirectoryGroups();
+  renderWorkspacePicker();
+}
+
+async function deleteGroupById(id, groupName) {
+  if (!id) return false;
+  const label = groupName ? `"${groupName}"` : id;
+  const confirmed = typeof confirm === "function" ? confirm(`¿Eliminar el grupo ${label} de forma permanente?`) : true;
+  if (!confirmed) return false;
+  try {
+    const res = await apiRequest(`/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showModuleNotice("groups-notice", "error", err.detail || "No se pudo eliminar el grupo.");
+      return false;
+    }
+    appGroupsCache = appGroupsCache.filter((item) => item.id !== id);
+    if (window.UpaCockpit && typeof window.UpaCockpit.refreshGroupsCatalog === "function") {
+      window.UpaCockpit.refreshGroupsCatalog(appGroupsCache);
+    }
+    await renderGroupsModule();
+    showModuleNotice("groups-notice", "success", "Grupo eliminado.");
+    return true;
+  } catch (_) {
+    showModuleNotice("groups-notice", "error", "Error de conexión al eliminar el grupo.");
+    return false;
   }
 }
 
@@ -1214,14 +1290,27 @@ function renderGroupsListItems(groups) {
       <div class="group-row" data-group-id="${escapeHtml(g.id)}" tabindex="0">
         <div class="min-w-0">
           <div class="font-bold text-sm text-slate-900 truncate">${escapeHtml(g.name)}</div>
+          ${g.description ? `<div class="text-xs text-slate-500 truncate">${escapeHtml(g.description)}</div>` : ""}
         </div>
         <div class="flex items-center gap-3 text-xs text-slate-500 flex-shrink-0">
           <span>${escapeHtml(summarizeGroupMembers(g))}</span>
+          <button type="button" data-delete-group="${escapeHtml(g.id)}" data-delete-group-name="${escapeHtml(g.name)}" class="text-red-600 hover:text-red-800 font-semibold text-xs px-2 py-1 rounded hover:bg-red-50">
+            Eliminar
+          </button>
           <span class="text-slate-400">&rarr;</span>
         </div>
       </div>`
     )
     .join("");
+
+  container.querySelectorAll("button[data-delete-group]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const id = btn.getAttribute("data-delete-group");
+      const name = btn.getAttribute("data-delete-group-name");
+      deleteGroupById(id, name);
+    });
+  });
 
   container.querySelectorAll("[data-group-id]").forEach((row) => {
     const open = () => {
@@ -1243,7 +1332,9 @@ async function renderGroupsModule() {
   showGroupsListPanel();
   const container = document.getElementById("groups-list-container");
   if (!container) return;
-  container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">Cargando grupos...</div>`;
+  if (state.groupsLoaded || appGroupsCache.length > 0) {
+    renderGroupsListItems(appGroupsCache);
+  }
   const [groups] = await Promise.all([
     fetchAppGroups(),
     loadAuditTrailInto("groups-list-history", "group"),
@@ -1264,6 +1355,7 @@ async function fetchAppAdmins() {
       const data = await res.json();
       if (Array.isArray(data)) {
         appAdminsCache = data;
+        state.adminsLoaded = true;
         return appAdminsCache;
       }
     }
@@ -1273,11 +1365,9 @@ async function fetchAppAdmins() {
   return appAdminsCache;
 }
 
-async function renderAdminsModule() {
+function renderAdminsTableRows(admins) {
   const tbody = document.getElementById("admin-table-rows");
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-xs text-slate-400">Cargando permisos...</td></tr>`;
-  const admins = await fetchAppAdmins();
 
   if (!Array.isArray(admins) || admins.length === 0) {
     tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-xs text-slate-400">No hay cuentas autorizadas.</td></tr>`;
@@ -1355,7 +1445,8 @@ async function renderAdminsModule() {
   tbody.querySelectorAll("button[data-remove-admin]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const email = btn.getAttribute("data-remove-admin");
-      if (!confirm(`¿Quitar todos los permisos administrativos de ${email}?`)) return;
+      const confirmed = typeof confirm === "function" ? confirm(`¿Quitar todos los permisos administrativos de ${email}?`) : true;
+      if (!confirmed) return;
       try {
         const res = await apiRequest(`/api/roles/${encodeURIComponent(email)}`, { method: "DELETE" });
         if (!res.ok) {
@@ -1363,6 +1454,7 @@ async function renderAdminsModule() {
           showModuleNotice("roles-notice", "error", err.detail || "No se pudo quitar la cuenta.");
           return;
         }
+        appAdminsCache = appAdminsCache.filter((item) => item.email !== email);
         showModuleNotice("roles-notice", "success", `Acceso revocado para ${email}.`);
         await renderAdminsModule();
         if (state.currentUser && String(state.currentUser.email || "").toLowerCase() === email.toLowerCase()) {
@@ -1373,7 +1465,16 @@ async function renderAdminsModule() {
       }
     });
   });
+}
 
+async function renderAdminsModule() {
+  const tbody = document.getElementById("admin-table-rows");
+  if (!tbody) return;
+  if (state.adminsLoaded || appAdminsCache.length > 0) {
+    renderAdminsTableRows(appAdminsCache);
+  }
+  const admins = await fetchAppAdmins();
+  renderAdminsTableRows(admins);
   loadAuditTrailInto("roles-history", "role");
 }
 
@@ -1649,6 +1750,7 @@ function setupGroupsFormHandlers() {
   const inputWs = document.getElementById("group-input-ws-custom");
   const btnAddEmail = document.getElementById("btn-add-group-email");
   const inputEmail = document.getElementById("group-input-email");
+  const inputName = document.getElementById("group-input-name");
   const formGroup = document.getElementById("form-group-editor");
   const groupsFilterInput = document.getElementById("groups-filter-input");
   const wsFilterInput = document.getElementById("group-workspace-filter");
@@ -1659,6 +1761,15 @@ function setupGroupsFormHandlers() {
   if (wsFilterInput) {
     wsFilterInput.addEventListener("input", () => renderWorkspacePicker());
   }
+  if (inputName) {
+    inputName.addEventListener("input", () => setInlineFieldError("group-name-error", "group-input-name", ""));
+  }
+  if (inputWs) {
+    inputWs.addEventListener("input", () => setInlineFieldError("group-ws-custom-error", "group-input-ws-custom", ""));
+  }
+  if (inputEmail) {
+    inputEmail.addEventListener("input", () => setInlineFieldError("group-email-error", "group-input-email", ""));
+  }
 
   if (btnCreateGroup) btnCreateGroup.addEventListener("click", () => openGroupEditor(null));
   if (btnBack) btnBack.addEventListener("click", showGroupsListPanel);
@@ -1667,7 +1778,23 @@ function setupGroupsFormHandlers() {
   if (btnAddWs && inputWs) {
     const addWs = () => {
       const val = inputWs.value.trim();
-      if (!val) return;
+      if (!val) {
+        setInlineFieldError(
+          "group-ws-custom-error",
+          "group-input-ws-custom",
+          "Ingrese el correo o identificador del grupo de Google Workspace."
+        );
+        return;
+      }
+      if (/\s/.test(val)) {
+        setInlineFieldError(
+          "group-ws-custom-error",
+          "group-input-ws-custom",
+          "El identificador del grupo no debe contener espacios."
+        );
+        return;
+      }
+      setInlineFieldError("group-ws-custom-error", "group-input-ws-custom", "");
       if (!state.groupEditor.selectedWorkspaceGroups.includes(val)) {
         state.groupEditor.selectedWorkspaceGroups.push(val);
       }
@@ -1686,16 +1813,19 @@ function setupGroupsFormHandlers() {
   if (btnAddEmail && inputEmail) {
     const addEmail = () => {
       const val = inputEmail.value.trim().toLowerCase();
-      if (!val) return;
-      if (!val.includes("@")) {
-        showModuleNotice("groups-notice", "error", "Ingrese un correo válido.");
+      if (!val || !isValidEmailAddress(val)) {
+        setInlineFieldError(
+          "group-email-error",
+          "group-input-email",
+          "Ingrese un correo electrónico válido (ejemplo: usuario@upa.edu.py)."
+        );
         return;
       }
+      setInlineFieldError("group-email-error", "group-input-email", "");
       if (!state.groupEditor.emails.includes(val)) {
         state.groupEditor.emails.push(val);
       }
       inputEmail.value = "";
-      showModuleNotice("groups-notice", "", "");
       renderGroupEmailsChips();
     };
     btnAddEmail.addEventListener("click", addEmail);
@@ -1710,13 +1840,33 @@ function setupGroupsFormHandlers() {
   if (formGroup) {
     formGroup.addEventListener("submit", async (e) => {
       e.preventDefault();
+      clearGroupEditorInlineErrors();
       const nameEl = document.getElementById("group-input-name");
       const descEl = document.getElementById("group-input-description");
       const name = nameEl ? nameEl.value.trim() : "";
       const description = descEl ? descEl.value.trim() : "";
       if (!name) {
-        showModuleNotice("groups-notice", "error", "El nombre del grupo es obligatorio.");
+        setInlineFieldError("group-name-error", "group-input-name", "El nombre del grupo es obligatorio.");
+        if (nameEl && nameEl.focus) nameEl.focus();
         return;
+      }
+
+      if (inputEmail && inputEmail.value && inputEmail.value.trim()) {
+        const pendingEmail = inputEmail.value.trim().toLowerCase();
+        if (!isValidEmailAddress(pendingEmail)) {
+          setInlineFieldError(
+            "group-email-error",
+            "group-input-email",
+            "Ingrese un correo electrónico válido (ejemplo: usuario@upa.edu.py)."
+          );
+          if (inputEmail.focus) inputEmail.focus();
+          return;
+        }
+        if (!state.groupEditor.emails.includes(pendingEmail)) {
+          state.groupEditor.emails.push(pendingEmail);
+        }
+        inputEmail.value = "";
+        renderGroupEmailsChips();
       }
 
       const wsGroups = state.groupEditor.selectedWorkspaceGroups.slice();
@@ -1740,7 +1890,12 @@ function setupGroupsFormHandlers() {
         );
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          showModuleNotice("groups-notice", "error", err.detail || "No se pudo guardar el grupo.");
+          const detail = err.detail || "No se pudo guardar el grupo.";
+          if (String(detail).toLowerCase().includes("nombre")) {
+            setInlineFieldError("group-name-error", "group-input-name", detail);
+          } else {
+            showModuleNotice("groups-notice", "error", detail);
+          }
           return;
         }
         await renderGroupsModule();
@@ -1755,41 +1910,40 @@ function setupGroupsFormHandlers() {
     btnDelete.addEventListener("click", async () => {
       const id = state.groupEditor.editingId;
       if (!id) return;
-      if (!confirm("¿Eliminar este grupo de forma permanente?")) return;
-      try {
-        const res = await apiRequest(`/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          showModuleNotice("groups-notice", "error", err.detail || "No se pudo eliminar el grupo.");
-          return;
-        }
-        await renderGroupsModule();
-        showModuleNotice("groups-notice", "success", "Grupo eliminado.");
-      } catch (_) {
-        showModuleNotice("groups-notice", "error", "Error de conexión al eliminar el grupo.");
-      }
+      const found = appGroupsCache.find((item) => item.id === id);
+      await deleteGroupById(id, found ? found.name : id);
     });
   }
 }
 
 function setupRolesFormHandlers() {
   const formAddAdmin = document.getElementById("form-add-admin");
+  const inputAdminEmail = document.getElementById("input-admin-email");
   if (!formAddAdmin) return;
+
+  if (inputAdminEmail) {
+    inputAdminEmail.addEventListener("input", () => {
+      setInlineFieldError("admin-email-error", "input-admin-email", "");
+    });
+  }
 
   formAddAdmin.addEventListener("submit", async (e) => {
     e.preventDefault();
     const input = document.getElementById("input-admin-email");
     const email = (input ? input.value : "").trim().toLowerCase();
-    if (!email.endsWith("@upa.edu.py")) {
-      showModuleNotice("roles-notice", "error", "El correo debe pertenecer al dominio @upa.edu.py.");
+    if (!email || !isValidEmailAddress(email) || !email.endsWith("@upa.edu.py")) {
+      setInlineFieldError(
+        "admin-email-error",
+        "input-admin-email",
+        "Ingrese un correo institucional válido con dominio @upa.edu.py."
+      );
+      if (input && input.focus) input.focus();
       return;
     }
+    setInlineFieldError("admin-email-error", "input-admin-email", "");
 
-    const perms = [];
-    if (document.getElementById("perm-publications")?.checked) perms.push("publicaciones");
-    if (document.getElementById("perm-groups")?.checked) perms.push("grupos");
-    if (document.getElementById("perm-admins")?.checked) perms.push("roles");
-    if (document.getElementById("perm-diagnostic")?.checked) perms.push("apis");
+    const existing = appAdminsCache.find((item) => String(item.email || "").toLowerCase() === email);
+    const perms = existing ? normalizeUserPermissions(existing) : [];
 
     try {
       const res = await apiRequest("/api/roles", {
@@ -1806,15 +1960,15 @@ function setupRolesFormHandlers() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showModuleNotice("roles-notice", "error", err.detail || "No se pudo autorizar la cuenta.");
+        setInlineFieldError(
+          "admin-email-error",
+          "input-admin-email",
+          err.detail || "No se pudo autorizar la cuenta."
+        );
         return;
       }
       if (input) input.value = "";
-      ["perm-publications", "perm-groups", "perm-admins", "perm-diagnostic"].forEach((cbId) => {
-        const cb = document.getElementById(cbId);
-        if (cb) cb.checked = false;
-      });
-      showModuleNotice("roles-notice", "success", `Cuenta ${email} autorizada.`);
+      showModuleNotice("roles-notice", "success", `Cuenta ${email} agregada. Asigne los permisos en la tabla.`);
       await renderAdminsModule();
       if (state.currentUser && String(state.currentUser.email || "").toLowerCase() === email) {
         await refreshCurrentUserPermissions();

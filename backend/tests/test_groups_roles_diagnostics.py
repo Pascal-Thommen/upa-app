@@ -229,10 +229,24 @@ def test_create_group_student_forbidden():
     assert res.status_code == 403
 
 
-def test_delete_system_group_prevented():
+def test_delete_seeded_group_allowed_and_recreatable():
     res = client.delete("/api/groups/estudiantes", headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
-    assert res.status_code == 400
-    assert "institucional del sistema" in res.json()["detail"]
+    assert res.status_code == 200
+    assert res.json()["id"] == "estudiantes"
+
+    recreate = client.post(
+        "/api/groups",
+        json={
+            "id": "estudiantes",
+            "name": "Estudiantes",
+            "description": "Comunidad estudiantil.",
+            "google_group": "estudiantes@upa.edu.py",
+            "google_groups": ["estudiantes@upa.edu.py"],
+            "emails": ["estudiantes@upa.edu.py"],
+        },
+        headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"),
+    )
+    assert recreate.status_code == 201
 
 
 def test_delete_custom_group_success():

@@ -87,6 +87,7 @@
     errExpiresRequired: "Indique la fecha y hora de vigencia para fijar la publicación.",
     errExpiresInvalid: "La fecha de vigencia no es válida.",
     errPublishedInvalid: "La fecha programada de publicación no es válida.",
+    errPublishedPast: "La fecha programada de publicación no puede estar en el pasado.",
     errSectionRequired: "Active al menos una sección: Noticia o Evento.",
     errUrgentNoEvent: "Los avisos urgentes no admiten sección de Evento.",
   };
@@ -342,9 +343,13 @@
     }
 
     const isScheduled = Boolean(v.scheduled) || v.publishMode === "scheduled";
-    if (isScheduled && postType !== POST_TYPE_INSTAGRAM) {
+    if (isScheduled && postType !== POST_TYPE_INSTAGRAM && !v.isPublished) {
       const pubIso = datetimeLocalToIso(v.publishedAt);
-      if (!pubIso) errors.publishedAt = TEXTS.errPublishedInvalid;
+      if (!pubIso) {
+        errors.publishedAt = TEXTS.errPublishedInvalid;
+      } else if (new Date(pubIso).getTime() < Date.now() - 120000) {
+        errors.publishedAt = TEXTS.errPublishedPast;
+      }
     }
 
     if (isNews) {
@@ -445,16 +450,27 @@
         ? p.event_notify_groups.slice()
         : targetGroups.slice();
 
+    const rawPubDate = p.published_at || p.created_at || "";
+    const pubMs = p.published_at ? new Date(p.published_at).getTime() : NaN;
+    const isFutureScheduled = Boolean(
+      p.published_at &&
+        !Number.isNaN(pubMs) &&
+        pubMs > Date.now() + 60000 &&
+        postType !== POST_TYPE_INSTAGRAM
+    );
+    const isPublished = Boolean(p.id && !isFutureScheduled);
+
     return {
       id: p.id || "",
       title: p.title || "",
       postType,
       hasRegistration: Boolean(p.has_registration),
       targetGroups,
-      scheduled: Boolean(p.published_at),
-      publishMode: p.published_at ? "scheduled" : "on_save",
-      publishedAt: isoToDatetimeLocal(p.published_at),
-      publishedAtIso: p.published_at || p.created_at || "",
+      scheduled: isFutureScheduled,
+      isPublished,
+      publishMode: isFutureScheduled ? "scheduled" : isPublished ? "published" : "on_save",
+      publishedAt: isFutureScheduled ? isoToDatetimeLocal(p.published_at) : "",
+      publishedAtIso: rawPubDate,
       isNews,
       notifyGroups: Array.isArray(p.notify_groups) ? p.notify_groups.slice() : [],
       caption,
@@ -549,7 +565,8 @@
     if (!Array.isArray(entries) || entries.length === 0) {
       return "";
     }
-    const lines = entries.slice(0, 6).map((entry) => {
+    const rows = entries.slice(0, 10).map((entry) => {
+      const when = entry.created_at ? escapeHtml(formatDateTime(entry.created_at, opts)) : "&mdash;";
       const who = escapeHtml(entry.admin_name || entry.admin_email || "Admin");
       const verb = escapeHtml(entry.verb || entry.action || "actualizó");
       const target =
@@ -558,10 +575,9 @@
         Array.isArray(entry.changes) && entry.changes.length > 0
           ? ` (${escapeHtml(entry.changes.join(", "))})`
           : "";
-      const when = entry.created_at ? ` &middot; ${escapeHtml(formatDateTime(entry.created_at, opts))}` : "";
-      return `<span>${who} ${verb}${target}${changes}${when}</span>`;
+      return `<tr class="ed-audit-row"><td class="ed-audit-time">${when}</td><td class="ed-audit-who">${who}</td><td class="ed-audit-action">${verb}${target}${changes}</td></tr>`;
     });
-    return `<div class="ed-audit-trail">Historial: ${lines.join(" &bull; ")}</div>`;
+    return `<div class="ed-audit-trail"><div class="ed-audit-heading">Historial:</div><table class="ed-audit-table"><tbody>${rows.join("")}</tbody></table></div>`;
   }
 
   // ---------------------------------------------------------------------------
