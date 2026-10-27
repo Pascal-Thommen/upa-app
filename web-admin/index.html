@@ -114,11 +114,6 @@
             </svg>
             <span>Iniciar sesión con Google</span>
           </a>
-          <button type="button"
-                  id="btn-dev-admin-login"
-                  class="mt-3 w-full max-w-[320px] flex items-center justify-center gap-2 px-4 py-2.5 bg-[#6c9339] hover:bg-[#5a7b2e] text-white rounded-xl shadow-2xs transition text-xs font-bold">
-            <span>Acceso rápido administrador</span>
-          </button>
         </div>
 
         <div class="pt-4 border-t border-slate-100">
@@ -267,22 +262,13 @@
                     <p class="ed-field-error" data-error-for="pub-title"></p>
                   </div>
 
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label class="ed-label" for="ed-pub-type">Tipo de publicación</label>
-                      <select id="ed-pub-type" class="ed-input">
-                        <option value="MANUAL">Publicación interna</option>
-                        <option value="EMERGENCY_BANNER">Aviso urgente (Eilmeldung)</option>
-                        <option value="INSTAGRAM" disabled>Instagram (sincronizado)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label class="ed-label" for="ed-pub-publish-mode">Fecha de publicación</label>
-                      <select id="ed-pub-publish-mode" class="ed-input">
-                        <option value="on_save">Al guardar</option>
-                        <option value="scheduled">Programar fecha y hora</option>
-                      </select>
+                      <span class="ed-label">Fecha de publicación</span>
+                      <label class="ed-check mt-1">
+                        <input type="checkbox" id="ed-pub-scheduled">
+                        <span>Programar publicación diferida</span>
+                      </label>
                       <input id="ed-pub-published-at" type="datetime-local" class="ed-input mt-2 hidden">
                       <p id="ed-pub-published-hint" class="ed-subtle mt-1">Se registrará la fecha al guardar.</p>
                       <p class="ed-field-error" data-error-for="pub-publishedAt"></p>
@@ -318,20 +304,20 @@
 
                   <div id="ed-news-fields" class="ed-section-body space-y-4">
                     <fieldset>
-                      <legend class="ed-label">Notificar por push al publicar</legend>
+                      <legend class="ed-label">Notificar por push</legend>
                       <div id="ed-pub-notify-groups" class="flex flex-wrap gap-x-4 gap-y-1.5"></div>
                       <p id="ed-news-notify-hint" class="ed-subtle mt-1">Seleccione los grupos destinatarios que recibirán notificación.</p>
                     </fieldset>
 
                     <div>
-                      <span class="ed-label">Afiche o imagen</span>
+                      <span class="ed-label">Imagen o video</span>
                       <div class="ed-dropzone" data-dropzone="pub">
-                        <input type="file" class="hidden" accept="image/jpeg,image/png,image/webp,application/pdf" data-dz-input>
+                        <input type="file" class="hidden" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,application/pdf" data-dz-input>
                         <input type="hidden" data-dz-url id="ed-pub-image-url">
                         <p class="text-xs text-slate-600">Arrastre aquí un archivo o
                           <button type="button" class="ed-link" data-dz-pick>seleccione desde su equipo</button>
                         </p>
-                        <p class="ed-subtle">JPG, PNG, WEBP o PDF &bull; máximo 10 MB</p>
+                        <p class="ed-subtle">JPG, PNG, WEBP, MP4, WEBM o PDF &bull; máximo 10 MB</p>
                         <div class="ed-dz-status" data-dz-status role="status"></div>
                         <div class="hidden ed-dz-preview" data-dz-preview></div>
                       </div>
@@ -349,12 +335,6 @@
                       <p class="ed-field-error" data-error-for="pub-content"></p>
                     </div>
 
-                    <div>
-                      <label class="ed-label" for="ed-pub-detail-text">Texto adicional en vista detalle (solo App)</label>
-                      <textarea id="ed-pub-detail-text" class="ed-input" rows="3" placeholder="Información complementaria al abrir la publicación en la aplicación móvil"></textarea>
-                      <p class="ed-field-error" data-error-for="pub-detailText"></p>
-                    </div>
-
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label class="ed-label" for="ed-pub-link-label">Texto del botón de enlace (opcional)</label>
@@ -366,22 +346,17 @@
                       </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                      <div>
-                        <label class="ed-label" for="ed-pub-category">Categoría</label>
-                        <select id="ed-pub-category" class="ed-input"></select>
-                        <p class="ed-field-error" data-error-for="pub-category"></p>
-                      </div>
-                      <div>
-                        <label class="ed-label" for="ed-pub-expires">Vigente hasta (opcional)</label>
-                        <input id="ed-pub-expires" type="datetime-local" class="ed-input">
-                        <p class="ed-field-error" data-error-for="pub-expiresAt"></p>
-                      </div>
-                      <div class="pt-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                      <div class="pt-1">
                         <label class="ed-check">
                           <input type="checkbox" id="ed-pub-pinned">
                           <span>Fijar arriba en el feed</span>
                         </label>
+                      </div>
+                      <div id="ed-pub-expires-wrap" class="hidden">
+                        <label class="ed-label" for="ed-pub-expires">Vigente hasta *</label>
+                        <input id="ed-pub-expires" type="datetime-local" class="ed-input">
+                        <p class="ed-field-error" data-error-for="pub-expiresAt"></p>
                       </div>
                     </div>
                   </div>
@@ -450,14 +425,18 @@
 
             <!-- Panel Lista de Grupos -->
             <div id="groups-list-panel" class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-4">
-              <div class="flex items-center justify-between gap-3">
+              <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 class="font-bold text-slate-900 text-base">Grupos</h3>
-                  <p class="text-xs text-slate-500 mt-0.5">Audiencias para segmentar publicaciones, notificaciones y recordatorios.</p>
+                  <p class="text-xs text-slate-500 mt-0.5">Lista alfabética de audiencias y grupos de Google Workspace (@upa.edu.py).</p>
                 </div>
                 <button id="btn-create-group" type="button" class="ed-btn ed-btn-primary">
                   + Nuevo grupo
                 </button>
+              </div>
+
+              <div>
+                <input id="groups-filter-input" type="search" class="ed-input" placeholder="Filtrar grupos alfabéticamente...">
               </div>
 
               <div class="space-y-2" id="groups-list-container"></div>
@@ -490,7 +469,8 @@
                 <!-- Selector unificado de miembros: Google Workspace + Correos individuales -->
                 <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-4">
                   <div>
-                    <span class="ed-label">Grupos de Google Workspace vinculados</span>
+                    <span class="ed-label">Grupos de Google Workspace (@upa.edu.py)</span>
+                    <input id="group-workspace-filter" type="search" class="ed-input mt-1.5 mb-2" placeholder="Filtrar grupos de Google Workspace...">
                     <div id="group-workspace-picker" class="flex flex-wrap gap-2 mt-1.5"></div>
                     <div class="flex gap-2 mt-2.5">
                       <input id="group-input-ws-custom" type="text" class="ed-input" placeholder="Otro grupo de Google Workspace (ej. cohorte2026@upa.edu.py)">
@@ -539,7 +519,7 @@
 
                 <div class="flex flex-wrap items-center gap-4 py-1.5 text-xs text-slate-700">
                   <label class="inline-flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input type="checkbox" id="perm-publications" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
+                    <input type="checkbox" id="perm-publications" class="rounded text-[#6c9339] focus:ring-[#6c9339]">
                     <span>Publicaciones</span>
                   </label>
                   <label class="inline-flex items-center gap-1.5 cursor-pointer font-medium">

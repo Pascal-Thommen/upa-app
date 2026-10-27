@@ -21,5 +21,6 @@
 * Configuracion de modo oscuro/claro, preferencias de notificaciones y filtro por carrera.
 
 ### Modulo Administracion Web (Marketing Escritorio)
-* Fuente unica de verdad (Single Source of Truth): modelo de datos unificado para noticias y eventos de calendario.
-* Segmentacion de destinatarios basada en grupos de Google Workspace sincronizados via Admin API.
+* Fuente unica de verdad (Single Source of Truth): modelo de datos unificado en `/api/publications` para noticias, eventos de calendario y publicaciones hibridas, con soporte de imagen o video (`IMAGE` / `VIDEO`), vigencia obligatoria al fijar arriba, recordatorios configurables en minutos, horas o dias y bloqueo de solo lectura en campos sincronizados de Instagram.
+* Segmentacion de destinatarios mediante lista plana ordenada alfabeticamente de grupos reales de Google Workspace (`@upa.edu.py`) con filtro instantaneo y cache local de Google Directory API.
+* Seguridad de roles bajo principio de privilegio minimo: sin accesos rapidos de desarrollo en el login y con todas las casillas de permisos desmarcadas por defecto al crear nuevas cuentas.

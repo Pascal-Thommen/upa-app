@@ -12,6 +12,21 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 DIRECTORY_GROUP_SCOPE = "https://www.googleapis.com/auth/admin.directory.group.readonly"
+WORKSPACE_GROUPS_CACHE_TTL_SECONDS = 300.0
+
+_workspace_groups_cache: dict[str, tuple[float, list[dict[str, str]]]] = {}
+
+
+def clear_workspace_groups_cache() -> None:
+    """Limpia la cache en memoria de los grupos de Google Workspace."""
+    _workspace_groups_cache.clear()
+
+
+def _sort_groups_alphabetically(groups: list[dict[str, str]]) -> list[dict[str, str]]:
+    return sorted(
+        groups,
+        key=lambda g: (str(g.get("name") or g.get("email") or "").strip().lower(), str(g.get("email") or "").strip().lower()),
+    )
 
 
 def _load_service_account_credentials() -> dict[str, Any] | None:
@@ -163,7 +178,7 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
                     except Exception as err:
                         logger.debug("Fehler beim Abrufen der Elterngruppe fuer %s: %s", current_key, err)
 
-                return list(all_groups_map.values())
+                return _sort_groups_alphabetically(list(all_groups_map.values()))
             elif groups_resp.status_code == 403:
                 logger.info(
                     "Delegierter User %s nicht autorisiert für Directory API, versuche nächsten...", delegated_user
@@ -206,26 +221,40 @@ class WorkspaceDirectoryUnavailable(Exception):
     """El listado de grupos de Google Workspace no esta disponible (sin credenciales, red o permisos)."""
 
 
-async def list_workspace_groups(domain: str | None = None) -> list[dict[str, str]]:
+async def list_workspace_groups(domain: str | None = None, *, force_refresh: bool = False) -> list[dict[str, str]]:
     """
     Lista todos los grupos del dominio mediante la Google Directory API (Service Account con delegacion).
+    Aplica cache local en memoria para evitar latencias y limites de tasa (Rate Limits), y sirve
+    el cache previo como respaldo si la red presenta demoras o errores.
     Lanza WorkspaceDirectoryUnavailable con un mensaje legible si no es posible obtener el listado.
     """
+    target_domain = (domain or settings.ALLOWED_EMAIL_DOMAIN).strip().lower()
+    now_monotonic = time.monotonic()
+    cached_entry = _workspace_groups_cache.get(target_domain)
+
+    if not force_refresh and cached_entry is not None:
+        cached_at, cached_groups = cached_entry
+        if (now_monotonic - cached_at) < WORKSPACE_GROUPS_CACHE_TTL_SECONDS:
+            return _sort_groups_alphabetically([dict(g) for g in cached_groups])
+
     sa = _load_service_account_credentials()
     if not sa:
+        if cached_entry is not None:
+            return _sort_groups_alphabetically([dict(g) for g in cached_entry[1]])
         raise WorkspaceDirectoryUnavailable("Google Workspace no está conectado (falta la cuenta de servicio).")
 
     client_email = sa.get("client_email")
     private_key = sa.get("private_key")
     token_uri = sa.get("token_uri", "https://oauth2.googleapis.com/token")
     if not client_email or not private_key:
+        if cached_entry is not None:
+            return [dict(g) for g in cached_entry[1]]
         raise WorkspaceDirectoryUnavailable("La cuenta de servicio de Google está incompleta.")
 
     candidates = []
     if settings.GOOGLE_ADMIN_DELEGATED_USER and settings.GOOGLE_ADMIN_DELEGATED_USER != "admin@upa.edu.py":
         candidates.append(settings.GOOGLE_ADMIN_DELEGATED_USER)
     candidates.extend(["soporte.ti@upa.edu.py", "admin@upa.edu.py"])
-    target_domain = domain or settings.ALLOWED_EMAIL_DOMAIN
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -269,6 +298,8 @@ async def list_workspace_groups(domain: str | None = None) -> list[dict[str, str
                     if resp.status_code == 403:
                         break  # este usuario delegado no es administrador: probar el siguiente
                     if resp.status_code != 200:
+                        if cached_entry is not None:
+                            return [dict(g) for g in cached_entry[1]]
                         raise WorkspaceDirectoryUnavailable(f"Google Directory respondió con el estado {resp.status_code}.")
                     data = resp.json()
                     for item in data.get("groups", []):
@@ -284,12 +315,24 @@ async def list_workspace_groups(domain: str | None = None) -> list[dict[str, str
                             )
                     page_token = data.get("nextPageToken")
                     if not page_token:
-                        return sorted(groups, key=lambda g: g["name"].lower())
+                        sorted_groups = _sort_groups_alphabetically(groups)
+                        _workspace_groups_cache[target_domain] = (time.monotonic(), sorted_groups)
+                        return [dict(g) for g in sorted_groups]
     except httpx.TimeoutException as exc:
+        if cached_entry is not None:
+            logger.warning("Timeout en Google Directory API; sirviendo grupos desde cache local.")
+            return [dict(g) for g in cached_entry[1]]
         raise WorkspaceDirectoryUnavailable("Google Workspace no respondió a tiempo.") from exc
     except httpx.HTTPError as exc:
+        if cached_entry is not None:
+            logger.warning("Error HTTP en Google Directory API; sirviendo grupos desde cache local.")
+            return [dict(g) for g in cached_entry[1]]
         raise WorkspaceDirectoryUnavailable("No se pudo contactar con Google Workspace.") from exc
     except (ValueError, jwt.PyJWTError) as exc:
+        if cached_entry is not None:
+            return [dict(g) for g in cached_entry[1]]
         raise WorkspaceDirectoryUnavailable("Respuesta no válida de Google Workspace.") from exc
 
+    if cached_entry is not None:
+        return [dict(g) for g in cached_entry[1]]
     raise WorkspaceDirectoryUnavailable("Ninguna cuenta delegada tiene permiso para listar los grupos.")

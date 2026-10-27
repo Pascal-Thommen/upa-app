@@ -411,25 +411,137 @@ def test_unique_views_tracking_and_admin_only_audit_history():
     assert any("título" in e["changes"] for e in entries if e["action"] == "UPDATE_POST")
 
 
+def test_pinned_publication_requires_expires_at_and_video_media_type_is_inferred():
+    headers = auth(EDITOR_ID, EDITOR_EMAIL, "editor")
+    future_exp = (datetime.now(UTC) + timedelta(days=7)).isoformat()
+
+    # Fijar sin expires_at falla con 400
+    missing_exp = client.post(
+        "/api/publications",
+        json={
+            "title": "Publicación fijada sin vencimiento",
+            "is_news": True,
+            "is_pinned": True,
+            "target_groups": ["ALL"],
+        },
+        headers=headers,
+    )
+    assert missing_exp.status_code == 400
+    assert "expires_at" in missing_exp.json()["detail"]
+
+    # Fijar con expires_at y video MP4 detecta media_type=VIDEO
+    ok_res = client.post(
+        "/api/publications",
+        json={
+            "title": "Resumen audiovisual del campus",
+            "is_news": True,
+            "is_pinned": True,
+            "expires_at": future_exp,
+            "media_url": "https://api.upa.edu.py/uploads/campus-resumen.mp4",
+            "target_groups": ["ALL"],
+        },
+        headers=headers,
+    )
+    assert ok_res.status_code == 201
+    created = ok_res.json()
+    assert created["is_pinned"] is True
+    assert created["expires_at"] is not None
+    assert created["media_type"] == "VIDEO"
+
+
+def test_instagram_publication_locks_synchronized_fields_and_extracts_two_line_teaser():
+    orig_ts = datetime(2026, 5, 10, 14, 0, tzinfo=UTC)
+    full_ig_caption = (
+        "Primera línea del post de Instagram.\n"
+        "Segunda línea del resumen automático.\n"
+        "Tercera línea con detalles adicionales que solo van en el cuerpo.\n"
+        "Cuarta línea con hashtags #UPA #Campus"
+    )
+    db = TestingSessionLocal()
+    ig_post = Post(
+        instagram_id="ig_888222",
+        title="Post Instagram Protegido",
+        caption=full_ig_caption,
+        content=full_ig_caption,
+        post_type="INSTAGRAM",
+        is_news=True,
+        is_event=False,
+        is_edited=False,
+        published_at=orig_ts,
+        media_url="https://cdn.instagram.com/original.jpg",
+        media_type="IMAGE",
+        permalink="https://www.instagram.com/p/Corig888/",
+        link_url="https://www.instagram.com/p/Corig888/",
+        link_label="Ver en Instagram",
+        target_groups=["ALL"],
+    )
+    db.add(ig_post)
+    db.commit()
+    ig_id = ig_post.id
+    db.close()
+
+    headers = auth(EDITOR_ID, EDITOR_EMAIL, "editor")
+    updated = client.put(
+        f"/api/publications/{ig_id}",
+        json={
+            "title": "Título editorial personalizado",
+            "caption": "Intento de sobrescribir resumen",
+            "content": "Intento de sobrescribir contenido sincronizado",
+            "media_url": "https://otro.sitio/hack.jpg",
+            "link_url": "https://otro.sitio/link",
+            "permalink": "https://otro.sitio/link",
+            "target_groups": ["ALL", "TIE"],
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["title"] == "Título editorial personalizado"
+    assert body["caption"] == "Primera línea del post de Instagram.\nSegunda línea del resumen automático."
+    assert body["content"] == full_ig_caption
+    assert body["media_url"] == "https://cdn.instagram.com/original.jpg"
+    assert body["permalink"] == "https://www.instagram.com/p/Corig888/"
+    assert body["link_url"] == "https://www.instagram.com/p/Corig888/"
+    assert body["target_groups"] == ["ALL", "TIE"]
+
+
 def test_web_admin_ux_invariants_clean_labels_and_no_legacy_noise():
     web_dir = Path(__file__).resolve().parent.parent.parent / "web-admin"
     index_html = (web_dir / "index.html").read_text(encoding="utf-8")
     app_js = (web_dir / "app.js").read_text(encoding="utf-8")
+    editorial_js = (web_dir / "editorial.js").read_text(encoding="utf-8")
 
-    # Textos eliminados por SRV-160
+    # Textos y controles heredados eliminados (SRV-160 + SRV-168)
     for forbidden_text in (
         "Google OAuth 2.0 Verificado",
         "Google OAuth 2.0 Conectado",
         "Guardar en PostgreSQL",
         "In Zwischenablage kopieren",
         "Comunidad y Distribución",
+        "btn-dev-admin-login",
+        "Acceso rápido",
     ):
         assert forbidden_text not in index_html
         assert forbidden_text not in app_js
 
-    # Elementos clave de la nueva arquitectura UX
+    for removed_field in ("ed-pub-type", "ed-pub-category", "ed-pub-detail-text"):
+        assert removed_field not in index_html
+        assert removed_field not in editorial_js
+
+    # Casillas de permisos en Roles desmarcadas por defecto
+    assert 'id="perm-publications" checked' not in index_html
+    assert 'id="perm-groups" checked' not in index_html
+    assert 'id="perm-admins" checked' not in index_html
+    assert 'id="perm-diagnostic" checked' not in index_html
+
+    # Elementos clave de la arquitectura UX vigente
     assert "Recargar datos" in index_html
     assert 'id="user-menu-btn"' in index_html
     assert 'id="ed-form-pub"' in index_html
+    assert 'id="ed-pub-scheduled"' in index_html
+    assert 'id="ed-pub-expires-wrap"' in index_html
+    assert "Notificar por push" in index_html
+    assert 'id="groups-filter-input"' in index_html
+    assert 'id="group-workspace-filter"' in index_html
     assert 'id="form-group-editor"' in index_html
     assert 'id="apis-json-details"' in index_html

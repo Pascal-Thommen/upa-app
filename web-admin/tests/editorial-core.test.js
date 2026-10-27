@@ -38,8 +38,16 @@ test("validateUploadFile: rechaza tipos no permitidos, archivos vacios y ausenci
   assert.equal(Core.validateUploadFile(null).kind, "upload_missing");
 });
 
-test("validateUploadFile: acepta JPG, PNG, WEBP y PDF (incluido parametro charset)", () => {
-  for (const type of ["image/jpeg", "image/png", "image/webp", "application/pdf", "IMAGE/PNG; charset=binary"]) {
+test("validateUploadFile: acepta JPG, PNG, WEBP, MP4, WEBM y PDF (incluido parametro charset)", () => {
+  for (const type of [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "application/pdf",
+    "IMAGE/PNG; charset=binary",
+  ]) {
     assert.equal(Core.validateUploadFile(fakeFile(2048, type)).ok, true, type);
   }
 });
@@ -379,6 +387,26 @@ test("modelo unificado: validatePublicationValues y buildPublicationPayload para
   const igPayload = Core.buildPublicationPayload({ ...hybrid, postType: "INSTAGRAM" });
   assert.equal(igPayload.published_at, null);
   assert.equal(igPayload.is_news, true);
+
+  // Vigencia obligatoria cuando se fija arriba (pinned: true)
+  assert.ok(Core.validatePublicationValues({ ...hybrid, pinned: true, expiresAt: "" }).expiresAt);
+  assert.deepEqual(Core.validatePublicationValues({ ...hybrid, pinned: false, expiresAt: "" }), {});
+
+  // Deteccion automatica de VIDEO, resumen de 2 lineas de Instagram y unidades de recordatorio
+  const videoPayload = Core.buildPublicationPayload({
+    ...hybrid,
+    imageUrl: "https://api.upa.edu.py/uploads/campus.mp4",
+  });
+  assert.equal(videoPayload.media_type, "VIDEO");
+  assert.equal(
+    Core.extractInstagramTeaser("Linea 1\nLinea 2\nLinea 3\nLinea 4"),
+    "Linea 1\nLinea 2"
+  );
+  assert.deepEqual(Core.reminderToParts(30), { value: 30, unit: "minutes" });
+  assert.deepEqual(Core.reminderToParts(120), { value: 2, unit: "hours" });
+  assert.deepEqual(Core.reminderToParts(1440), { value: 1, unit: "days" });
+  assert.equal(Core.partsToReminderMinutes(2, "hours"), 120);
+  assert.equal(Core.partsToReminderMinutes(1, "days"), 1440);
 });
 
 test("renderPublicationRows y renderHistoryEntries muestran etiquetas, metricas y escapan XSS", () => {

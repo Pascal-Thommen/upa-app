@@ -44,7 +44,7 @@ El objetivo de la plataforma UPA App es consolidar en un punto único de acceso 
 * **Fundamentación:** Eliminación del riesgo de gestionar contraseñas locales y sincronización automática de permisos basada en los grupos de Google Workspace Admin Directory API.
 
 ### 3.6. Portal Web-Admin y Cockpit Editorial (En preparación para Documento v3)
-* **Decisión:** Arquitectura modular con menú lateral institucional que separa el espacio futuro de los estudiantes (aplicación móvil nativa en desarrollo) de los cuatro módulos de gestión administrativa (Publicaciones y Eventos, Grupos y Audiencias, Consola de Administradores, Diagnóstico Técnico de APIs).
+* **Decisión:** Arquitectura modular con menú lateral institucional de cuatro módulos (`Publicaciones`, `Grupos`, `Roles`, `APIs`). El editor de publicaciones unifica noticias y eventos en un solo formulario limpio (con soporte de video `MP4`/`WEBM`, vigencia obligatoria al fijar arriba, recordatorios en minutos/horas/días y protección de solo lectura para Instagram), el módulo de Grupos presenta una lista plana alfabética con filtro instantáneo y caché de Google Directory API en el backend, y el módulo de Roles aplica privilegio mínimo estricto (casillas vacías por defecto y ausencia de botones de acceso rápido de desarrollo).
 
 ---
 

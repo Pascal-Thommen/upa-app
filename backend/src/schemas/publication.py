@@ -42,6 +42,15 @@ def normalize_reminders_list(raw_values: Any) -> list[int]:
     return sorted(cleaned)
 
 
+def extract_instagram_teaser(caption: str | None) -> str:
+    """Extrae las primeras dos lineas de la descripcion de Instagram como resumen corto."""
+    if not caption or not caption.strip():
+        return ""
+    lines = [line.strip() for line in caption.strip().splitlines() if line.strip()]
+    teaser = "\n".join(lines[:2])
+    return teaser[:300]
+
+
 class PublicationWrite(BaseModel):
     """Carga util unificada para crear o editar una publicacion (Noticia, Evento o ambos)."""
 
@@ -191,6 +200,9 @@ class PublicationResponse(BaseModel):
         raw_caption = (getattr(post, "caption", None) or "").strip()
         raw_content = (getattr(post, "content", None) or "").strip()
         full_content = raw_content or raw_caption
+        post_type = (getattr(post, "post_type", None) or "MANUAL").strip() or "MANUAL"
+        if post_type == "INSTAGRAM":
+            raw_caption = extract_instagram_teaser(raw_content or raw_caption)
         summary_text = (
             raw_caption if raw_caption else (full_content[:140] + "..." if len(full_content) > 140 else full_content)
         )
@@ -211,7 +223,6 @@ class PublicationResponse(BaseModel):
         )
         declined_count = sum(1 for r in raw_regs if (getattr(r, "status", "") or "") == "declined")
 
-        post_type = (getattr(post, "post_type", None) or "MANUAL").strip() or "MANUAL"
         raw_is_edited = getattr(post, "is_edited", None)
         is_edited = bool(raw_is_edited) if raw_is_edited is not None else (post_type != "INSTAGRAM")
 

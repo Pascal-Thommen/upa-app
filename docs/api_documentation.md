@@ -185,6 +185,15 @@ Retorna la lista de todas las noticias y avisos institucionales.
 * **Encabezado:** `Authorization: Bearer <access_token>`
 * **Parámetros de Consulta:** `group`, `limit`, `offset`
 
+### `GET`, `POST`, `PUT`, `DELETE /api/publications`
+Endpoint unificado del portal administrativo para gestionar publicaciones (Noticias, Eventos o ambos):
+* `content` actúa como campo de texto principal único; `caption` almacena el resumen corto (en publicaciones `INSTAGRAM` se extrae automáticamente de las dos primeras líneas y los campos sincronizados son de solo lectura).
+* Cuando `is_pinned` es `true`, el campo `expires_at` es obligatorio (`HTTP 400` si se omite).
+* El campo `media_url` admite imágenes (`JPG`, `PNG`, `WEBP`), videos (`MP4`, `WEBM` con `media_type = "VIDEO"`) y documentos `PDF`.
+
+### `GET /api/groups` y `GET /api/groups/google-workspace`
+Retornan la lista plana ordenada alfabéticamente de grupos de audiencia y grupos del directorio de Google Workspace (`@upa.edu.py`), respaldada por caché local en el backend para evitar latencias y límites de tasa de Google Directory API.
+
 ---
 
 ## 4. Agenda y Calendario de Eventos

@@ -933,7 +933,9 @@ async function fetchAppGroups() {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
-        appGroupsCache = data;
+        appGroupsCache = data
+          .slice()
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "es", { sensitivity: "base" }));
         if (window.UpaCockpit && typeof window.UpaCockpit.refreshGroupsCatalog === "function") {
           window.UpaCockpit.refreshGroupsCatalog(appGroupsCache);
         }
@@ -952,8 +954,14 @@ async function fetchWorkspaceDirectoryGroups() {
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.groups)) {
-        state.groupEditor.workspaceOptions = data.groups;
-        return data.groups;
+        state.groupEditor.workspaceOptions = data.groups
+          .slice()
+          .sort((a, b) =>
+            String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "es", {
+              sensitivity: "base",
+            })
+          );
+        return state.groupEditor.workspaceOptions;
       }
     }
   } catch (_) {
@@ -1012,12 +1020,31 @@ function renderWorkspacePicker() {
     }
   });
 
+  catalog.sort((a, b) =>
+    String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "es", { sensitivity: "base" })
+  );
+
   if (catalog.length === 0) {
     container.innerHTML = `<span class="ed-subtle">No hay grupos detectados aún; agregue uno abajo si corresponde.</span>`;
     return;
   }
 
-  container.innerHTML = catalog
+  const filterInput = document.getElementById("group-workspace-filter");
+  const filterText = (filterInput && filterInput.value ? filterInput.value : "").trim().toLowerCase();
+  const visibleCatalog = filterText
+    ? catalog.filter((g) => {
+        const name = String(g.name || "").toLowerCase();
+        const email = String(g.email || "").toLowerCase();
+        return name.includes(filterText) || email.includes(filterText);
+      })
+    : catalog;
+
+  if (visibleCatalog.length === 0) {
+    container.innerHTML = `<span class="ed-subtle">Ningún grupo de Google Workspace coincide con el filtro.</span>`;
+    return;
+  }
+
+  container.innerHTML = visibleCatalog
     .map((g) => {
       const value = g.email || g.name;
       const label = g.email && g.name && g.name !== g.email ? `${g.name} (${g.email})` : value;
@@ -1132,19 +1159,38 @@ function summarizeGroupMembers(group) {
   return parts.length > 0 ? parts.join(" · ") : "Sin miembros vinculados";
 }
 
-async function renderGroupsModule() {
-  showGroupsListPanel();
+function renderGroupsListItems(groups) {
   const container = document.getElementById("groups-list-container");
   if (!container) return;
-  container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">Cargando grupos...</div>`;
-  const groups = await fetchAppGroups();
 
-  if (!Array.isArray(groups) || groups.length === 0) {
+  const list = Array.isArray(groups)
+    ? groups
+        .slice()
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "es", { sensitivity: "base" }))
+    : [];
+
+  if (list.length === 0) {
     container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">No hay grupos registrados.</div>`;
     return;
   }
 
-  container.innerHTML = groups
+  const filterInput = document.getElementById("groups-filter-input");
+  const filterText = (filterInput && filterInput.value ? filterInput.value : "").trim().toLowerCase();
+  const visible = filterText
+    ? list.filter((g) => {
+        const name = String(g.name || "").toLowerCase();
+        const desc = String(g.description || "").toLowerCase();
+        const ws = Array.isArray(g.google_groups) ? g.google_groups.join(" ").toLowerCase() : "";
+        return name.includes(filterText) || desc.includes(filterText) || ws.includes(filterText);
+      })
+    : list;
+
+  if (visible.length === 0) {
+    container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">Ningún grupo coincide con el filtro.</div>`;
+    return;
+  }
+
+  container.innerHTML = visible
     .map(
       (g) => `
       <div class="group-row" data-group-id="${escapeHtml(g.id)}" tabindex="0">
@@ -1173,7 +1219,15 @@ async function renderGroupsModule() {
       }
     });
   });
+}
 
+async function renderGroupsModule() {
+  showGroupsListPanel();
+  const container = document.getElementById("groups-list-container");
+  if (!container) return;
+  container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">Cargando grupos...</div>`;
+  const groups = await fetchAppGroups();
+  renderGroupsListItems(groups);
   loadAuditTrailInto("groups-list-history", "group");
 }
 
@@ -1569,6 +1623,15 @@ function setupGroupsFormHandlers() {
   const btnAddEmail = document.getElementById("btn-add-group-email");
   const inputEmail = document.getElementById("group-input-email");
   const formGroup = document.getElementById("form-group-editor");
+  const groupsFilterInput = document.getElementById("groups-filter-input");
+  const wsFilterInput = document.getElementById("group-workspace-filter");
+
+  if (groupsFilterInput) {
+    groupsFilterInput.addEventListener("input", () => renderGroupsListItems(appGroupsCache));
+  }
+  if (wsFilterInput) {
+    wsFilterInput.addEventListener("input", () => renderWorkspacePicker());
+  }
 
   if (btnCreateGroup) btnCreateGroup.addEventListener("click", () => openGroupEditor(null));
   if (btnBack) btnBack.addEventListener("click", showGroupsListPanel);
@@ -1720,6 +1783,10 @@ function setupRolesFormHandlers() {
         return;
       }
       if (input) input.value = "";
+      ["perm-publications", "perm-groups", "perm-admins", "perm-diagnostic"].forEach((cbId) => {
+        const cb = document.getElementById(cbId);
+        if (cb) cb.checked = false;
+      });
       showModuleNotice("roles-notice", "success", `Cuenta ${email} autorizada.`);
       await renderAdminsModule();
       if (state.currentUser && String(state.currentUser.email || "").toLowerCase() === email) {
@@ -1853,30 +1920,6 @@ function init() {
         }, 2000);
       } catch (_) {
         alert("JSON copiado al portapapeles.");
-      }
-    });
-  }
-
-  const btnDevAdmin = document.getElementById("btn-dev-admin-login");
-  if (btnDevAdmin) {
-    btnDevAdmin.addEventListener("click", async () => {
-      showLoginAlert("Iniciando sesión...", "info");
-      try {
-        const resp = await fetch("/api/auth/dev-login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: "pascal.thommen@upa.edu.py" }),
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          setStoredToken(data.access_token);
-          showLoginAlert("Inicio de sesión exitoso.", "success");
-          await refreshDashboard();
-        } else {
-          showLoginAlert("Error en acceso rápido.", "error");
-        }
-      } catch (_) {
-        showLoginAlert("Error de conexión.", "error");
       }
     });
   }
