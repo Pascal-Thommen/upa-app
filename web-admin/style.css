@@ -110,51 +110,6 @@ body {
   border-color: #cbd5e1;
 }
 
-/* Jerarquía de grupos: nodos anidados, conmutador de expansión y niveles indentados */
-.group-node + .group-node {
-  margin-top: 0.35rem;
-}
-
-.group-children {
-  margin-top: 0.35rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.group-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.35rem;
-  height: 1.35rem;
-  flex-shrink: 0;
-  border-radius: 0.4rem;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #475569;
-  font-weight: 800;
-  font-size: 0.85rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.group-toggle:hover {
-  background: #e2e8f0;
-}
-
-.group-toggle-placeholder {
-  display: inline-block;
-  width: 1.35rem;
-  height: 1.35rem;
-  flex-shrink: 0;
-}
-
-.group-row > .min-w-0 {
-  flex: 1 1 auto;
-  padding-left: 0.5rem;
-}
-
 .chip-tag {
   display: inline-flex;
   align-items: center;

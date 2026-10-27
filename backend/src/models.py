@@ -157,12 +157,6 @@ class AudienceGroup(Base):
     google_groups = Column(JSON, nullable=True)  # Lista de correos de grupos de Google Workspace
     emails = Column(JSON, default=list, nullable=False)
     is_system = Column(Boolean, default=False, nullable=False)
-    parent_id = Column(
-        String(50),
-        ForeignKey("audience_groups.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )  # Grupo contenedor para la jerarquia (hasta 3 niveles)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 

@@ -138,15 +138,6 @@ def test_login_google_redirect():
     assert "redirect_uri=" in location
 
 
-def test_login_google_redirect_uses_configured_public_base_url(monkeypatch):
-    from src.config import settings as auth_settings
-
-    monkeypatch.setattr(auth_settings, "PUBLIC_BASE_URL", "https://portal.upa.edu.py")
-    response = client.get("/api/auth/login-google", follow_redirects=False)
-    location = response.headers.get("location", "")
-    assert "redirect_uri=https%3A%2F%2Fportal.upa.edu.py%2Fapi%2Fauth%2Fgoogle" in location
-
-
 def test_google_callback_missing_code_redirects_error():
     response = client.get("/api/auth/google", follow_redirects=False)
     assert response.status_code == 307

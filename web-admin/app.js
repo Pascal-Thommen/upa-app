@@ -1073,7 +1073,6 @@ function renderGroupEmailsChips() {
 async function openGroupEditor(group) {
   showModuleNotice("groups-notice", "", "");
   await fetchWorkspaceDirectoryGroups();
-  const allGroups = await fetchAppGroups();
 
   const editing = Boolean(group && group.id);
   state.groupEditor.editingId = editing ? group.id : "";
@@ -1091,14 +1090,12 @@ async function openGroupEditor(group) {
   const idInput = document.getElementById("group-edit-id");
   const nameInput = document.getElementById("group-input-name");
   const descInput = document.getElementById("group-input-description");
-  const parentSelect = document.getElementById("group-input-parent");
   const titleEl = document.getElementById("group-editor-title");
   const deleteBtn = document.getElementById("btn-group-delete");
 
   if (idInput) idInput.value = editing ? group.id : "";
   if (nameInput) nameInput.value = editing ? group.name || "" : "";
   if (descInput) descInput.value = editing ? group.description || "" : "";
-  if (parentSelect) renderParentGroupOptions(parentSelect, allGroups, editing ? group.id : null, group ? group.parent_id || "" : "");
   if (titleEl) titleEl.textContent = editing ? "Editar grupo" : "Nuevo grupo";
   if (deleteBtn) deleteBtn.classList.toggle("hidden", !editing || state.groupEditor.isSystem);
 
@@ -1135,70 +1132,6 @@ function summarizeGroupMembers(group) {
   return parts.length > 0 ? parts.join(" · ") : "Sin miembros vinculados";
 }
 
-function depthOfGroup(groups, target) {
-  let depth = 0;
-  let cur = target;
-  const byId = new Map(groups.map((g) => [String(g.id), g]));
-  const guard = new Set();
-  while (cur && cur.parent_id && !guard.has(String(cur.parent_id))) {
-    guard.add(String(cur.parent_id));
-    const parent = byId.get(String(cur.parent_id));
-    if (!parent) break;
-    depth += 1;
-    cur = parent;
-  }
-  return depth;
-}
-
-function renderParentGroupOptions(select, groups, selfId, selectedParentId) {
-  if (!select) return;
-  const list = Array.isArray(groups) ? groups : [];
-  const childrenOfSelf = new Set();
-  if (selfId) {
-    // Evita que un grupo se contenga a si mismo o a sus propios descendientes.
-    const collect = (id) => {
-      for (const g of list) {
-        if (String(g.parent_id) === String(id)) {
-          childrenOfSelf.add(String(g.id));
-          collect(g.id);
-        }
-      }
-    };
-    collect(selfId);
-  }
-  const options = list
-    .filter((g) => !selfId || String(g.id) !== String(selfId))
-    .filter((g) => !childrenOfSelf.has(String(g.id)))
-    .map((g) => {
-      const depth = depthOfGroup(list, g);
-      const indent = "\u00A0\u00A0\u00A0".repeat(Math.min(depth, 2));
-      const selected = String(g.id) === String(selectedParentId || "") ? " selected" : "";
-      return `<option value="${escapeHtml(g.id)}"${selected}>${indent}${escapeHtml(g.name)}</option>`;
-    })
-    .join("");
-  select.innerHTML = `<option value="">Sin contenedor (nivel raíz)</option>${options}`;
-}
-
-function buildGroupTree(groups) {
-  const list = Array.isArray(groups) ? groups : [];
-  const byId = new Map(list.map((g) => [String(g.id), g]));
-  const roots = [];
-  const childrenOf = new Map();
-  list.forEach((g) => {
-    const pid = g.parent_id ? String(g.parent_id) : "";
-    if (pid && byId.has(pid)) {
-      if (!childrenOf.has(pid)) childrenOf.set(pid, []);
-      childrenOf.get(pid).push(g);
-    } else {
-      roots.push(g);
-    }
-  });
-  const sortByName = (arr) => arr.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  sortByName(roots);
-  childrenOf.forEach((arr) => sortByName(arr));
-  return { roots, childrenOf };
-}
-
 async function renderGroupsModule() {
   showGroupsListPanel();
   const container = document.getElementById("groups-list-container");
@@ -1211,36 +1144,23 @@ async function renderGroupsModule() {
     return;
   }
 
-  const { roots, childrenOf } = buildGroupTree(groups);
-
-  const renderNode = (g, level) => {
-    const children = childrenOf.get(String(g.id)) || [];
-    const hasChildren = children.length > 0;
-    const indent = level * 20;
-    const toggle = hasChildren
-      ? `<button type="button" class="group-toggle" data-toggle-group="${escapeHtml(g.id)}" aria-expanded="true" aria-label="Expandir o contraer ${escapeHtml(g.name)}">&minus;</button>`
-      : `<span class="group-toggle-placeholder"></span>`;
-    return `
-      <div class="group-node" data-group-node="${escapeHtml(g.id)}" data-level="${level}">
-        <div class="group-row" data-group-id="${escapeHtml(g.id)}" tabindex="0" style="padding-left:${indent}px">
-          ${toggle}
-          <div class="min-w-0">
-            <div class="font-bold text-sm text-slate-900 truncate">${escapeHtml(g.name)}</div>
-          </div>
-          <div class="flex items-center gap-3 text-xs text-slate-500 flex-shrink-0">
-            <span>${escapeHtml(summarizeGroupMembers(g))}</span>
-            <span class="text-slate-400">&rarr;</span>
-          </div>
+  container.innerHTML = groups
+    .map(
+      (g) => `
+      <div class="group-row" data-group-id="${escapeHtml(g.id)}" tabindex="0">
+        <div class="min-w-0">
+          <div class="font-bold text-sm text-slate-900 truncate">${escapeHtml(g.name)}</div>
         </div>
-        ${hasChildren ? `<div class="group-children" data-group-children="${escapeHtml(g.id)}">${children.map((c) => renderNode(c, level + 1)).join("")}</div>` : ""}
-      </div>`;
-  };
-
-  container.innerHTML = roots.map((g) => renderNode(g, 0)).join("");
+        <div class="flex items-center gap-3 text-xs text-slate-500 flex-shrink-0">
+          <span>${escapeHtml(summarizeGroupMembers(g))}</span>
+          <span class="text-slate-400">&rarr;</span>
+        </div>
+      </div>`
+    )
+    .join("");
 
   container.querySelectorAll("[data-group-id]").forEach((row) => {
-    const open = (e) => {
-      if (e && e.target && e.target.closest && e.target.closest("[data-toggle-group]")) return;
+    const open = () => {
       const id = row.getAttribute("data-group-id");
       const found = appGroupsCache.find((item) => item.id === id);
       if (found) openGroupEditor(found);
@@ -1249,20 +1169,8 @@ async function renderGroupsModule() {
     row.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        open(e);
+        open();
       }
-    });
-  });
-
-  container.querySelectorAll("[data-toggle-group]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = btn.getAttribute("data-toggle-group");
-      const wrapper = container.querySelector(`[data-group-children="${CSS && CSS.escape ? CSS.escape(id) : id}"]`);
-      const collapsed = btn.getAttribute("aria-expanded") === "true";
-      btn.setAttribute("aria-expanded", String(!collapsed));
-      btn.textContent = collapsed ? "+" : "\u2212";
-      if (wrapper) wrapper.classList.toggle("hidden", collapsed);
     });
   });
 
@@ -1722,15 +1630,12 @@ function setupGroupsFormHandlers() {
       }
 
       const wsGroups = state.groupEditor.selectedWorkspaceGroups.slice();
-      const parentSelect = document.getElementById("group-input-parent");
-      const parentId = parentSelect && parentSelect.value ? parentSelect.value : null;
       const payload = {
         name,
         description,
         google_groups: wsGroups,
         google_group: wsGroups[0] || "",
         emails: state.groupEditor.emails.slice(),
-        parent_id: parentId,
       };
 
       const editingId = state.groupEditor.editingId;
@@ -1948,6 +1853,30 @@ function init() {
         }, 2000);
       } catch (_) {
         alert("JSON copiado al portapapeles.");
+      }
+    });
+  }
+
+  const btnDevAdmin = document.getElementById("btn-dev-admin-login");
+  if (btnDevAdmin) {
+    btnDevAdmin.addEventListener("click", async () => {
+      showLoginAlert("Iniciando sesión...", "info");
+      try {
+        const resp = await fetch("/api/auth/dev-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: "pascal.thommen@upa.edu.py" }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setStoredToken(data.access_token);
+          showLoginAlert("Inicio de sesión exitoso.", "success");
+          await refreshDashboard();
+        } else {
+          showLoginAlert("Error en acceso rápido.", "error");
+        }
+      } catch (_) {
+        showLoginAlert("Error de conexión.", "error");
       }
     });
   }

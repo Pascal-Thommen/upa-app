@@ -630,7 +630,7 @@
         const urgent = n.post_type === POST_TYPE_URGENT;
         const isInstagram = n.post_type === "INSTAGRAM";
         const typeBadge = urgent
-          ? `<span class="ed-badge ed-badge-urgent">Aviso urgente</span>`
+          ? `<span class="ed-badge ed-badge-urgent">Eilmeldung</span>`
           : isInstagram
             ? `<span class="ed-badge ed-badge-social">Instagram</span>`
             : `<span class="ed-badge ed-badge-neutral">Normal</span>`;

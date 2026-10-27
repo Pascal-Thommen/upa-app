@@ -220,7 +220,7 @@ test("renderNewsRows escapa HTML hostil y descarta URLs peligrosas", () => {
   assert.ok(!html.includes("<img src=x"), "no debe quedar una etiqueta img inyectada");
   assert.ok(!html.includes("javascript:"), "la URL javascript: no debe renderizarse");
   assert.ok(html.includes("&lt;script&gt;"));
-  assert.ok(html.includes("Aviso urgente"));
+  assert.ok(html.includes("Eilmeldung"));
   assert.ok(html.includes('data-id="7"'));
   assert.equal(Core.safeUrl("javascript:alert(1)"), "");
   assert.equal(Core.safeUrl("//evil.test/x.png"), "");

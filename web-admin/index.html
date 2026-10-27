@@ -114,6 +114,11 @@
             </svg>
             <span>Iniciar sesión con Google</span>
           </a>
+          <button type="button"
+                  id="btn-dev-admin-login"
+                  class="mt-3 w-full max-w-[320px] flex items-center justify-center gap-2 px-4 py-2.5 bg-[#6c9339] hover:bg-[#5a7b2e] text-white rounded-xl shadow-2xs transition text-xs font-bold">
+            <span>Acceso rápido administrador</span>
+          </button>
         </div>
 
         <div class="pt-4 border-t border-slate-100">
@@ -267,7 +272,7 @@
                       <label class="ed-label" for="ed-pub-type">Tipo de publicación</label>
                       <select id="ed-pub-type" class="ed-input">
                         <option value="MANUAL">Publicación interna</option>
-                        <option value="EMERGENCY_BANNER">Aviso urgente</option>
+                        <option value="EMERGENCY_BANNER">Aviso urgente (Eilmeldung)</option>
                         <option value="INSTAGRAM" disabled>Instagram (sincronizado)</option>
                       </select>
                     </div>
@@ -375,7 +380,7 @@
                       <div class="pt-4">
                         <label class="ed-check">
                           <input type="checkbox" id="ed-pub-pinned">
-                          <span>Fijar al inicio</span>
+                          <span>Fijar arriba en el feed</span>
                         </label>
                       </div>
                     </div>
@@ -482,14 +487,6 @@
                   <input id="group-input-description" class="ed-input" maxlength="255" placeholder="Breve nota interna sobre el alcance del grupo">
                 </div>
 
-                <div>
-                  <label class="ed-label" for="group-input-parent">Grupo contenedor (jerarquía, opcional)</label>
-                  <select id="group-input-parent" class="ed-input">
-                    <option value="">Sin contenedor (nivel raíz)</option>
-                  </select>
-                  <p class="ed-subtle mt-1">Permite organizar las audiencias en hasta 3 niveles anidados.</p>
-                </div>
-
                 <!-- Selector unificado de miembros: Google Workspace + Correos individuales -->
                 <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-4">
                   <div>
@@ -542,7 +539,7 @@
 
                 <div class="flex flex-wrap items-center gap-4 py-1.5 text-xs text-slate-700">
                   <label class="inline-flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input type="checkbox" id="perm-publications" class="rounded text-[#6c9339] focus:ring-[#6c9339]">
+                    <input type="checkbox" id="perm-publications" checked class="rounded text-[#6c9339] focus:ring-[#6c9339]">
                     <span>Publicaciones</span>
                   </label>
                   <label class="inline-flex items-center gap-1.5 cursor-pointer font-medium">

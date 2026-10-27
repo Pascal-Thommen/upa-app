@@ -185,15 +185,6 @@
   border-color: var(--ed-danger);
 }
 
-/* Selectores de fecha/hora: contraste legible en el calendario nativo (sin blanco sobre blanco) */
-.ed-input[type="datetime-local"],
-.ed-input[type="date"],
-.ed-input[type="time"] {
-  color-scheme: light;
-  min-height: 2.4rem;
-  -webkit-text-fill-color: var(--ed-text);
-}
-
 .ed-check {
   display: inline-flex;
   align-items: center;
@@ -292,15 +283,6 @@
   border: 1px solid var(--ed-border);
   border-radius: 0.45rem;
   background: var(--ed-surface);
-}
-
-.ed-reminder-row select {
-  padding: 0.25rem 0.4rem;
-  font-size: 0.72rem;
-  border: 1px solid var(--ed-border);
-  border-radius: 0.45rem;
-  background: var(--ed-surface);
-  color: var(--ed-text);
 }
 
 /* Zona de carga de archivos (arrastrar y soltar) */
@@ -430,8 +412,8 @@
 }
 
 .ed-thumb {
-  width: 3.5rem;
-  height: 3.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   flex-shrink: 0;
   object-fit: cover;
   border-radius: 0.5rem;
@@ -439,8 +421,8 @@
 }
 
 .ed-thumb-placeholder {
-  width: 3.5rem;
-  height: 3.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   flex-shrink: 0;
   display: flex;
   align-items: center;
