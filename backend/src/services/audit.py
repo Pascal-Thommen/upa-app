@@ -46,6 +46,7 @@ FIELD_LABELS = {
     "description": "descripción",
     "google_groups": "grupos de Google",
     "emails": "correos manuales",
+    "parent_id": "grupo contenedor",
     "role": "rol",
     "permissions": "permisos",
 }

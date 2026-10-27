@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import User, UserRole
 from ..permissions import (
-    DEFAULT_EDITOR_PERMISSIONS,
     PERMISSION_KEYS,
     find_unknown_permissions,
     normalize_permissions,
@@ -35,12 +34,13 @@ def _to_response(record: UserRole) -> UserRoleResponse:
 def _resolve_permissions(role: str | None, requested: list[str] | None) -> list[str]:
     """
     Resuelve la lista exacta de permisos solicitada sin forzar todos los modulos.
-    Si el cliente omite 'permissions', aplica un valor inicial coherente segun 'role'.
+    Si el cliente omite 'permissions', una cuenta nueva queda sin permisos (todas las
+    casillas desactivadas); solo un rol 'admin' explicito activa todos los modulos.
     """
     if requested is None:
         if role == "admin":
             return list(PERMISSION_KEYS)
-        return list(DEFAULT_EDITOR_PERMISSIONS)
+        return []
 
     unknown = find_unknown_permissions(requested)
     if unknown:

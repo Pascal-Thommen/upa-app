@@ -33,7 +33,45 @@ def _snapshot(group: AudienceGroup) -> dict:
         "description": group.description or "",
         "google_groups": list(group.google_groups or []),
         "emails": list(group.emails or []),
+        "parent_id": group.parent_id or None,
     }
+
+
+def _validate_parent(db: Session, parent_id: str | None, self_id: str | None = None) -> str | None:
+    """Valida el grupo contenedor: debe existir, no ser el propio grupo y no crear ciclos ni superar 3 niveles."""
+    clean = (parent_id or "").strip()
+    if not clean:
+        return None
+    if self_id and clean == self_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un grupo no puede ser su propio contenedor.",
+        )
+
+    seen: set[str] = set()
+    current_id: str | None = clean
+    depth = 0
+    while current_id:
+        if current_id == self_id or current_id in seen:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La jerarquia de grupos no puede ser ciclica.",
+            )
+        seen.add(current_id)
+        parent = db.query(AudienceGroup).filter(AudienceGroup.id == current_id).first()
+        if parent is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El grupo contenedor '{current_id}' no existe.",
+            )
+        depth += 1
+        current_id = parent.parent_id
+    if depth > 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La jerarquia de grupos no puede superar 3 niveles.",
+        )
+    return clean
 
 
 @router.get("", response_model=list[AudienceGroupResponse], summary="Listar grupos de audiencia institucionales")
@@ -123,6 +161,8 @@ def create_group(
     if not legacy_single and google_groups:
         legacy_single = google_groups[0]
 
+    parent_id = _validate_parent(db, payload.parent_id)
+
     new_group = AudienceGroup(
         id=target_id,
         name=payload.name.strip(),
@@ -132,6 +172,7 @@ def create_group(
         google_groups=google_groups,
         emails=payload.emails,
         is_system=False,
+        parent_id=parent_id,
     )
     db.add(new_group)
     log_audit(
@@ -175,6 +216,7 @@ def update_group(
     group.google_groups = payload.google_groups
     group.google_group = payload.google_groups[0] if payload.google_groups else None
     group.emails = payload.emails
+    group.parent_id = _validate_parent(db, payload.parent_id, self_id=group.id)
 
     changes = changed_fields(before, _snapshot(group))
     log_audit(
