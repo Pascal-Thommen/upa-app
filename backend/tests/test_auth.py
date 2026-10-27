@@ -130,12 +130,41 @@ def test_map_groups_to_logical_tags():
 
 
 def test_login_google_redirect():
+    from src.config import DEFAULT_GOOGLE_CLIENT_ID
+
     response = client.get("/api/auth/login-google", follow_redirects=False)
     assert response.status_code == 307
     location = response.headers.get("location", "")
     assert "accounts.google.com" in location
-    assert "client_id=" in location
+    assert f"client_id={DEFAULT_GOOGLE_CLIENT_ID}" in location
     assert "redirect_uri=" in location
+
+
+def test_login_google_missing_client_id_logs_error_and_aborts_redirect(monkeypatch, caplog):
+    import logging
+
+    from src.config import settings as auth_settings
+
+    monkeypatch.setattr(auth_settings, "GOOGLE_CLIENT_ID", "   ")
+    with caplog.at_level(logging.ERROR, logger="upa.auth"):
+        response = client.get("/api/auth/login-google", follow_redirects=False)
+    assert response.status_code == 503
+    assert "GOOGLE_CLIENT_ID" in response.json()["detail"]
+    assert "GOOGLE_CLIENT_ID" in caplog.text
+    assert "accounts.google.com" not in response.headers.get("location", "")
+
+
+def test_google_callback_missing_client_id_logs_error_and_redirects(monkeypatch, caplog):
+    import logging
+
+    from src.config import settings as auth_settings
+
+    monkeypatch.setattr(auth_settings, "GOOGLE_CLIENT_ID", "")
+    with caplog.at_level(logging.ERROR, logger="upa.auth"):
+        response = client.get("/api/auth/google?code=sample_code_123", follow_redirects=False)
+    assert response.status_code == 307
+    assert "/dashboard/?auth_error=missing_client_id" in response.headers.get("location", "")
+    assert "GOOGLE_CLIENT_ID" in caplog.text
 
 
 def test_google_callback_missing_code_redirects_error():

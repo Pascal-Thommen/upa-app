@@ -92,6 +92,9 @@
   // Catálogo dinámico de grupos
   // ---------------------------------------------------------------------------
 
+  let groupsSynced = false;
+  let groupsSyncPromise = null;
+
   function refreshGroupsCatalog(groups) {
     const merged = Core.TARGET_GROUPS.map((g) => ({ value: g.value, label: g.label }));
     const seen = new Set(merged.map((g) => g.value.toUpperCase()));
@@ -104,18 +107,27 @@
           merged.push({ value: val, label: g.name || val });
         }
       });
+      groupsSynced = true;
     }
     merged.sort((a, b) => String(a.label || "").localeCompare(String(b.label || ""), "es", { sensitivity: "base" }));
     state.groupCatalog = merged;
   }
 
-  async function syncAvailableGroups() {
-    try {
-      const groups = await getClient().listGroups();
-      refreshGroupsCatalog(groups);
-    } catch (_) {
-      /* mantiene catálogo base si falla la red */
-    }
+  async function syncAvailableGroups(force) {
+    if (groupsSynced && !force) return state.groupCatalog;
+    if (groupsSyncPromise && !force) return groupsSyncPromise;
+    groupsSyncPromise = (async () => {
+      try {
+        const groups = await getClient().listGroups();
+        refreshGroupsCatalog(groups);
+      } catch (_) {
+        /* mantiene catálogo base si falla la red */
+      } finally {
+        groupsSyncPromise = null;
+      }
+      return state.groupCatalog;
+    })();
+    return groupsSyncPromise;
   }
 
   function resolveGroupOptions(selected) {
@@ -749,9 +761,12 @@
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="5" class="ed-empty">Cargando publicaciones...</td></tr>`;
     try {
-      state.publications = (await getClient().listPublications({ include_scheduled: true })) || [];
+      const [pubs] = await Promise.all([
+        getClient().listPublications({ include_scheduled: true }),
+        loadListHistory(),
+      ]);
+      state.publications = pubs || [];
       renderFilteredRows();
-      loadListHistory();
     } catch (error) {
       tbody.innerHTML = `<tr><td colspan="5" class="ed-empty">${Core.escapeHtml(Core.describeError(error))}</td></tr>`;
     }
@@ -992,6 +1007,8 @@
       state.publications = [];
       state.editingItem = null;
       state.participantsPubId = null;
+      groupsSynced = false;
+      groupsSyncPromise = null;
       const editorial = $("view-editorial");
       if (editorial) editorial.classList.add("hidden");
       const student = $("student-workspace");

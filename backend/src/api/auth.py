@@ -1,3 +1,4 @@
+import logging
 import urllib.parse
 from typing import Any
 
@@ -15,6 +16,8 @@ from ..permissions import effective_permissions, normalize_permissions
 from ..schemas.feed import ErrorResponse
 from ..services.google_groups import get_google_groups_for_user, map_groups_to_logical_tags
 from .classroom import clear_classroom_cache
+
+logger = logging.getLogger("upa.auth")
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -275,7 +278,17 @@ def _build_user_response(user: User, permissions: list[str] | None = None) -> Us
 @router.get("/login-google", summary="Iniciar flujo web OAuth 2.0 con Google")
 def login_google(force_consent: bool = False):
     """Inicia el flujo oficial de redireccion Google OAuth 2.0 Web con permisos de Classroom."""
-    client_id = settings.GOOGLE_CLIENT_ID
+    client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
+    if not client_id:
+        logger.error(
+            "Error de configuracion Google OAuth: GOOGLE_CLIENT_ID esta ausente o vacio. "
+            "Se cancela la redireccion a accounts.google.com para evitar una URL incompleta (400 invalid_request)."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Configuracion OAuth incompleta: falta GOOGLE_CLIENT_ID.",
+        )
+
     prompt_val = "consent select_account" if force_consent else "select_account"
     params = urllib.parse.urlencode(
         {
@@ -304,8 +317,11 @@ async def google_callback(
     if error or not code:
         return RedirectResponse(f"/dashboard/?auth_error={error or 'missing_code'}")
 
-    client_id = settings.GOOGLE_CLIENT_ID
-    client_secret = settings.GOOGLE_CLIENT_SECRET
+    client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
+    client_secret = (settings.GOOGLE_CLIENT_SECRET or "").strip()
+    if not client_id:
+        logger.error("Error de configuracion Google OAuth en callback: GOOGLE_CLIENT_ID esta ausente o vacio.")
+        return RedirectResponse("/dashboard/?auth_error=missing_client_id")
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as http_client:

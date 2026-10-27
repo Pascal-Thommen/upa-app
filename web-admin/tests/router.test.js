@@ -15,15 +15,16 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-function createTestEnvironment(initialPath = "/dashboard/publicaciones") {
+function createTestEnvironment(initialPath = "/dashboard/publicaciones", initialSearch = "") {
   const historyStack = [{ url: initialPath, state: {} }];
   let historyIndex = 0;
   const eventListeners = {};
+  const fetchCalls = [];
 
   const window = {
     location: {
       pathname: initialPath,
-      search: "",
+      search: initialSearch,
       hash: "",
     },
     history: {
@@ -31,10 +32,12 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones") {
         historyIndex++;
         historyStack.splice(historyIndex, historyStack.length - historyIndex, { url, state });
         window.location.pathname = url;
+        window.location.search = "";
       },
       replaceState(state, title, url) {
         historyStack[historyIndex] = { url, state };
         window.location.pathname = url;
+        window.location.search = "";
       },
       back() {
         if (historyIndex > 0) {
@@ -207,13 +210,42 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones") {
     console,
     navigator: { clipboard: { writeText: async () => {} } },
     URLSearchParams: class {
-      get() {
-        return null;
+      constructor(search) {
+        this._params = new Map();
+        const s = String(search || "").replace(/^\?/, "");
+        if (s) {
+          s.split("&").forEach((pair) => {
+            const [k, ...rest] = pair.split("=");
+            if (k) this._params.set(decodeURIComponent(k), decodeURIComponent(rest.join("=") || ""));
+          });
+        }
+      }
+      get(key) {
+        return this._params.get(key) || null;
       }
     },
     Blob: class {},
     URL: { createObjectURL: () => "" },
-    fetch: async () => ({ ok: true, json: async () => ({ status: "healthy" }) }),
+    fetch: async (endpoint) => {
+      fetchCalls.push(endpoint);
+      if (endpoint === "/api/auth/me") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 1,
+            email: "pascal.thommen@upa.edu.py",
+            full_name: "Pascal Thommen",
+            role: "admin",
+            permissions: ["publicaciones", "grupos", "roles", "apis"],
+            groups: ["ALL"],
+            google_groups: [],
+            has_classroom_token: false,
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ status: "healthy", posts: [] }) };
+    },
   };
 
   const fn = new Function(...Object.keys(context), appJsContent);
@@ -223,6 +255,8 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones") {
     window,
     document,
     elements,
+    localStorage,
+    fetchCalls,
     router: window.UpaRouter,
   };
 }
@@ -441,4 +475,38 @@ test("persistencia: reapplyCurrentRoute conserva el modulo activo y su URL", () 
   assert.equal(window.location.pathname, "/dashboard/roles");
   assert.ok(!elements["view-admins"].classList.contains("hidden"));
   assert.ok(elements["nav-mod-admins"].classList.contains("is-active"));
+});
+
+// ---------------------------------------------------------------------------
+// 5. OAuth Redirect Token Extraction & Bundled Dashboard Initialization (SRV-173)
+// ---------------------------------------------------------------------------
+
+test("oauth redirect: token aus ?token=... wird vor Router-Init extrahiert und gebündelt initialisiert", async () => {
+  const env = createTestEnvironment("/dashboard/apis", "?token=oauth-jwt-token-srv173");
+  const { window, localStorage, fetchCalls } = env;
+
+  assert.equal(localStorage.getItem("upa_access_token"), "oauth-jwt-token-srv173");
+  assert.equal(window.location.pathname, "/dashboard/apis");
+  assert.equal(window.location.search, "");
+
+  // Wait a microtask tick for Promise.all in refreshDashboard() to settle
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const healthCalls = fetchCalls.filter((u) => u === "/health").length;
+  const meCalls = fetchCalls.filter((u) => u === "/api/auth/me").length;
+  const diagCalls = fetchCalls.filter((u) => u === "/api/system/diagnostics").length;
+
+  assert.equal(healthCalls, 1, "checkHealth(/health) darf beim Start nur einmal aufgerufen werden");
+  assert.equal(meCalls, 1, "loadUserProfile(/api/auth/me) darf beim Start nur einmal aufgerufen werden");
+  assert.equal(diagCalls, 1, "updateJsonView(/api/system/diagnostics) darf auf /dashboard/apis nicht doppelt laufen");
+});
+
+test("oauth redirect: auth_error=missing_client_id und forbidden_domain zeigen klare Fehlermeldungen", () => {
+  const envMissing = createTestEnvironment("/dashboard", "?auth_error=missing_client_id");
+  assert.ok(!envMissing.elements["view-login"].classList.contains("hidden"));
+  assert.ok(envMissing.elements["login-alert"].textContent.includes("Client ID"));
+
+  const envForbidden = createTestEnvironment("/dashboard", "?auth_error=forbidden_domain");
+  assert.ok(!envForbidden.elements["view-login"].classList.contains("hidden"));
+  assert.ok(envForbidden.elements["login-alert"].textContent.includes("@upa.edu.py"));
 });
