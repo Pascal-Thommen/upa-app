@@ -111,3 +111,15 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     assert "public, max-age=86400" in nginx_text
     assert "no-cache, must-revalidate" in nginx_text
     assert "location = /index.html" in nginx_text
+
+
+def test_index_html_asset_version_busts_cache_and_roles_header_matches_permissions():
+    import re
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    html = (repo_root / "web-admin" / "index.html").read_text(encoding="utf-8")
+    versions = set(re.findall(r"/dashboard/[\w.-]+\.(?:js|css)\?v=([\d.]+)", html))
+    assert versions == {"2.2.0"}
+    thead = html.split('<tbody id="admin-table-rows"')[0].split('aria-label="Roles"')[1]
+    assert thead.count("<th ") == 7
+    assert "Historial</th>" in thead
