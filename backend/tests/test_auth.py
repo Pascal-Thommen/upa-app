@@ -304,3 +304,35 @@ def test_get_me_sanitizes_null_google_group_fields():
     assert grp["name"] == ""
     assert grp["email"] == "tie@upa.edu.py"
     assert grp["description"] == ""
+
+
+def _login_redirect_uri(headers=None):
+    import urllib.parse as up
+
+    response = client.get("/api/auth/login-google", follow_redirects=False, headers=headers or {})
+    query = up.parse_qs(up.urlparse(response.headers["location"]).query)
+    return query["redirect_uri"][0]
+
+
+def test_redirect_uri_fallback_default():
+    assert _login_redirect_uri() == "https://upa.eu1.netbird.services/api/auth/google"
+
+
+def test_redirect_uri_from_forwarded_headers():
+    uri = _login_redirect_uri({"x-forwarded-proto": "https", "x-forwarded-host": "upa-beta.eu1.netbird.services"})
+    assert uri == "https://upa-beta.eu1.netbird.services/api/auth/google"
+
+
+def test_redirect_uri_invalid_host_uses_fallback():
+    uri = _login_redirect_uri({"x-forwarded-proto": "https", "x-forwarded-host": "evil.com/x?y=<a>"})
+    assert uri == "https://upa.eu1.netbird.services/api/auth/google"
+    uri = _login_redirect_uri({"x-forwarded-proto": "javascript", "x-forwarded-host": "a.com"})
+    assert uri == "https://upa.eu1.netbird.services/api/auth/google"
+
+
+def test_redirect_uri_setting_takes_precedence(monkeypatch):
+    from src.config import settings as auth_settings
+
+    monkeypatch.setattr(auth_settings, "GOOGLE_REDIRECT_URI", "https://configured.example/api/auth/google")
+    uri = _login_redirect_uri({"x-forwarded-proto": "https", "x-forwarded-host": "other.example"})
+    assert uri == "https://configured.example/api/auth/google"
