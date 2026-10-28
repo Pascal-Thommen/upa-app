@@ -1,9 +1,10 @@
 import logging
+import re
 import urllib.parse
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
@@ -275,8 +276,27 @@ def _build_user_response(user: User, permissions: list[str] | None = None) -> Us
     )
 
 
+DEFAULT_GOOGLE_REDIRECT_URI = "https://upa.eu1.netbird.services/api/auth/google"
+_HOST_PATTERN = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:\d{1,5})?$")
+
+
+def resolve_google_redirect_uri(request: Request) -> str:
+    """Ermittelt die OAuth redirect_uri: Setting, dann Forwarded-Header, sonst sicherer Fallback."""
+    configured = (settings.GOOGLE_REDIRECT_URI or "").strip()
+    if configured:
+        return configured
+
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip().lower()
+    if proto in ("http", "https") and host and _HOST_PATTERN.match(host):
+        return f"{proto}://{host}/api/auth/google"
+    if proto or host:
+        logger.warning("Ungueltige Forwarded-Header fuer OAuth redirect_uri, nutze Fallback.")
+    return DEFAULT_GOOGLE_REDIRECT_URI
+
+
 @router.get("/login-google", summary="Iniciar flujo web OAuth 2.0 con Google")
-def login_google(force_consent: bool = False):
+def login_google(request: Request, force_consent: bool = False):
     """Inicia el flujo oficial de redireccion Google OAuth 2.0 Web con permisos de Classroom."""
     client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
     if not client_id:
@@ -293,7 +313,7 @@ def login_google(force_consent: bool = False):
     params = urllib.parse.urlencode(
         {
             "client_id": client_id,
-            "redirect_uri": "https://upa.eu1.netbird.services/api/auth/google",
+            "redirect_uri": resolve_google_redirect_uri(request),
             "response_type": "code",
             "scope": "openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly",
             "access_type": "offline",
@@ -306,6 +326,7 @@ def login_google(force_consent: bool = False):
 
 @router.get("/google", summary="Callback OAuth 2.0 de Google")
 async def google_callback(
+    request: Request,
     code: str | None = None,
     error: str | None = None,
     db: Session = Depends(get_db),
@@ -332,7 +353,7 @@ async def google_callback(
                     "client_secret": client_secret,
                     "code": code,
                     "grant_type": "authorization_code",
-                    "redirect_uri": "https://upa.eu1.netbird.services/api/auth/google",
+                    "redirect_uri": resolve_google_redirect_uri(request),
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=10.0,

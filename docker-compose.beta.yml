@@ -1,0 +1,84 @@
+name: upa-beta
+
+services:
+  upa-postgres-beta:
+    image: postgres:16-alpine
+    container_name: upa-postgres-beta
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: upa_app
+      POSTGRES_USER: upa_user
+      POSTGRES_PASSWORD: upa_password
+    volumes:
+      - postgres_beta_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U upa_user -d upa_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - upa-beta-network
+
+  upa-backend-beta:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: upa-backend-beta
+    restart: unless-stopped
+    depends_on:
+      upa-postgres-beta:
+        condition: service_healthy
+    env_file:
+      - path: /home/pasc/.config/upa-app/.env
+        required: false
+      - path: ./backend/.env
+        required: false
+    environment:
+      APP_ENV: production
+      # Container lauscht intern fest auf 8000 (Dockerfile CMD), Host Port 8100 wird gemappt.
+      PORT: 8000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://upa_user:upa_password@upa-postgres-beta:5432/upa_app
+      GOOGLE_REDIRECT_URI: https://upa-beta.eu1.netbird.services/api/auth/google
+      ALLOWED_EMAIL_DOMAIN: upa.edu.py
+      GOOGLE_SERVICE_ACCOUNT_FILE: /app/secrets/service-account.json
+    ports:
+      - "8100:8000"
+    volumes:
+      - /home/pasc/.config/upa-app/secrets:/app/secrets:ro
+      - uploads_beta_data:/app/uploads
+    networks:
+      upa-beta-network:
+        # nginx.conf des Frontends leitet auf den Hostnamen "backend" weiter
+        aliases:
+          - backend
+
+  upa-frontend-beta:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+    container_name: upa-frontend-beta
+    restart: unless-stopped
+    depends_on:
+      - upa-backend-beta
+    ports:
+      - "8185:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/frontend-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - upa-beta-network
+
+networks:
+  upa-beta-network:
+    driver: bridge
+
+volumes:
+  postgres_beta_data:
+    driver: local
+  uploads_beta_data:
+    driver: local
