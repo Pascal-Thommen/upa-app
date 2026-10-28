@@ -27,6 +27,7 @@ class HistoryEntry(BaseModel):
     target_key: str = ""
     target_label: str = ""
     changes: list[str] = Field(default_factory=list, description="Campos modificados (solo en modificaciones)")
+    detail: str = Field("", description="Detalle exacto del cambio, p. ej. 'permisos: +publicaciones, -historial'")
     created_at: datetime | None = None
 
 
@@ -52,6 +53,7 @@ def _serialize_rows(rows: list[tuple[AdminAuditLog, User]]) -> list[HistoryEntry
                 target_key=str(log.target_key or ""),
                 target_label=target_label,
                 changes=[str(c) for c in changes] if isinstance(changes, list) else [],
+                detail=str(details.get("diff") or ""),
                 created_at=log.created_at,
             )
         )

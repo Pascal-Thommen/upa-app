@@ -501,3 +501,16 @@ test("programacion diferida: rechaza fechas en el pasado y bloquea reprogramacio
   assert.equal(futureScheduledForm.scheduled, true, "Un post con fecha futura debe abrirse como programado");
   assert.equal(futureScheduledForm.isPublished, false);
 });
+
+test("formatDateTime usa 24 horas sin a. m. / p. m. y historial muestra detalle de permisos", () => {
+  const out = Core.formatDateTime("2030-06-15T14:15:00Z", { timeZone: "UTC" });
+  assert.ok(out.includes("14:15"), out);
+  assert.ok(!/[ap]\.?\s?m\.?/i.test(out), out);
+  const night = Core.formatDateTime("2030-06-15T00:05:00Z", { timeZone: "UTC" });
+  assert.ok(night.includes("00:05"), night);
+  const hist = Core.renderHistoryEntries(
+    [{ admin_name: "A", verb: "modificó", changes: ["permisos"], detail: "permisos: +publicaciones, -historial", created_at: "2030-06-15T14:15:00Z" }],
+    { timeZone: "UTC" }
+  );
+  assert.ok(hist.includes("permisos: +publicaciones, -historial"));
+});

@@ -84,3 +84,10 @@ def changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     """Etiquetas legibles en espanol de los campos cuyo valor cambio entre dos instantaneas."""
     raw_keys = sorted(key for key in after if before.get(key) != after.get(key))
     return [FIELD_LABELS.get(key, key) for key in raw_keys]
+
+
+def permissions_diff(before: list[str] | None, after: list[str] | None) -> str:
+    """Resumen exacto de permisos otorgados/retirados, p. ej. 'permisos: +publicaciones, -historial'."""
+    old, new = set(before or []), set(after or [])
+    parts = [f"+{key}" for key in sorted(new - old)] + [f"-{key}" for key in sorted(old - new)]
+    return "permisos: " + ", ".join(parts) if parts else ""
