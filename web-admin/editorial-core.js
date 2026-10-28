@@ -278,6 +278,8 @@
     const opts = options || {};
     return d.toLocaleString(opts.locale || "es-PY", {
       timeZone: opts.timeZone,
+      hour12: false,
+      hourCycle: "h23",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -505,7 +507,7 @@
       .map((item) => {
         const img = safeUrl(item.media_url || item.image_url);
         const thumb = img
-          ? `<img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy">`
+          ? `<a href="${escapeHtml(img)}" target="_blank" rel="noopener noreferrer" class="ed-thumb-link" title="Abrir original"><img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy"></a>`
           : `<div class="ed-thumb-placeholder" aria-hidden="true">UPA</div>`;
 
         const sectionTags = [];
@@ -575,7 +577,8 @@
         Array.isArray(entry.changes) && entry.changes.length > 0
           ? ` (${escapeHtml(entry.changes.join(", "))})`
           : "";
-      return `<tr class="ed-audit-row"><td class="ed-audit-time">${when}</td><td class="ed-audit-who">${who}</td><td class="ed-audit-action">${verb}${target}${changes}</td></tr>`;
+      const detail = entry.detail ? ` <span class="ed-audit-detail">${escapeHtml(entry.detail)}</span>` : "";
+      return `<tr class="ed-audit-row"><td class="ed-audit-time">${when}</td><td class="ed-audit-who">${who}</td><td class="ed-audit-action">${verb}${target}${changes}${detail}</td></tr>`;
     });
     return `<div class="ed-audit-trail"><div class="ed-audit-heading">Historial:</div><table class="ed-audit-table"><tbody>${rows.join("")}</tbody></table></div>`;
   }
@@ -718,7 +721,7 @@
             ? `<span class="ed-badge ed-badge-social">Instagram</span>`
             : `<span class="ed-badge ed-badge-neutral">Normal</span>`;
         const img = safeUrl(n.media_url || n.image_url);
-        const thumb = img && isImageUrl(img) ? `<img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy">` : "";
+        const thumb = img && isImageUrl(img) ? `<a href="${escapeHtml(img)}" target="_blank" rel="noopener noreferrer" class="ed-thumb-link" title="Abrir original"><img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy"></a>` : "";
         return `<tr data-news-id="${escapeHtml(n.id)}">
           <td class="ed-cell-title">${thumb}<div><div class="ed-title">${escapeHtml(n.title)}</div><div class="ed-subtle">${escapeHtml(
             n.caption

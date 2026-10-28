@@ -380,3 +380,22 @@ def test_system_diagnostics_live():
     assert data["database"]["total_users"] >= 4
     assert data["database"]["total_groups"] >= 2
     assert data["application"]["zero_mock_certified"] is True
+
+
+def test_role_update_logs_exact_permission_diff_in_history():
+    headers = auth(ADMIN_ID, ADMIN_EMAIL, "admin")
+    client.post(
+        "/api/roles",
+        json={"email": "diff.test@upa.edu.py", "name": "Diff", "permissions": ["historial"]},
+        headers=headers,
+    )
+    upd = client.put(
+        "/api/roles/diff.test@upa.edu.py",
+        json={"permissions": ["publicaciones"]},
+        headers=headers,
+    )
+    assert upd.status_code == 200
+    res = client.get("/api/history/role/diff.test@upa.edu.py", headers=headers)
+    assert res.status_code == 200
+    entry = next(e for e in res.json() if e["action"] == "UPDATE_ROLE")
+    assert entry["detail"] == "permisos: +publicaciones, -historial"

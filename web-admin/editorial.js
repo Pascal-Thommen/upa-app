@@ -350,7 +350,7 @@
         const safe = Core.safeUrl(url);
         let media = "";
         if (Core.isVideoUrl && Core.isVideoUrl(safe)) {
-          media = `<video src="${Core.escapeHtml(safe)}" controls class="max-h-28 rounded-lg"></video>`;
+          media = `<video src="${Core.escapeHtml(safe)}" controls class="max-h-56 w-full rounded-lg"></video>`;
         } else if (Core.isImageUrl(safe)) {
           media = `<img src="${Core.escapeHtml(safe)}" alt="Vista previa">`;
         } else {

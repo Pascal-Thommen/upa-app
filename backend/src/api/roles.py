@@ -10,7 +10,7 @@ from ..permissions import (
     require_permission,
 )
 from ..schemas.role import UserRoleCreate, UserRoleResponse, UserRoleUpdate
-from ..services.audit import AUDIT_TARGET_ROLE, changed_fields, log_audit
+from ..services.audit import AUDIT_TARGET_ROLE, changed_fields, log_audit, permissions_diff
 
 router = APIRouter(prefix="/api/roles", tags=["Roles"])
 
@@ -209,7 +209,11 @@ def update_role(
         "UPDATE_ROLE",
         AUDIT_TARGET_ROLE,
         target_key=norm_email,
-        details={"name": norm_email, "changes": changed_fields(before, _snapshot(role_record))},
+        details={
+            "name": norm_email,
+            "changes": changed_fields(before, _snapshot(role_record)),
+            "diff": permissions_diff(before["permissions"], permissions),
+        },
     )
     _sync_user_table(db, norm_email, permissions)
     db.commit()
