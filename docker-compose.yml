@@ -29,6 +29,8 @@ services:
       postgres:
         condition: service_healthy
     env_file:
+      - path: /home/pasc/.config/upa-app/.env
+        required: false
       - path: ./backend/.env
         required: false
     environment:
@@ -41,7 +43,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/secrets:/app/secrets:ro
+      - /home/pasc/.config/upa-app/secrets:/app/secrets:ro
       - uploads_data:/app/uploads
     networks:
       - upa-network

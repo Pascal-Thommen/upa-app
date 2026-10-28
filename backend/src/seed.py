@@ -165,11 +165,18 @@ def seed_database():
                 email="pascal.thommen@upa.edu.py",
                 name="Pascal Thommen",
                 role="admin",
-                permissions=["publicaciones", "grupos", "roles", "apis"],
+                permissions=["publicaciones", "grupos", "roles", "apis", "historial"],
                 is_primary=True,
             )
             db.add(primary_admin_role)
             print("[Seed] Rol inicial creado: pascal.thommen@upa.edu.py")
+        elif primary_admin_role.is_primary and primary_admin_role.permissions == [
+            "publicaciones",
+            "grupos",
+            "roles",
+            "apis",
+        ]:
+            primary_admin_role.permissions = ["publicaciones", "grupos", "roles", "apis", "historial"]
 
         db.commit()
         print("[Seed] Carga inicial finalizada correctamente.")

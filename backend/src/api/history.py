@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from ..auth import require_admin
 from ..database import get_db
 from ..models import AdminAuditLog, User
+from ..permissions import require_permission
 from ..services.audit import AUDIT_TARGET_GROUP, AUDIT_TARGET_POST, AUDIT_TARGET_ROLE, action_verb
 
 router = APIRouter(prefix="/api/history", tags=["History"])
@@ -61,13 +61,13 @@ def _serialize_rows(rows: list[tuple[AdminAuditLog, User]]) -> list[HistoryEntry
 @router.get(
     "/{entity_type}",
     response_model=list[HistoryEntry],
-    summary="Historial reciente de un modulo completo (post, group o role; solo administradores)",
+    summary="Historial reciente de un modulo completo (post, group o role; requiere permiso historial)",
 )
 def get_module_history(
     entity_type: str = Path(..., description="post, group o role"),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("historial")),
 ) -> list[HistoryEntry]:
     query = db.query(AdminAuditLog, User).join(User, User.id == AdminAuditLog.admin_id)
     if entity_type == AUDIT_TARGET_POST:
@@ -84,14 +84,14 @@ def get_module_history(
 @router.get(
     "/{entity_type}/{key:path}",
     response_model=list[HistoryEntry],
-    summary="Historial de cambios de una publicacion, grupo o rol especifico (solo administradores)",
+    summary="Historial de cambios de una publicacion, grupo o rol especifico (requiere permiso historial)",
 )
 def get_history(
     entity_type: str = Path(..., description="post, group o role"),
     key: str = Path(..., description="ID de la publicacion, ID del grupo o correo del rol"),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("historial")),
 ) -> list[HistoryEntry]:
     query = db.query(AdminAuditLog, User).join(User, User.id == AdminAuditLog.admin_id)
     if entity_type in NUMERIC_TARGETS:

@@ -527,3 +527,22 @@ test("ux feinschliff: reiterwechsel zeigt keine zwischengeschalteten Cargando-La
   const rawJson = document.getElementById("raw-json-output");
   assert.ok(!rawJson.textContent.includes("Consultando telemetría"), "APIs darf keinen Ladeplatzhalter zeigen");
 });
+
+test("historial: Rollenmatrix enthält Historial-Spalte und verbirgt Audit-Log ohne historial-Berechtigung", () => {
+  const env = createTestEnvironment("/dashboard/roles");
+  const { document, router } = env;
+
+  const histEl = document.getElementById("roles-history");
+  histEl.innerHTML = '<div class="ed-audit-trail">Historial</div>';
+  histEl.classList.remove("hidden");
+
+  // Usuario sin permiso 'historial' -> el bloque de historial se oculta y limpia
+  router.applyUserPermissions({
+    email: "editor@upa.edu.py",
+    role: "admin",
+    permissions: ["publicaciones", "grupos", "roles", "apis"],
+  });
+
+  assert.ok(histEl.classList.contains("hidden"), "Ohne historial-Berechtigung muss das Audit-Log verborgen sein");
+  assert.equal(histEl.innerHTML, "");
+});

@@ -8,7 +8,8 @@
  */
 
 const STORAGE_KEY = "upa_access_token";
-const CANONICAL_PERMS = ["publicaciones", "grupos", "roles", "apis"];
+const CANONICAL_PERMS = ["publicaciones", "grupos", "roles", "apis", "historial"];
+const MODULE_PERMS = ["publicaciones", "grupos", "roles", "apis"];
 
 const DOM_ELEMENTS = {
   viewLogin: document.getElementById("view-login"),
@@ -111,6 +112,10 @@ function normalizeUserPermissions(user) {
       apis: "apis",
       "diagnóstico de apis": "apis",
       "diagnostico de apis": "apis",
+      historial: "historial",
+      "historial de cambios": "historial",
+      auditoría: "historial",
+      auditoria: "historial",
     };
     const out = [];
     user.permissions.forEach((raw) => {
@@ -123,6 +128,14 @@ function normalizeUserPermissions(user) {
   if (role === "admin") return CANONICAL_PERMS.slice();
   if (role === "editor") return ["publicaciones"];
   return [];
+}
+
+function hasHistorialPermission(user = state.currentUser) {
+  if (!user) return false;
+  if (Array.isArray(user.permissions)) {
+    return normalizeUserPermissions(user).includes("historial");
+  }
+  return String(user.role || "").toLowerCase() === "admin";
 }
 
 function getStoredToken() {
@@ -1030,7 +1043,7 @@ async function fetchWorkspaceDirectoryGroups() {
 async function loadAuditTrailInto(elementId, entityType, key) {
   const el = document.getElementById(elementId);
   if (!el) return;
-  if (!isCurrentUserAdmin()) {
+  if (!hasHistorialPermission()) {
     el.classList.add("hidden");
     el.innerHTML = "";
     return;
@@ -1049,7 +1062,15 @@ async function loadAuditTrailInto(elementId, entityType, key) {
     const entries = await res.json();
     const html = renderAuditHtml(entries, { showTarget: !key });
     el.innerHTML = html;
-    el.classList.toggle("hidden", !html);
+    let parentVisible = true;
+    if (elementId === "groups-list-history") {
+      const lp = document.getElementById("groups-list-panel");
+      parentVisible = !lp || !lp.classList.contains("hidden");
+    } else if (elementId === "group-item-history") {
+      const ep = document.getElementById("group-editor-panel");
+      parentVisible = !ep || !ep.classList.contains("hidden");
+    }
+    el.classList.toggle("hidden", !html || !parentVisible);
   } catch (_) {
     el.classList.add("hidden");
     el.innerHTML = "";
@@ -1059,8 +1080,14 @@ async function loadAuditTrailInto(elementId, entityType, key) {
 function showGroupsListPanel() {
   const listPanel = document.getElementById("groups-list-panel");
   const editorPanel = document.getElementById("group-editor-panel");
+  const listHist = document.getElementById("groups-list-history");
+  const itemHist = document.getElementById("group-item-history");
   if (listPanel) listPanel.classList.remove("hidden");
   if (editorPanel) editorPanel.classList.add("hidden");
+  if (itemHist) itemHist.classList.add("hidden");
+  if (listHist) {
+    listHist.classList.toggle("hidden", !hasHistorialPermission() || !listHist.innerHTML);
+  }
   clearGroupEditorInlineErrors();
   showModuleNotice("groups-notice", "", "");
 }
@@ -1197,8 +1224,10 @@ async function openGroupEditor(group) {
 
   const listPanel = document.getElementById("groups-list-panel");
   const editorPanel = document.getElementById("group-editor-panel");
+  const listHist = document.getElementById("groups-list-history");
   if (listPanel) listPanel.classList.add("hidden");
   if (editorPanel) editorPanel.classList.remove("hidden");
+  if (listHist) listHist.classList.add("hidden");
 
   if (editing) {
     loadAuditTrailInto("group-item-history", "group", group.id);
@@ -1370,7 +1399,7 @@ function renderAdminsTableRows(admins) {
   if (!tbody) return;
 
   if (!Array.isArray(admins) || admins.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-xs text-slate-400">No hay cuentas autorizadas.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-xs text-slate-400">No hay cuentas autorizadas.</td></tr>`;
     return;
   }
 
@@ -1571,9 +1600,22 @@ function applyUserPermissions(user, options = {}) {
   const perms = normalizeUserPermissions(user);
   allowedModulePerms = perms;
 
+  if (!hasHistorialPermission(user)) {
+    ["ed-list-history", "ed-pub-history", "groups-list-history", "group-item-history", "roles-history"].forEach(
+      (id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.classList.add("hidden");
+          el.innerHTML = "";
+        }
+      }
+    );
+  }
+
+  const hasModulePerm = MODULE_PERMS.some((p) => perms.includes(p));
   const sidebar = document.getElementById("sidebar-menu");
   if (sidebar) {
-    sidebar.classList.toggle("hidden", perms.length === 0);
+    sidebar.classList.toggle("hidden", !hasModulePerm);
   }
 
   Object.values(ROUTE_CONFIG).forEach((cfg) => {
@@ -1589,7 +1631,7 @@ function applyUserPermissions(user, options = {}) {
   if (apisOverview) apisOverview.classList.toggle("hidden", !hasApisPerm);
   if (apisJsonDetails) apisJsonDetails.classList.toggle("hidden", !hasApisPerm);
 
-  if (perms.length === 0) {
+  if (!hasModulePerm) {
     if (currentActiveRoute !== "apis") {
       applyRoute("apis", { updateUrl: true, replace: true, skipDataLoad: Boolean(options.skipDataLoad) });
     }
@@ -1598,7 +1640,7 @@ function applyUserPermissions(user, options = {}) {
 
   const currentCfg = ROUTE_CONFIG[currentActiveRoute];
   if (!currentCfg || !perms.includes(currentCfg.perm)) {
-    const fallback = CANONICAL_PERMS.find((p) => perms.includes(p)) || "apis";
+    const fallback = MODULE_PERMS.find((p) => perms.includes(p)) || "apis";
     applyRoute(fallback, { updateUrl: true, replace: true, skipDataLoad: Boolean(options.skipDataLoad) });
   } else {
     syncNavClasses(currentActiveRoute);
@@ -1609,10 +1651,11 @@ function applyRoute(routeName, options = {}) {
   let effectiveRoute = ROUTE_CONFIG[routeName] ? routeName : "publicaciones";
 
   if (Array.isArray(allowedModulePerms)) {
-    if (allowedModulePerms.length === 0) {
+    const hasModulePerm = MODULE_PERMS.some((p) => allowedModulePerms.includes(p));
+    if (!hasModulePerm) {
       effectiveRoute = "apis";
     } else if (!allowedModulePerms.includes(ROUTE_CONFIG[effectiveRoute].perm)) {
-      effectiveRoute = CANONICAL_PERMS.find((p) => allowedModulePerms.includes(p)) || "apis";
+      effectiveRoute = MODULE_PERMS.find((p) => allowedModulePerms.includes(p)) || "apis";
     }
   }
 

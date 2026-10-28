@@ -23,8 +23,8 @@
   const DEFAULT_TIMEOUT_MS = 15000;
   const UPLOAD_TIMEOUT_MS = 60000;
 
-  /** Claves canonicas de los 4 modulos del portal. */
-  const PERMISSION_KEYS = ["publicaciones", "grupos", "roles", "apis"];
+  /** Claves canonicas de permisos del portal. */
+  const PERMISSION_KEYS = ["publicaciones", "grupos", "roles", "apis", "historial"];
 
   /** Tipos MIME aceptados por POST /api/media/upload (el servidor ademas valida por contenido). */
   const ALLOWED_UPLOAD_TYPES = [
