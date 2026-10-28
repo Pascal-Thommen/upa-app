@@ -92,7 +92,7 @@ def setup_database():
                 email=ADMIN_EMAIL,
                 name="Pascal Thommen",
                 role="admin",
-                permissions=["publicaciones", "grupos", "roles", "apis"],
+                permissions=["publicaciones", "grupos", "roles", "apis", "historial"],
                 is_primary=True,
             ),
             UserRole(
@@ -282,14 +282,14 @@ def test_assign_role_new_account_normalizes_permissions():
     payload = {
         "email": "nuevo.admin@upa.edu.py",
         "name": "Nuevo Administrador",
-        "permissions": ["Publicaciones y Eventos", "Gestión de Roles"],
+        "permissions": ["Publicaciones y Eventos", "Gestión de Roles", "Historial"],
     }
     res = client.post("/api/roles", json=payload, headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
     assert res.status_code == 200
     data = res.json()
     assert data["email"] == "nuevo.admin@upa.edu.py"
     assert data["role"] == "admin"
-    assert data["permissions"] == ["publicaciones", "roles"]
+    assert data["permissions"] == ["publicaciones", "roles", "historial"]
 
     # Al crear un rol sin especificar permisos, inicia con todas las casillas vacías ([])
     empty_res = client.post(

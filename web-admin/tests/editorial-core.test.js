@@ -20,6 +20,7 @@ function fakeFile(size, type) {
 }
 
 test("validateUploadFile: acepta 10 MB exactos y rechaza 10 MB + 1 byte", () => {
+  assert.deepEqual(Core.PERMISSION_KEYS, ["publicaciones", "grupos", "roles", "apis", "historial"]);
   assert.equal(Core.MAX_UPLOAD_BYTES, 10 * MB);
   assert.deepEqual(Core.validateUploadFile(fakeFile(10 * MB, "image/png")), { ok: true });
   const tooLarge = Core.validateUploadFile(fakeFile(10 * MB + 1, "image/png"));

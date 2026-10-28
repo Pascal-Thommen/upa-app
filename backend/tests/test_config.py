@@ -103,6 +103,9 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     compose_text = (repo_root / "docker-compose.yml").read_text(encoding="utf-8")
     assert DEFAULT_GOOGLE_CLIENT_ID in compose_text
     assert "GOOGLE_CLIENT_ID:" in compose_text
+    assert "/home/pasc/.config/upa-app/.env" in compose_text
+    assert "./backend/.env" in compose_text
+    assert "/home/pasc/.config/upa-app/secrets:/app/secrets:ro" in compose_text
 
     nginx_text = (repo_root / "web-admin" / "nginx.conf").read_text(encoding="utf-8")
     assert "public, max-age=86400" in nginx_text

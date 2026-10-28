@@ -94,7 +94,7 @@ def setup_database():
                 email=ADMIN_EMAIL,
                 name="Pascal Thommen",
                 role="admin",
-                permissions=["publicaciones", "grupos", "roles", "apis"],
+                permissions=["publicaciones", "grupos", "roles", "apis", "historial"],
                 is_primary=True,
             ),
             UserRole(
@@ -443,7 +443,7 @@ def test_unique_views_tracking_and_admin_only_audit_history():
         headers=editor_headers,
     )
 
-    # Historial estrictamente restringido a administradores (403 para editor y estudiante)
+    # Historial restringido a cuentas con permiso 'historial' (403 para editor sin permiso y estudiante)
     assert client.get("/api/history/post", headers=editor_headers).status_code == 403
     assert client.get(f"/api/history/post/{pub_id}", headers=editor_headers).status_code == 403
     assert client.get("/api/history/post", headers=ana_headers).status_code == 403
@@ -453,6 +453,16 @@ def test_unique_views_tracking_and_admin_only_audit_history():
     entries = hist_res.json()
     assert len(entries) >= 2
     assert any("título" in e["changes"] for e in entries if e["action"] == "UPDATE_POST")
+
+    # Si un administrador otorga el permiso 'historial' al editor en Roles, este puede consultar el historial
+    grant_hist = client.put(
+        f"/api/roles/{EDITOR_EMAIL}",
+        json={"permissions": ["publicaciones", "historial"]},
+        headers=admin_headers,
+    )
+    assert grant_hist.status_code == 200
+    assert "historial" in grant_hist.json()["permissions"]
+    assert client.get(f"/api/history/post/{pub_id}", headers=editor_headers).status_code == 200
 
 
 def test_pinned_publication_requires_expires_at_and_video_media_type_is_inferred():
@@ -597,4 +607,5 @@ def test_web_admin_ux_invariants_clean_labels_and_no_legacy_noise():
     assert 'id="group-workspace-filter"' in index_html
     assert 'id="form-group-editor"' in index_html
     assert 'id="apis-json-details"' in index_html
+    assert ">Historial<" in index_html
     assert "Core.TARGET_GROUPS" not in editorial_js

@@ -1,4 +1,4 @@
-"""Modelo de permisos por modulo del portal web-admin (Publicaciones, Grupos, Roles, APIs)."""
+"""Modelo de permisos por modulo del portal web-admin (Publicaciones, Grupos, Roles, APIs, Historial)."""
 
 from typing import Any
 
@@ -9,8 +9,8 @@ from .auth import get_current_user
 from .database import get_db
 from .models import User, UserRole
 
-# Claves canonicas de permiso: una por cada modulo (pestana) del portal.
-PERMISSION_KEYS: tuple[str, ...] = ("publicaciones", "grupos", "roles", "apis")
+# Claves canonicas de permiso: una por cada modulo o funcion del portal.
+PERMISSION_KEYS: tuple[str, ...] = ("publicaciones", "grupos", "roles", "apis", "historial")
 
 # Etiquetas historicas guardadas en la base de datos antes de las claves canonicas unificadas.
 LEGACY_PERMISSION_LABELS: dict[str, str] = {
@@ -27,6 +27,9 @@ LEGACY_PERMISSION_LABELS: dict[str, str] = {
     "control": "apis",
     "vista de estudiantes": "apis",
     "estudiantes": "apis",
+    "historial de cambios": "historial",
+    "auditoría": "historial",
+    "auditoria": "historial",
 }
 
 # Permiso por defecto de una cuenta de redaccion sin registro propio en la tabla de roles.

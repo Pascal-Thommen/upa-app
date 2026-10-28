@@ -500,11 +500,11 @@
   color: var(--ed-social);
 }
 
-/* Historial discreto al pie (solo administradores) */
+/* Historial discreto al pie sobre el fondo gris de la página (sin caja blanca) */
 .ed-audit-trail {
-  margin-top: 1rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--ed-border);
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
   font-size: 0.68rem;
   line-height: 1.45;
   color: var(--ed-text-faint);
@@ -527,7 +527,7 @@
 }
 
 .ed-audit-table tr {
-  border-bottom: 1px solid var(--ed-surface-subtle);
+  border-bottom: 1px solid var(--ed-border);
 }
 
 .ed-audit-table tr:last-child {

@@ -713,7 +713,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Historial de auditoría (visible únicamente para administradores)
+  // Historial de auditoría (visible con permiso historial o rol admin)
   // ---------------------------------------------------------------------------
 
   async function loadListHistory() {
@@ -728,7 +728,9 @@
       const entries = await getClient().getHistory("post");
       const html = Core.renderHistoryEntries(entries, { showTarget: true });
       el.innerHTML = html;
-      el.classList.toggle("hidden", !html);
+      const listCard = $("ed-publications-list-card");
+      const listVisible = !listCard || !listCard.classList.contains("hidden");
+      el.classList.toggle("hidden", !html || !listVisible);
     } catch (_) {
       el.classList.add("hidden");
       el.innerHTML = "";
@@ -747,7 +749,9 @@
       const entries = await getClient().getHistory("post", id);
       const html = Core.renderHistoryEntries(entries, { showTarget: false });
       el.innerHTML = html;
-      el.classList.toggle("hidden", !html);
+      const editorCard = $("ed-editor-card");
+      const editorVisible = !editorCard || !editorCard.classList.contains("hidden");
+      el.classList.toggle("hidden", !html || !editorVisible);
     } catch (_) {
       el.classList.add("hidden");
       el.innerHTML = "";
@@ -763,8 +767,14 @@
     hideParticipants();
     const listCard = $("ed-publications-list-card");
     const editorCard = $("ed-editor-card");
+    const listHist = $("ed-list-history");
+    const pubHist = $("ed-pub-history");
     if (listCard) listCard.classList.remove("hidden");
     if (editorCard) editorCard.classList.add("hidden");
+    if (pubHist) pubHist.classList.add("hidden");
+    if (listHist) {
+      listHist.classList.toggle("hidden", !state.isAdmin || !listHist.innerHTML);
+    }
   }
 
   async function openNewPublication() {
@@ -780,6 +790,8 @@
     defaults.targetGroups = allGroupIds.slice();
     defaults.eventNotifyGroups = allGroupIds.slice();
     fillPublicationForm(defaults, null);
+    const listHist = $("ed-list-history");
+    if (listHist) listHist.classList.add("hidden");
     const histEl = $("ed-pub-history");
     if (histEl) {
       histEl.classList.add("hidden");
@@ -801,6 +813,8 @@
       }
     }
     fillPublicationForm(Core.publicationToFormValues(item), item);
+    const listHist = $("ed-list-history");
+    if (listHist) listHist.classList.add("hidden");
     $("ed-publications-list-card").classList.add("hidden");
     $("ed-editor-card").classList.remove("hidden");
     loadItemHistory(item.id);
@@ -1073,6 +1087,15 @@
     return role === "admin" || role === "editor";
   }
 
+  function userHasHistoryPerm(user) {
+    if (!user) return false;
+    if (Array.isArray(user.permissions)) {
+      return user.permissions.some((p) => String(p || "").trim().toLowerCase() === "historial");
+    }
+    const role = String(user.role || "").toLowerCase();
+    return role === "admin";
+  }
+
   const UpaCockpit = {
     configure(config) {
       state.config = { ...state.config, ...config };
@@ -1081,7 +1104,16 @@
 
     onUserLoaded(user) {
       state.allowed = userHasPublicationsPerm(user);
-      state.isAdmin = String((user && user.role) || "").toLowerCase() === "admin";
+      state.isAdmin = userHasHistoryPerm(user);
+      if (!state.isAdmin) {
+        ["ed-list-history", "ed-pub-history"].forEach((id) => {
+          const el = $(id);
+          if (el) {
+            el.classList.add("hidden");
+            el.innerHTML = "";
+          }
+        });
+      }
       if (!state.allowed) {
         const editorialEl = $("view-editorial");
         if (editorialEl) editorialEl.classList.add("hidden");
