@@ -64,34 +64,6 @@ class GoogleLoginRequest(BaseModel):
     )
 
 
-class DevLoginRequest(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "email": "pascal.thommen@upa.edu.py",
-                "full_name": "Pascal Thommen",
-            }
-        }
-    )
-
-    email: str = Field(
-        ...,
-        description="Correo institucional (@upa.edu.py) para generar sesion JWT de desarrollo",
-    )
-    full_name: str | None = Field(
-        default=None,
-        description="Nombre completo opcional del usuario",
-    )
-    classroom_token: str | None = Field(
-        default=None,
-        description="Token OAuth opcional para sincronizacion con Google Classroom",
-    )
-    classroom_refresh_token: str | None = Field(
-        default=None,
-        description="Refresh Token OAuth 2.0 opcional para auto-refresh de Google Classroom",
-    )
-
-
 class GoogleGroupDetail(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
@@ -465,87 +437,6 @@ async def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db
         user.role = resolved_role
         user.groups = mapped_tags
         user.google_groups = raw_google_groups
-        if payload.classroom_token and payload.classroom_token.strip():
-            user.classroom_token = payload.classroom_token.strip()
-            clear_classroom_cache(email)
-        if payload.classroom_refresh_token and payload.classroom_refresh_token.strip():
-            user.classroom_refresh_token = payload.classroom_refresh_token.strip()
-
-    db.commit()
-    db.refresh(user)
-
-    session_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
-
-    return AuthResponse(
-        access_token=session_token,
-        token_type="bearer",
-        user=_build_user_response(user, effective_permissions(db, user)),
-    )
-
-
-@router.post(
-    "/dev-login",
-    response_model=AuthResponse,
-    summary="Login provisorio de desarrollo mediante correo institucional",
-    responses={
-        400: {"model": ErrorResponse, "description": "Formato de correo electronico invalido"},
-        403: {"model": ErrorResponse, "description": "Dominio no permitido (solo @upa.edu.py)"},
-    },
-)
-async def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
-    """
-    Genera una sesion JWT real y completa a partir de un correo institucional @upa.edu.py
-    sin requerir configuracion de Google Cloud Console OAuth en el cliente.
-    Entrega exactamente la misma estructura AuthResponse y persistencia en base de datos
-    que el flujo OAuth estandar.
-    """
-    email = _validate_and_normalize_email(payload.email)
-    raw_google_groups = await get_google_groups_for_user(email)
-
-    user = db.query(User).filter(User.email == email).first()
-
-    if raw_google_groups:
-        mapped_tags = map_groups_to_logical_tags(raw_google_groups)
-    elif user and user.groups:
-        mapped_tags = [str(g).strip() for g in user.groups if g is not None and str(g).strip()]
-        if "ALL" not in mapped_tags:
-            mapped_tags.append("ALL")
-        mapped_tags = sorted(set(mapped_tags))
-        raw_google_groups = list(user.google_groups or [])
-    else:
-        default_tags = ["ALL", "Semester_4", "TIE"] if email == "pascal.thommen@upa.edu.py" else ["ALL"]
-        mapped_tags = sorted(set(default_tags))
-
-    resolved_role = _resolve_user_role(db, email, existing_user=user)
-    if not user:
-        full_name = _derive_full_name(email, payload.full_name)
-        user = User(
-            email=email,
-            full_name=full_name,
-            role=resolved_role,
-            groups=mapped_tags,
-            google_groups=raw_google_groups,
-            classroom_token=(
-                payload.classroom_token.strip() if payload.classroom_token and payload.classroom_token.strip() else None
-            ),
-            classroom_refresh_token=(
-                payload.classroom_refresh_token.strip()
-                if payload.classroom_refresh_token and payload.classroom_refresh_token.strip()
-                else None
-            ),
-        )
-        db.add(user)
-    else:
-        if payload.full_name and payload.full_name.strip():
-            user.full_name = payload.full_name.strip()
-        elif not user.full_name or not user.full_name.strip():
-            user.full_name = _derive_full_name(email)
-        user.role = resolved_role
-        user.groups = mapped_tags
-        if raw_google_groups:
-            user.google_groups = raw_google_groups
-        elif user.google_groups is None:
-            user.google_groups = []
         if payload.classroom_token and payload.classroom_token.strip():
             user.classroom_token = payload.classroom_token.strip()
             clear_classroom_cache(email)

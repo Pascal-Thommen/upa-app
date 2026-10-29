@@ -153,19 +153,21 @@ def test_anti_conflict_audit_no_null_values_across_endpoints():
         media_url=None,
         permalink=None,
     )
+    pascal = User(
+        email="pascal.thommen@upa.edu.py",
+        full_name="Pascal Thommen",
+        role="admin",
+        groups=["ALL", "Semester_4", "TIE"],
+    )
+    db.add(pascal)
     db.add(sparse_post)
     db.commit()
+    db.refresh(pascal)
+    pascal_id = pascal.id
     db.close()
 
-    login_resp = client.post(
-        "/api/auth/dev-login",
-        json={"email": "pascal.thommen@upa.edu.py"},
-    )
-    assert login_resp.status_code == 200
-    login_data = login_resp.json()
-    _assert_no_null_values(login_data, "dev_login")
-
-    headers = {"Authorization": f"Bearer {login_data['access_token']}"}
+    token = create_access_token({"sub": str(pascal_id), "email": "pascal.thommen@upa.edu.py", "role": "admin"})
+    headers = {"Authorization": f"Bearer {token}"}
 
     for endpoint in ["/api/auth/me", "/api/news", "/api/events", "/api/v1/app-state"]:
         resp = client.get(endpoint, headers=headers)
@@ -550,8 +552,9 @@ def test_openapi_docs_and_integration_guide_completeness():
     assert openapi_resp.status_code == 200
     schema = openapi_resp.json()
     paths = schema.get("paths", {})
+    assert "/api/auth/dev-login" not in paths
     for required_path in [
-        "/api/auth/dev-login",
+        "/api/auth/google",
         "/api/auth/me",
         "/api/v1/app-state",
         "/api/v1/agenda",
@@ -573,8 +576,9 @@ def test_openapi_docs_and_integration_guide_completeness():
     assert "delete" in paths["/api/events/{event_id}"]
 
     components = schema.get("components", {}).get("schemas", {})
+    assert "DevLoginRequest" not in components
     for required_model in [
-        "DevLoginRequest",
+        "GoogleLoginRequest",
         "AuthResponse",
         "UserResponse",
         "NewsResponse",
@@ -593,8 +597,9 @@ def test_openapi_docs_and_integration_guide_completeness():
     guide_path = Path(__file__).resolve().parent.parent.parent / "docs" / "FRONTEND_INTEGRATION_GUIDE.md"
     assert guide_path.exists()
     guide_text = guide_path.read_text(encoding="utf-8")
+    assert "POST /api/auth/dev-login" not in guide_text
     for expected_snippet in [
-        "POST /api/auth/dev-login",
+        "POST /api/auth/google",
         "Authorization: Bearer",
         "/api/v1/app-state",
         "/api/v1/agenda",

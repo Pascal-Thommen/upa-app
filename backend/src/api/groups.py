@@ -3,10 +3,10 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user_optional
+from ..auth import require_editor
 from ..database import get_db
 from ..models import AudienceGroup, User
-from ..permissions import require_permission
+from ..permissions import effective_permissions, require_permission
 from ..schemas.group import (
     EMAIL_PATTERN,
     AudienceGroupCreate,
@@ -39,10 +39,19 @@ def _snapshot(group: AudienceGroup) -> dict:
 @router.get("", response_model=list[AudienceGroupResponse], summary="Listar grupos de audiencia institucionales")
 def list_groups(
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_editor),
 ) -> list[AudienceGroupResponse]:
-    groups = db.query(AudienceGroup).all()
-    return sorted(groups, key=lambda g: ((g.name or "").strip().lower(), (g.id or "").lower()))
+    groups = sorted(
+        db.query(AudienceGroup).all(),
+        key=lambda g: ((g.name or "").strip().lower(), (g.id or "").lower()),
+    )
+    can_view_emails = "grupos" in effective_permissions(db, current_user)
+    return [
+        AudienceGroupResponse.model_validate(g).model_copy(
+            update={"emails": list(g.emails or []) if can_view_emails else []}
+        )
+        for g in groups
+    ]
 
 
 @router.get(

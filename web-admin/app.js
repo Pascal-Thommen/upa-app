@@ -735,6 +735,9 @@ function getAppJsonData() {
 let diagnosticsInFlight = null;
 
 async function updateJsonView() {
+  if (Array.isArray(allowedModulePerms) && !allowedModulePerms.includes("apis")) {
+    return;
+  }
   const rawJsonOutput = document.getElementById("raw-json-output");
   if (rawJsonOutput && state.diagnostics) {
     rawJsonOutput.textContent = JSON.stringify(
@@ -817,7 +820,7 @@ async function refreshDashboard() {
       loadClassroomDeadlines(),
       loadCampusFeed(),
     ];
-    if (currentActiveRoute !== "apis") {
+    if (currentActiveRoute !== "apis" && perms.includes("apis")) {
       tasks.push(updateJsonView());
     }
     if (currentActiveRoute !== "grupos" && (perms.includes("grupos") || perms.includes("publicaciones"))) {
@@ -868,34 +871,13 @@ async function handleLoginSubmit(event) {
   const classroomToken = DOM_ELEMENTS.inputClassroomToken ? DOM_ELEMENTS.inputClassroomToken.value.trim() : "";
 
   if (!token) {
-    showLoginAlert("Ingrese un correo institucional o JWT de sesión.", "error");
+    showLoginAlert("Ingrese un token de Google o JWT de sesión.", "error");
     return;
   }
 
   showLoginAlert("Validando acceso...", "info");
 
   try {
-    if (token.includes("@")) {
-      const devLoginResp = await fetch("/api/auth/dev-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: token,
-          classroom_token: classroomToken || null,
-        }),
-      });
-      if (devLoginResp.ok) {
-        const authData = await devLoginResp.json();
-        setStoredToken(authData.access_token);
-        showLoginAlert("Inicio de sesión exitoso.", "success");
-        await refreshDashboard();
-        return;
-      }
-      const err = await devLoginResp.json().catch(() => ({}));
-      showLoginAlert(err.detail || "Correo institucional no autorizado.", "error");
-      return;
-    }
-
     const googleLoginResp = await fetch("/api/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

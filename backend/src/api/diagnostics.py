@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user_optional
 from ..config import settings
 from ..database import engine, get_db
 from ..models import AudienceGroup, Post, User, UserRole
+from ..permissions import require_permission
 from ..schemas.diagnostic import SystemDiagnosticsResponse
 from ..services.google_groups import _load_service_account_credentials
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/system/diagnostics", tags=["Diagnostics"])
 @router.get("", response_model=SystemDiagnosticsResponse, summary="Telemetría en tiempo real del sistema")
 def get_system_diagnostics(
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(require_permission("apis")),
 ) -> SystemDiagnosticsResponse:
     # 1. Comprobacion de salud y metricas en PostgreSQL
     db_healthy = True

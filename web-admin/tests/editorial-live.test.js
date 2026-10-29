@@ -59,16 +59,17 @@ const PDF_BYTES = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer
 const sessions = {};
 const ctx = {};
 
-async function devLogin(email, fullName) {
-  const response = await fetch(`${BASE_URL}/api/auth/dev-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, full_name: fullName }),
+const TEST_TOKENS = process.env.UPA_TEST_TOKENS ? JSON.parse(process.env.UPA_TEST_TOKENS) : {};
+
+async function loadTestSession(email) {
+  const token = TEST_TOKENS[email];
+  assert.ok(token, `JWT de prueba disponible para ${email}`);
+  const response = await fetch(`${BASE_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
-  assert.equal(response.status, 200, `dev-login ${email}`);
-  const data = await response.json();
-  assert.ok(data.access_token, "el login devuelve un JWT");
-  return data;
+  assert.equal(response.status, 200, `/api/auth/me ${email}`);
+  const user = await response.json();
+  return { access_token: token, user };
 }
 
 function clientFor(token, extra) {
@@ -90,12 +91,19 @@ function tomorrowParts() {
 }
 
 test("preparacion: sesiones reales para administrador, redaccion y estudiantes", live, async () => {
-  sessions.admin = await devLogin("admin@upa.edu.py", "Admin UPA");
+  const removedDevLogin = await fetch(`${BASE_URL}/api/auth/dev-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "admin@upa.edu.py" }),
+  });
+  assert.equal(removedDevLogin.status, 404, "/api/auth/dev-login eliminado (404)");
+
+  sessions.admin = await loadTestSession("admin@upa.edu.py");
   assert.equal(sessions.admin.user.role, "admin");
-  sessions.editor = await devLogin("redaccion@upa.edu.py", "Redaccion Marketing");
+  sessions.editor = await loadTestSession("redaccion@upa.edu.py");
   assert.equal(sessions.editor.user.role, "editor");
-  sessions.student1 = await devLogin("ana.gomez@upa.edu.py", "Ana Gomez");
-  sessions.student2 = await devLogin("luis.benitez@upa.edu.py", "Luis Benitez");
+  sessions.student1 = await loadTestSession("ana.gomez@upa.edu.py");
+  sessions.student2 = await loadTestSession("luis.benitez@upa.edu.py");
   assert.equal(sessions.student1.user.role, "user");
   ctx.admin = clientFor(sessions.admin.access_token);
   ctx.editor = clientFor(sessions.editor.access_token);
@@ -433,6 +441,11 @@ test("permisos: la redaccion publica; un estudiante recibe 403 en todas las acci
   );
   await assert.rejects(() => ctx.student.getEventRegistrations(1), forbidden);
   await assert.rejects(() => ctx.student.syncInstagram(), forbidden);
+  await assert.rejects(
+    () => ctx.student.uploadMedia(new File([PNG_BYTES], "bloqueado.png", { type: "image/png" })),
+    forbidden
+  );
+  await assert.rejects(() => ctx.student.listGroups(), forbidden);
 
   // La noticia sigue intacta tras los intentos no autorizados
   assert.ok((await ctx.admin.listNews()).some((n) => n.id === ctx.newsId));

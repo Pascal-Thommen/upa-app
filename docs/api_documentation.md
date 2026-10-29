@@ -31,34 +31,6 @@ Verifica la disponibilidad operativa del backend y la conexión a la base de dat
 
 ## 2. Autenticación y Perfil de Usuario
 
-### `POST /api/auth/dev-login`
-Genera una sesión JWT real y completa a partir de cualquier correo institucional `@upa.edu.py` para el desarrollo del frontend sin requerir configuración previa en Google Cloud Console.
-
-**Cuerpo de la Petición:**
-```json
-{
-  "email": "pascal.thommen@upa.edu.py",
-  "full_name": "Pascal Thommen"
-}
-```
-
-**Respuesta (200 OK):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "user": {
-    "id": 1,
-    "email": "pascal.thommen@upa.edu.py",
-    "full_name": "Pascal Thommen",
-    "role": "admin",
-    "groups": ["ALL", "Semester_4", "TIE"],
-    "google_groups": [],
-    "has_classroom_token": false
-  }
-}
-```
-
 ### `POST /api/auth/google`
 Autentica al usuario mediante el ID Token emitido por Google Sign-In en Android. Aplica restricción obligatoria al dominio institucional `@upa.edu.py`.
 

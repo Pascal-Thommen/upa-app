@@ -10,6 +10,7 @@ sin credenciales de Instagram/FCM) y ejecuta con Node las pruebas de `web-admin/
 En CI la ausencia de Node es un fallo; en local la prueba se omite con un aviso explicito.
 """
 
+import json
 import os
 import re
 import shutil
@@ -36,7 +37,16 @@ from src.models import User
 Base.metadata.create_all(bind=engine)
 ensure_schema_upgrades(engine)
 db = SessionLocal()
-db.add(User(email="redaccion@upa.edu.py", full_name="Redaccion Marketing", role="editor", groups=["ALL"]))
+db.add_all(
+    [
+        User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL", "TIE"]),
+        User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion Marketing", role="editor", groups=["ALL"]),
+        User(id=3, email="ana.gomez@upa.edu.py", full_name="Ana Gomez", role="user", groups=["ALL", "TIE"]),
+        User(id=4, email="luis.benitez@upa.edu.py", full_name="Luis Benitez", role="user", groups=["ALL", "TIE"]),
+        User(id=5, email="dom.estudiante1@upa.edu.py", full_name="Carla Rojas", role="user", groups=["ALL", "TIE"]),
+        User(id=6, email="dom.estudiante2@upa.edu.py", full_name="Diego Vera", role="user", groups=["ALL", "TIE"]),
+    ]
+)
 db.commit()
 db.close()
 """
@@ -154,10 +164,23 @@ def test_cockpit_end_to_end_against_real_backend(live_backend):
         {"sub": "1", "email": "admin@upa.edu.py", "role": "admin"},
         expires_delta=timedelta(minutes=-5),
     )
+    test_tokens = {
+        "admin@upa.edu.py": create_access_token({"sub": "1", "email": "admin@upa.edu.py", "role": "admin"}),
+        "redaccion@upa.edu.py": create_access_token({"sub": "2", "email": "redaccion@upa.edu.py", "role": "editor"}),
+        "ana.gomez@upa.edu.py": create_access_token({"sub": "3", "email": "ana.gomez@upa.edu.py", "role": "user"}),
+        "luis.benitez@upa.edu.py": create_access_token({"sub": "4", "email": "luis.benitez@upa.edu.py", "role": "user"}),
+        "dom.estudiante1@upa.edu.py": create_access_token(
+            {"sub": "5", "email": "dom.estudiante1@upa.edu.py", "role": "user"}
+        ),
+        "dom.estudiante2@upa.edu.py": create_access_token(
+            {"sub": "6", "email": "dom.estudiante2@upa.edu.py", "role": "user"}
+        ),
+    }
     env = {
         **os.environ,
         "UPA_BASE_URL": live_backend["base_url"],
         "UPA_EXPIRED_TOKEN": expired_token,
+        "UPA_TEST_TOKENS": json.dumps(test_tokens),
     }
     summary = _run_node_tests(node, [WEB_TESTS / "editorial-live.test.js"], env)
     assert summary["tests"] >= 15

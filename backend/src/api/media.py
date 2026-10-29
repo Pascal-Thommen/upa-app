@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from starlette.responses import Response
 from starlette.types import Scope
 
-from ..auth import get_current_user
+from ..auth import require_editor
 from ..config import settings
 from ..models import User
 from ..schemas.feed import ErrorResponse
@@ -111,13 +111,14 @@ def _bad_request(detail: str) -> HTTPException:
             "description": "Archivo ausente, vacio, demasiado grande o con tipo no permitido",
         },
         401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
+        403: {"model": ErrorResponse, "description": "Permisos insuficientes (requiere rol editor o admin)"},
         500: {"model": ErrorResponse, "description": "No se pudo persistir el archivo en el servidor"},
     },
 )
 async def upload_media(
     request: Request,
     file: UploadFile | None = File(None, description="Archivo multipart/form-data (campo 'file')"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ) -> MediaUploadResponse:
     """
     Guarda el archivo de forma persistente con nombre UUID y devuelve su URL publica.

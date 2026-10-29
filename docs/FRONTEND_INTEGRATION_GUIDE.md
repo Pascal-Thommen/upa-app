@@ -15,24 +15,23 @@ Todos los endpoints entregan estructuras JSON tipadas, libres de valores nulos i
 
 ## 2. Autenticacion y Uso de `Authorization: Bearer <token>`
 
-### 2.1 Login Provisorio de Desarrollo (`POST /api/auth/dev-login`)
+### 2.1 Login Oficial con Google OAuth 2.0 (`POST /api/auth/google`)
 
-Para agilizar el desarrollo del frontend sin depender de la configuracion de credenciales OAuth en Google Cloud Console, el endpoint `POST /api/auth/dev-login` genera una sesion JWT real y firmada utilizando cualquier correo institucional `@upa.edu.py`.
+El endpoint `POST /api/auth/google` valida el ID Token de Google y genera una sesion JWT real y firmada utilizando exclusivamente cuentas del dominio institucional `@upa.edu.py`.
 
 * Crea o actualiza el registro real del usuario en la base de datos.
 * Permite enviar opcionalmente `classroom_token` y `classroom_refresh_token` para sincronizacion de Google Classroom.
 * Consulta y sincroniza automaticamente los grupos de Google Workspace si el Service Account esta activo.
 * Asigna el rol `admin` a cuentas administrativas (`pascal.thommen@upa.edu.py`, `soporte.ti@upa.edu.py`, `admin@upa.edu.py`) y el rol `user` a cuentas estudiantiles.
-* Retorna exactamente la misma estructura `AuthResponse` que el flujo OAuth estandar.
+* Retorna la estructura `AuthResponse` con el token de sesion y el perfil del usuario.
 
-**Peticion (`POST /api/auth/dev-login`):**
+**Peticion (`POST /api/auth/google`):**
 ```http
-POST /api/auth/dev-login HTTP/1.1
+POST /api/auth/google HTTP/1.1
 Content-Type: application/json
 
 {
-  "email": "pascal.thommen@upa.edu.py",
-  "full_name": "Pascal Thommen"
+  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEifQ..."
 }
 ```
 
@@ -66,7 +65,7 @@ Content-Type: application/json
 
 ### 2.2 Como Enviar el Token en Peticiones Protegidas (`Authorization: Bearer <token>`)
 
-Una vez obtenido el `access_token` desde `/api/auth/dev-login` o `/api/auth/google`, el cliente debe enviarlo en el encabezado HTTP `Authorization` en cada peticion a los endpoints protegidos:
+Una vez obtenido el `access_token` desde `/api/auth/google`, el cliente debe enviarlo en el encabezado HTTP `Authorization` en cada peticion a los endpoints protegidos:
 
 ```http
 Authorization: Bearer <access_token>
@@ -74,10 +73,10 @@ Authorization: Bearer <access_token>
 
 #### Ejemplo con `curl`:
 ```bash
-# 1. Obtener el token JWT mediante dev-login
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/dev-login \
+# 1. Obtener el token JWT mediante Google ID Token
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/google \
   -H "Content-Type: application/json" \
-  -d '{"email": "pascal.thommen@upa.edu.py"}' | jq -r '.access_token')
+  -d '{"id_token": "<GOOGLE_ID_TOKEN>"}' | jq -r '.access_token')
 
 # 2. Consumir un endpoint protegido enviando el encabezado Authorization
 curl -X GET http://localhost:8000/api/auth/me \
