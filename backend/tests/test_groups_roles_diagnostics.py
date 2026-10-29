@@ -120,13 +120,32 @@ def setup_database():
 
 
 def test_list_groups():
-    res = client.get("/api/groups")
+    # Sin autenticación -> 401
+    unauth = client.get("/api/groups")
+    assert unauth.status_code == 401
+
+    # Estudiante regular -> 403
+    student_res = client.get("/api/groups", headers=auth(STUDENT_ID, STUDENT_EMAIL, "user"))
+    assert student_res.status_code == 403
+
+    # Redactor solo de publicaciones (sin permiso 'grupos') -> 200 pero con emails vacíos (sin filtración)
+    editor_res = client.get("/api/groups", headers=auth(EDITOR_ID, EDITOR_EMAIL, "editor"))
+    assert editor_res.status_code == 200
+    editor_data = editor_res.json()
+    assert len(editor_data) >= 2
+    assert all(g["emails"] == [] for g in editor_data)
+
+    # Gestor con permiso 'grupos' -> 200 con lista completa de emails
+    res = client.get("/api/groups", headers=auth(GROUPS_MGR_ID, GROUPS_MGR_EMAIL, "editor"))
     assert res.status_code == 200
     data = res.json()
     assert len(data) >= 2
     ids = [g["id"] for g in data]
     assert "estudiantes" in ids
     assert "robotica" in ids
+    by_id = {g["id"]: g for g in data}
+    assert by_id["estudiantes"]["emails"] == ["estudiantes@upa.edu.py"]
+    assert by_id["robotica"]["emails"] == ["robotica@upa.edu.py"]
     # Orden alfabético por nombre ("Club de Robótica" antes que "Estudiantes")
     names = [g["name"] for g in data]
     assert names == sorted(names, key=lambda n: n.lower())
@@ -257,7 +276,7 @@ def test_delete_custom_group_success():
     assert res.status_code == 200
     assert res.json()["id"] == "robotica"
 
-    res_list = client.get("/api/groups")
+    res_list = client.get("/api/groups", headers=auth(GROUPS_MGR_ID, GROUPS_MGR_EMAIL, "editor"))
     ids = [g["id"] for g in res_list.json()]
     assert "robotica" not in ids
 
@@ -367,7 +386,15 @@ def test_revoke_normal_role_success():
 
 
 def test_system_diagnostics_live():
-    res = client.get("/api/system/diagnostics")
+    # Sin autenticación -> 401
+    assert client.get("/api/system/diagnostics").status_code == 401
+
+    # Estudiante regular o redactor sin permiso 'apis' -> 403
+    assert client.get("/api/system/diagnostics", headers=auth(STUDENT_ID, STUDENT_EMAIL, "user")).status_code == 403
+    assert client.get("/api/system/diagnostics", headers=auth(EDITOR_ID, EDITOR_EMAIL, "editor")).status_code == 403
+
+    # Administrador con permiso 'apis' -> 200
+    res = client.get("/api/system/diagnostics", headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
     assert res.status_code == 200
     data = res.json()
     assert data["status"] in ("healthy", "degraded")

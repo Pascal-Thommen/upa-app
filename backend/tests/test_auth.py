@@ -181,10 +181,32 @@ def test_google_callback_error_param_redirects():
     assert "/dashboard/?auth_error=access_denied" in location
 
 
-def test_dev_login_admin_pascal_returns_full_jwt_session():
+def test_dev_login_endpoint_removed_returns_404():
     response = client.post(
         "/api/auth/dev-login",
         json={"email": "pascal.thommen@upa.edu.py"},
+    )
+    assert response.status_code == 404
+
+
+def test_google_login_admin_pascal_returns_full_jwt_session(monkeypatch):
+    from src.api import auth as auth_api
+
+    async def fake_verify_google_id_token(id_token: str):
+        assert id_token == "valid-google-token-pascal"
+        return {"email": "pascal.thommen@upa.edu.py", "name": "Pascal Thommen"}
+
+    async def fake_get_google_groups(email: str):
+        return [
+            {"id": "1", "name": "Estudiantes TIE", "email": "estudiantes.tie@upa.edu.py", "description": "TIE"},
+        ]
+
+    monkeypatch.setattr(auth_api, "verify_google_id_token", fake_verify_google_id_token)
+    monkeypatch.setattr(auth_api, "get_google_groups_for_user", fake_get_google_groups)
+
+    response = client.post(
+        "/api/auth/google",
+        json={"id_token": "valid-google-token-pascal"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -214,10 +236,21 @@ def test_dev_login_admin_pascal_returns_full_jwt_session():
     assert "TIE" in me_data["groups"]
 
 
-def test_dev_login_creates_new_student_with_strict_privacy():
+def test_google_login_creates_new_student_with_strict_privacy(monkeypatch):
+    from src.api import auth as auth_api
+
+    async def fake_verify_google_id_token(id_token: str):
+        return {"email": "  Maria.Gomez@upa.edu.py  ", "name": ""}
+
+    async def fake_get_google_groups(email: str):
+        return []
+
+    monkeypatch.setattr(auth_api, "verify_google_id_token", fake_verify_google_id_token)
+    monkeypatch.setattr(auth_api, "get_google_groups_for_user", fake_get_google_groups)
+
     response = client.post(
-        "/api/auth/dev-login",
-        json={"email": "  Maria.Gomez@upa.edu.py  "},
+        "/api/auth/google",
+        json={"id_token": "valid-google-token-maria"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -232,7 +265,9 @@ def test_dev_login_creates_new_student_with_strict_privacy():
     assert user["has_classroom_token"] is False
 
 
-def test_dev_login_rejects_invalid_email_formats_400():
+def test_google_login_rejects_invalid_email_formats_400(monkeypatch):
+    from src.api import auth as auth_api
+
     invalid_emails = [
         "",
         "   ",
@@ -243,12 +278,18 @@ def test_dev_login_rejects_invalid_email_formats_400():
         "usuario@dominio_sin_punto",
     ]
     for bad_email in invalid_emails:
-        resp = client.post("/api/auth/dev-login", json={"email": bad_email})
+        async def fake_verify(id_token: str, _email=bad_email):
+            return {"email": _email, "name": "Test"}
+
+        monkeypatch.setattr(auth_api, "verify_google_id_token", fake_verify)
+        resp = client.post("/api/auth/google", json={"id_token": "token-with-bad-email"})
         assert resp.status_code == 400, f"Expected 400 for {bad_email!r}, got {resp.status_code}"
         assert "detail" in resp.json()
 
 
-def test_dev_login_rejects_non_upa_domain_403():
+def test_google_login_rejects_non_upa_domain_403(monkeypatch):
+    from src.api import auth as auth_api
+
     forbidden_emails = [
         "externo@gmail.com",
         "usuario@outlook.com",
@@ -256,7 +297,11 @@ def test_dev_login_rejects_non_upa_domain_403():
         "estudiante@fakeupa.edu.py",
     ]
     for ext_email in forbidden_emails:
-        resp = client.post("/api/auth/dev-login", json={"email": ext_email})
+        async def fake_verify(id_token: str, _email=ext_email):
+            return {"email": _email, "name": "Externo"}
+
+        monkeypatch.setattr(auth_api, "verify_google_id_token", fake_verify)
+        resp = client.post("/api/auth/google", json={"id_token": "token-with-ext-email"})
         assert resp.status_code == 403, f"Expected 403 for {ext_email!r}, got {resp.status_code}"
         assert "upa.edu.py" in resp.json()["detail"]
 

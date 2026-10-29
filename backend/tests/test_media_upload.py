@@ -70,7 +70,8 @@ def setup_database():
     db.add_all(
         [
             User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL"]),
-            User(id=2, email="estudiante@upa.edu.py", full_name="Estudiante TIE", role="user", groups=["TIE"]),
+            User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion UPA", role="editor", groups=["ALL"]),
+            User(id=3, email="estudiante@upa.edu.py", full_name="Estudiante TIE", role="user", groups=["TIE"]),
         ]
     )
     db.commit()
@@ -202,6 +203,12 @@ def test_upload_rejects_invalid_token(clean_upload_dir):
 def test_upload_rejects_token_of_unknown_user(clean_upload_dir):
     response = upload(PNG, "image/png", headers=auth(999))
     assert response.status_code == 401
+    assert upload_dir_entries() == []
+
+
+def test_upload_forbidden_for_regular_student(clean_upload_dir):
+    response = upload(PNG, "image/png", headers=auth(3))
+    assert response.status_code == 403
     assert upload_dir_entries() == []
 
 

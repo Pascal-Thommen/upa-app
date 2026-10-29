@@ -82,23 +82,25 @@ async function api(pathname, token, options) {
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 
-async function devLogin(email, fullName) {
-  const response = await fetch(`${BASE_URL}/api/auth/dev-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, full_name: fullName }),
+const TEST_TOKENS = process.env.UPA_TEST_TOKENS ? JSON.parse(process.env.UPA_TEST_TOKENS) : {};
+
+async function loadTestToken(email) {
+  const token = TEST_TOKENS[email];
+  assert.ok(token, `JWT de prueba disponible para ${email}`);
+  const response = await fetch(`${BASE_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
-  assert.equal(response.status, 200, `dev-login ${email}`);
-  return (await response.json()).access_token;
+  assert.equal(response.status, 200, `/api/auth/me ${email}`);
+  return token;
 }
 
 const tokens = {};
 
 test("preparacion: sesiones reales de administrador, redaccion y estudiantes", live, async () => {
-  tokens.admin = await devLogin("admin@upa.edu.py", "Admin UPA");
-  tokens.editor = await devLogin("redaccion@upa.edu.py", "Redaccion Marketing");
-  tokens.student1 = await devLogin("dom.estudiante1@upa.edu.py", "Carla Rojas");
-  tokens.student2 = await devLogin("dom.estudiante2@upa.edu.py", "Diego Vera");
+  tokens.admin = await loadTestToken("admin@upa.edu.py");
+  tokens.editor = await loadTestToken("redaccion@upa.edu.py");
+  tokens.student1 = await loadTestToken("dom.estudiante1@upa.edu.py");
+  tokens.student2 = await loadTestToken("dom.estudiante2@upa.edu.py");
   assert.ok(tokens.admin && tokens.editor && tokens.student1 && tokens.student2);
 });
 
