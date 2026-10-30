@@ -514,3 +514,215 @@ test("formatDateTime usa 24 horas sin a. m. / p. m. y historial muestra detalle 
   );
   assert.ok(hist.includes("permisos: +publicaciones, -historial"));
 });
+
+test("autocompletar con IA: applyAiSuggestionsToFormValues completa solo campos vacios y preserva los existentes", () => {
+  assert.equal(Core.TEXTS.aiAutocompleteButton, "Autocompletar con IA");
+  assert.equal(Core.TEXTS.aiAutocompleteBusy, "Analizando contenido e imagen...");
+  assert.equal(Core.TEXTS.aiAutocompleteSuccess, "Campos completados por IA");
+  assert.equal(
+    Core.TEXTS.aiAutocompleteError,
+    "No se pudo autocompletar: Verifique la clave de IA en Control de IA"
+  );
+
+  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20T18:30"), "2026-11-20T18:30");
+  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20 18:30:00"), "2026-11-20T18:30");
+  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20"), "2026-11-20T09:00");
+
+  const currentForm = {
+    title: "Título ya escrito por el editor",
+    postType: "MANUAL",
+    hasRegistration: false,
+    targetGroups: [],
+    isNews: true,
+    caption: "",
+    content: "Charla el 20 de noviembre a las 18:30 en el Auditorio Central.",
+    linkLabel: "",
+    linkUrl: "",
+    isEvent: false,
+    eventStart: "",
+    eventEnd: "",
+    location: "",
+  };
+
+  const aiSuggestions = {
+    title: "Título de la IA que debe ignorarse",
+    caption: "Resumen breve sugerido por IA",
+    content: "Contenido de la IA que debe ignorarse",
+    is_event: true,
+    event_start: "2026-11-20T18:30",
+    event_end: "2026-11-20T20:00",
+    location: "Auditorio Central",
+    target_groups: ["TIE", "TI"],
+    has_registration: true,
+    link_label: "Inscribirse aquí",
+    link_url: "https://upa.edu.py/inscripcion",
+  };
+
+  const merged = Core.applyAiSuggestionsToFormValues(currentForm, aiSuggestions);
+  assert.equal(merged.title, "Título ya escrito por el editor", "No debe sobreescribir el título existente");
+  assert.equal(
+    merged.content,
+    "Charla el 20 de noviembre a las 18:30 en el Auditorio Central.",
+    "No debe sobreescribir el contenido existente"
+  );
+  assert.equal(merged.caption, "Resumen breve sugerido por IA");
+  assert.equal(merged.isEvent, true);
+  assert.equal(merged.eventStart, "2026-11-20T18:30");
+  assert.equal(merged.eventEnd, "2026-11-20T20:00");
+  assert.equal(merged.location, "Auditorio Central");
+  assert.deepEqual(merged.targetGroups, ["TIE", "TI"]);
+  assert.equal(merged.hasRegistration, true);
+  assert.equal(merged.linkLabel, "Inscribirse aquí");
+  assert.equal(merged.linkUrl, "https://upa.edu.py/inscripcion");
+
+  // Si el usuario ya había elegido grupos destinatarios y lugar, tampoco se sobreescriben
+  const withGroupsAndLoc = {
+    ...currentForm,
+    targetGroups: ["PI"],
+    location: "Sala de Conferencias 2",
+  };
+  const mergedPreserved = Core.applyAiSuggestionsToFormValues(withGroupsAndLoc, aiSuggestions);
+  assert.deepEqual(mergedPreserved.targetGroups, ["PI"]);
+  assert.equal(mergedPreserved.location, "Sala de Conferencias 2");
+});
+
+test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de carga, rellena solo campos vacios y maneja errores", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const { JSDOM } = require("jsdom");
+
+  const webAdminDir = path.resolve(__dirname, "..");
+  let html = fs.readFileSync(path.join(webAdminDir, "index.html"), "utf8");
+  html = html.replace(/<script\s+src="[^"]*"><\/script>/g, "");
+
+  const dom = new JSDOM(html, {
+    url: "http://127.0.0.1:8185/dashboard/publicaciones",
+    runScripts: "outside-only",
+    pretendToBeVisual: true,
+  });
+  const { window } = dom;
+  const { document } = window;
+
+  let autocompleteMode = "success";
+  let lastAutocompleteBody = null;
+  let busyTextObserved = "";
+
+  window.AbortController = AbortController;
+  window.FormData = FormData;
+  window.File = File;
+  window.Blob = Blob;
+  window.confirm = () => true;
+  window.alert = () => {};
+  window.Element.prototype.scrollIntoView = function () {};
+  window.localStorage.setItem("upa_access_token", "test-jwt-token");
+
+  window.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/api/auth/me")) {
+      return new Response(
+        JSON.stringify({
+          id: 1,
+          email: "pascal.thommen@upa.edu.py",
+          full_name: "Pascal Thommen",
+          role: "admin",
+          permissions: ["publicaciones", "grupos", "roles", "apis", "historial"],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (url.includes("/api/groups")) {
+      return new Response(
+        JSON.stringify([
+          { id: "ALL", name: "Toda la comunidad UPA" },
+          { id: "TIE", name: "Ingeniería Empresarial" },
+          { id: "TI", name: "Tecnologías de la Información" },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (url.includes("/api/publications/autocomplete-ai")) {
+      const btn = document.getElementById("ed-pub-autocomplete-ai");
+      busyTextObserved = btn ? btn.textContent.trim() : "";
+      lastAutocompleteBody = init && init.body ? JSON.parse(init.body) : {};
+      if (autocompleteMode === "error") {
+        return new Response(
+          JSON.stringify({
+            detail: "No se pudo autocompletar: Verifique la clave de IA en Control de IA.",
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          caption: "Resumen generado por Gemini",
+          is_event: true,
+          event_start: "2026-11-25T18:30",
+          event_end: "2026-11-25T20:00",
+          location: "Auditorio Central",
+          target_groups: ["TIE"],
+          has_registration: true,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  for (const script of ["editorial-core.js", "editorial.js"]) {
+    window.eval(fs.readFileSync(path.join(webAdminDir, script), "utf8"));
+  }
+
+  window.UpaCockpit.configure({ getToken: () => "test-jwt-token" });
+  window.UpaCockpit.onUserLoaded({
+    id: 1,
+    email: "pascal.thommen@upa.edu.py",
+    role: "admin",
+    permissions: ["publicaciones", "grupos", "roles", "apis", "historial"],
+  });
+  await window.UpaCockpit.openNewPublication();
+
+  const aiBtn = document.getElementById("ed-pub-autocomplete-ai");
+  assert.ok(aiBtn, "El botón Autocompletar con IA debe existir en el editor");
+  assert.equal(aiBtn.textContent.trim(), "Autocompletar con IA");
+
+  // El usuario ingresa título y contenido, dejando el resto vacío
+  document.getElementById("ed-pub-title").value = "Seminario de Robótica (Usuario)";
+  document.getElementById("ed-pub-content").value = "El 25 de noviembre a las 18:30 hs en el Auditorio Central para TIE.";
+
+  aiBtn.click();
+  await new Promise((r) => setTimeout(r, 50));
+
+  assert.equal(busyTextObserved, "Analizando contenido e imagen...");
+  assert.equal(aiBtn.disabled, false);
+  assert.equal(aiBtn.textContent.trim(), "Autocompletar con IA");
+  assert.equal(lastAutocompleteBody.title, "Seminario de Robótica (Usuario)");
+
+  // Verificar que los campos del usuario se conservaron y los vacíos se completaron
+  assert.equal(document.getElementById("ed-pub-title").value, "Seminario de Robótica (Usuario)");
+  assert.equal(document.getElementById("ed-pub-caption").value, "Resumen generado por Gemini");
+  assert.equal(document.getElementById("ed-pub-is-event").checked, true);
+  assert.equal(document.getElementById("ed-pub-event-start").value, "2026-11-25T18:30");
+  assert.equal(document.getElementById("ed-pub-event-end").value, "2026-11-25T20:00");
+  assert.equal(document.getElementById("ed-pub-location").value, "Auditorio Central");
+  assert.equal(document.getElementById("ed-pub-rsvp").checked, true);
+  const checkedGroups = Array.from(
+    document.querySelectorAll("#ed-pub-target-groups input[type=checkbox]:checked")
+  ).map((el) => el.value);
+  assert.deepEqual(checkedGroups, ["TIE"]);
+  assert.equal(document.getElementById("ed-notice").textContent, "Campos completados por IA");
+
+  // Caso de error (IA desactivada o clave inválida)
+  autocompleteMode = "error";
+  aiBtn.click();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(
+    document
+      .getElementById("ed-notice")
+      .textContent.includes("No se pudo autocompletar: Verifique la clave de IA en Control de IA")
+  );
+
+  window.close();
+});

@@ -1,14 +1,20 @@
 """API unificada de Publicaciones (Noticia, Evento o ambos simultaneamente)."""
 
+import base64
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path as FilePath
+from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, status
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request, status
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session, selectinload
 
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_db
-from ..models import EventRegistration, Post, PostView, User
+from ..models import AudienceGroup, EventRegistration, Post, PostView, User
 from ..permissions import require_permission
 from ..schemas.event import EventRegistrationEntry
 from ..schemas.post import (
@@ -29,6 +35,7 @@ from ..schemas.publication import (
     clean_group_codes,
     extract_instagram_teaser,
 )
+from ..services import gemini
 from ..services.audit import AUDIT_TARGET_POST, changed_fields, log_audit
 from ..services.push import (
     EMERGENCY_BANNER,
@@ -36,6 +43,7 @@ from ..services.push import (
     collect_recipient_tokens,
     dispatch_emergency_push,
 )
+from .media import get_upload_dir, sniff_content_type
 
 router = APIRouter(prefix="/api/publications", tags=["Publications"])
 
@@ -313,6 +321,227 @@ def list_publications(
 
     rows = query.order_by(desc(Post.is_pinned), desc(Post.created_at), desc(Post.id)).limit(limit).all()
     return [PublicationResponse.from_orm_post(row) for row in rows]
+
+
+AI_SUPPORTED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+
+
+def _normalize_autocomplete_form(raw: dict[str, Any]) -> dict[str, Any]:
+    """Normaliza las claves del formulario (snake_case o camelCase) recibidas para autocompletar con IA."""
+    raw_groups = raw.get("target_groups") if "target_groups" in raw else raw.get("targetGroups")
+    if isinstance(raw_groups, str):
+        stripped = raw_groups.strip()
+        if stripped.startswith("["):
+            try:
+                raw_groups = json.loads(stripped)
+            except ValueError:
+                raw_groups = [stripped]
+        elif stripped:
+            raw_groups = [g.strip() for g in stripped.split(",") if g.strip()]
+        else:
+            raw_groups = []
+    return {
+        "title": str(raw.get("title") or "").strip(),
+        "caption": str(raw.get("caption") or "").strip(),
+        "content": str(raw.get("content") or "").strip(),
+        "detail_text": str(raw.get("detail_text") if "detail_text" in raw else (raw.get("detailText") or "")).strip(),
+        "location": str(raw.get("location") or "").strip(),
+        "event_start": str(
+            raw.get("event_start") if "event_start" in raw else (raw.get("eventStart") or "")
+        ).strip(),
+        "event_end": str(raw.get("event_end") if "event_end" in raw else (raw.get("eventEnd") or "")).strip(),
+        "target_groups": clean_group_codes(raw_groups),
+        "category": str(raw.get("category") or "").strip(),
+        "link_label": str(raw.get("link_label") if "link_label" in raw else (raw.get("linkLabel") or "")).strip(),
+        "link_url": str(raw.get("link_url") if "link_url" in raw else (raw.get("linkUrl") or "")).strip(),
+        "media_url": str(
+            raw.get("media_url") or raw.get("image_url") or raw.get("imageUrl") or ""
+        ).strip(),
+        "post_type": str(raw.get("post_type") or raw.get("postType") or "MANUAL").strip().upper(),
+        "is_news": bool(raw.get("is_news") if "is_news" in raw else raw.get("isNews", True)),
+        "is_event": bool(raw.get("is_event") if "is_event" in raw else raw.get("isEvent", False)),
+        "has_registration": bool(
+            raw.get("has_registration") if "has_registration" in raw else raw.get("hasRegistration", False)
+        ),
+        "image_base64": raw.get("image_base64") or raw.get("imageBase64") or "",
+    }
+
+
+def _resolve_media_bytes(form_data: dict[str, Any]) -> tuple[bytes | None, str | None]:
+    """Obtiene los bytes y el tipo MIME de la imagen desde base64, almacenamiento local (/uploads) o URL HTTP."""
+    b64_raw = str(form_data.get("image_base64") or "").strip()
+    if b64_raw:
+        if "," in b64_raw and b64_raw.lower().startswith("data:"):
+            b64_raw = b64_raw.split(",", 1)[1].strip()
+        try:
+            decoded = base64.b64decode(b64_raw, validate=False)
+        except ValueError:
+            decoded = b""
+        if decoded:
+            mime = sniff_content_type(decoded)
+            if mime in AI_SUPPORTED_MIME_TYPES:
+                return decoded, mime
+
+    media_url = str(form_data.get("media_url") or "").strip()
+    if not media_url:
+        return None, None
+
+    clean_path = media_url.split("?", 1)[0].split("#", 1)[0]
+    if "/uploads/" in clean_path:
+        fname = clean_path.rsplit("/uploads/", 1)[-1].strip("/")
+        if fname and FilePath(fname).name == fname:
+            try:
+                local_file = get_upload_dir() / fname
+                if local_file.is_file():
+                    raw_bytes = local_file.read_bytes()
+                    mime = sniff_content_type(raw_bytes)
+                    if mime in AI_SUPPORTED_MIME_TYPES:
+                        return raw_bytes, mime
+            except OSError:
+                pass
+
+    if media_url.startswith(("http://", "https://")):
+        try:
+            resp = httpx.get(media_url, timeout=settings.GEMINI_TIMEOUT_SECONDS)
+            if resp.status_code == 200 and resp.content:
+                mime = sniff_content_type(resp.content)
+                if mime not in AI_SUPPORTED_MIME_TYPES:
+                    header_mime = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                    if header_mime in AI_SUPPORTED_MIME_TYPES:
+                        mime = header_mime
+                if mime in AI_SUPPORTED_MIME_TYPES:
+                    return resp.content, mime
+        except httpx.HTTPError:
+            pass
+
+    return None, None
+
+
+@router.post(
+    "/autocomplete-ai",
+    summary="Autocompletar campos vacíos de una publicación mediante IA multimodal (Google Gemini Flash)",
+)
+async def autocomplete_publication_ai(
+    request: Request,
+    db: Session = Depends(get_db),
+    editor: User = Depends(require_permission("publicaciones")),
+) -> dict[str, Any]:
+    content_type = (request.headers.get("content-type") or "").lower()
+    raw_dict: dict[str, Any] = {}
+    uploaded_bytes: bytes | None = None
+    uploaded_mime: str | None = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        for json_key in ("data", "form", "payload"):
+            raw_json = form.get(json_key)
+            if isinstance(raw_json, str) and raw_json.strip():
+                try:
+                    parsed = json.loads(raw_json)
+                    if isinstance(parsed, dict):
+                        raw_dict.update(parsed)
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="El JSON enviado en el formulario no es válido.",
+                    ) from exc
+        direct_keys = (
+            "title",
+            "caption",
+            "content",
+            "detail_text",
+            "detailText",
+            "location",
+            "event_start",
+            "eventStart",
+            "event_end",
+            "eventEnd",
+            "target_groups",
+            "targetGroups",
+            "category",
+            "link_label",
+            "linkLabel",
+            "link_url",
+            "linkUrl",
+            "media_url",
+            "image_url",
+            "imageUrl",
+            "post_type",
+            "postType",
+            "is_news",
+            "isNews",
+            "is_event",
+            "isEvent",
+            "has_registration",
+            "hasRegistration",
+        )
+        for key in direct_keys:
+            if key in form:
+                val = form.get(key)
+                if isinstance(val, str):
+                    raw_dict[key] = val
+        upload_obj = form.get("file") or form.get("image")
+        if upload_obj is not None and hasattr(upload_obj, "read"):
+            data_bytes = await upload_obj.read(settings.MAX_UPLOAD_SIZE_BYTES + 1)
+            if len(data_bytes) > settings.MAX_UPLOAD_SIZE_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El archivo supera el tamaño máximo permitido de 10 MB.",
+                )
+            if data_bytes:
+                sniffed = sniff_content_type(data_bytes)
+                if sniffed not in AI_SUPPORTED_MIME_TYPES:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="El archivo adjunto no coincide con un formato válido (JPG, PNG, WEBP, PDF).",
+                    )
+                uploaded_bytes = data_bytes
+                uploaded_mime = sniffed
+    else:
+        body_bytes = await request.body()
+        if body_bytes.strip():
+            try:
+                parsed = json.loads(body_bytes)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El cuerpo JSON de la solicitud no es válido.",
+                ) from exc
+            if not isinstance(parsed, dict):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Se esperaba un objeto JSON con los datos del formulario.",
+                )
+            raw_dict = parsed
+
+    normalized_form = _normalize_autocomplete_form(raw_dict)
+    if uploaded_bytes is None:
+        uploaded_bytes, uploaded_mime = _resolve_media_bytes(normalized_form)
+
+    api_key, _source = gemini.resolve_api_key(db)
+    db_groups = db.query(AudienceGroup).all()
+    available_groups = [
+        {"id": str(g.id).strip(), "name": str(g.name or g.id).strip()}
+        for g in db_groups
+        if getattr(g, "id", None)
+    ]
+
+    result = gemini.autocomplete_publication(
+        api_key,
+        form_data=normalized_form,
+        available_groups=available_groups,
+        image_bytes=uploaded_bytes,
+        image_mime_type=uploaded_mime,
+    )
+    if not result.ok:
+        err_status = (
+            status.HTTP_400_BAD_REQUEST
+            if result.code in ("NO_KEY", "INVALID_KEY", "FORBIDDEN")
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        raise HTTPException(status_code=err_status, detail=result.message)
+
+    return result.suggestions
 
 
 @router.get(

@@ -576,6 +576,19 @@ test("grupos y matriz de roles en vivo contra SQLite/PostgreSQL", live, async ()
   // Control de IA: guardar clave de Gemini y consultar clave enmascarada
   const aiBefore = await ctx.admin.getAiConfig();
   assert.equal(typeof aiBefore.configured, "boolean");
+
+  // Sin clave configurada, autocompletar con IA devuelve el mensaje claro indicando verificar Control de IA
+  await assert.rejects(
+    () =>
+      ctx.editor.autocompletePublicationAi({
+        title: "Jornada IA",
+        content: "El 25 de noviembre a las 18:00 en el Auditorio.",
+      }),
+    (err) =>
+      err.status === 400 &&
+      err.message.includes("No se pudo autocompletar: Verifique la clave de IA en Control de IA")
+  );
+
   const aiSaved = await ctx.admin.saveAiConfig("AIzaSyLiveCockpitKey1234");
   assert.equal(aiSaved.configured, true);
   assert.equal(aiSaved.masked_key, "AIza********1234");

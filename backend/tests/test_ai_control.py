@@ -285,3 +285,176 @@ def test_ai_live_connection_network_and_timeout(monkeypatch):
         for c in accepted:
             c.close()
         hanging_sock.close()
+
+
+PNG_1X1 = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+    b"\x00\x00\x00\x0cIDATx\x9cc\xf8\xcf\xc0\x00\x00\x03\x01\x01\x00\x18\xdd\x8d\xb0"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def test_publication_autocomplete_ai_multimodal_fills_only_empty_fields(monkeypatch, tmp_path):
+    received_requests: list[dict] = []
+    stub_suggestions = {
+        "title": "Título sugerido por IA que NO debe sobreescribir",
+        "caption": "Resumen generado por IA",
+        "content": "Contenido que NO debe sobreescribir",
+        "is_event": True,
+        "event_start": "2026-11-20T18:30",
+        "event_end": "2026-11-20T20:30",
+        "location": "Auditorio Principal UPA",
+        "target_groups": ["TIE", "TI"],
+        "has_registration": True,
+    }
+    next_response = {
+        "status": 200,
+        "body": {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [{"text": json.dumps(stub_suggestions, ensure_ascii=False)}],
+                    }
+                }
+            ]
+        },
+    }
+
+    class GeminiAutocompleteStubHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8") if length else "{}"
+            received_requests.append(
+                {
+                    "path": self.path,
+                    "api_key": self.headers.get("x-goog-api-key", ""),
+                    "body": json.loads(raw),
+                }
+            )
+            payload = json.dumps(next_response["body"]).encode("utf-8")
+            self.send_response(next_response["status"])
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), GeminiAutocompleteStubHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        monkeypatch.setattr(settings, "GEMINI_API_BASE_URL", f"http://127.0.0.1:{port}")
+        monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path / "uploads"))
+
+        admin_headers = auth(ADMIN_ID, ADMIN_EMAIL, "admin")
+        editor_headers = auth(EDITOR_ID, EDITOR_EMAIL, "editor")
+        student_headers = auth(STUDENT_ID, STUDENT_EMAIL, "user")
+
+        # 1. Permisos: sin auth -> 401, estudiante -> 403
+        assert client.post("/api/publications/autocomplete-ai", json={"title": "Test"}).status_code == 401
+        assert (
+            client.post("/api/publications/autocomplete-ai", json={"title": "Test"}, headers=student_headers).status_code
+            == 403
+        )
+
+        # 2. Sin clave de IA configurada -> 400 con mensaje claro de Control de IA
+        no_key_res = client.post(
+            "/api/publications/autocomplete-ai",
+            json={"title": "Charla IA", "content": "El 20/11 a las 18:30 en el Auditorio Principal"},
+            headers=editor_headers,
+        )
+        assert no_key_res.status_code == 400
+        assert (
+            "No se pudo autocompletar: Verifique la clave de IA en Control de IA" in no_key_res.json()["detail"]
+        )
+
+        # 3. Configurar clave de IA y subir imagen real a /api/media/upload
+        client.post("/api/ai/config", json={"api_key": "AIzaValidAutocompleteKey99"}, headers=admin_headers)
+        upload_res = client.post(
+            "/api/media/upload",
+            files={"file": ("flyer.png", PNG_1X1, "image/png")},
+            headers=editor_headers,
+        )
+        assert upload_res.status_code == 201
+        media_url = upload_res.json()["url"]
+
+        # 4. Autocompletar con JSON + media_url: title y content ya tienen valor, el resto está vacío
+        auto_res = client.post(
+            "/api/publications/autocomplete-ai",
+            json={
+                "title": "Foro Anual de Ingeniería (Título del Usuario)",
+                "caption": "",
+                "content": "Invitamos a estudiantes de TIE y TI el 20 de noviembre a las 18:30 hs.",
+                "location": "",
+                "event_start": "",
+                "event_end": "",
+                "target_groups": [],
+                "media_url": media_url,
+            },
+            headers=editor_headers,
+        )
+        assert auto_res.status_code == 200
+        suggestions = auto_res.json()
+
+        # Los campos ya ingresados por el usuario (title, content) NO se sobreescriben
+        assert "title" not in suggestions
+        assert "content" not in suggestions
+
+        # Los campos vacíos sí se completan
+        assert suggestions["caption"] == "Resumen generado por IA"
+        assert suggestions["is_event"] is True
+        assert suggestions["event_start"] == "2026-11-20T18:30"
+        assert suggestions["event_end"] == "2026-11-20T20:30"
+        assert suggestions["location"] == "Auditorio Principal UPA"
+        assert suggestions["target_groups"] == ["TIE", "TI"]
+        assert suggestions["has_registration"] is True
+
+        # Verificar que Gemini recibió tanto el prompt de texto como la imagen inline_data en base64
+        assert len(received_requests) == 1
+        parts = received_requests[0]["body"]["contents"][0]["parts"]
+        assert len(parts) == 2
+        assert "Foro Anual de Ingeniería" in parts[0]["text"]
+        assert parts[1]["inline_data"]["mime_type"] == "image/png"
+        assert len(parts[1]["inline_data"]["data"]) > 10
+
+        # 5. Autocompletar vía multipart/form-data con archivo directo y location/target_groups ya fijados
+        multipart_res = client.post(
+            "/api/publications/autocomplete-ai",
+            data={
+                "data": json.dumps(
+                    {
+                        "title": "",
+                        "content": "Texto en afiche",
+                        "location": "Campus San Lorenzo (Fijado por usuario)",
+                        "target_groups": ["PI"],
+                    }
+                )
+            },
+            files={"file": ("afiche.png", PNG_1X1, "image/png")},
+            headers=editor_headers,
+        )
+        assert multipart_res.status_code == 200
+        mp_body = multipart_res.json()
+        assert mp_body["title"] == "Título sugerido por IA que NO debe sobreescribir"
+        assert "location" not in mp_body
+        assert "target_groups" not in mp_body
+        assert mp_body["event_start"] == "2026-11-20T18:30"
+
+        # 6. Error de cuota o clave inválida en Gemini durante autocompletado -> mensaje claro
+        next_response["status"] = 403
+        next_response["body"] = {"error": {"code": 403, "message": "Invalid key", "status": "PERMISSION_DENIED"}}
+        err_res = client.post(
+            "/api/publications/autocomplete-ai",
+            json={"title": "Prueba error"},
+            headers=editor_headers,
+        )
+        assert err_res.status_code == 400
+        assert "No se pudo autocompletar: Verifique la clave de IA en Control de IA" in err_res.json()["detail"]
+    finally:
+        server.shutdown()
+        server.server_close()
