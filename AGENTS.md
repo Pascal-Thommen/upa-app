@@ -1,28 +1,27 @@
-# Guia para Agentes de IA y Desarrolladores (AGENTS.md)
+# Leitfaden fuer KI Agenten und Entwickler (AGENTS.md)
 
-Este documento contiene las directrices centrales de trabajo para todos los agentes autonomos de programacion (Cursor, Claude Code, GitHub Copilot, Antigravity) y desarrolladores del proyecto UPA App.
+Dieses Dokument enthaelt die verbindlichen Arbeitsrichtlinien fuer alle autonomen Entwicklungsagenten und Entwickler des Projekts UPA App.
 
-## 1. Descripcion General y Arquitectura
-El proyecto es una plataforma universitaria para la Universidad Paraguayo Alemana (UPA):
-* `android/`: Aplicacion nativa para Android (Android Studio, Kotlin).
-* `backend/`: Servicio REST API desarrollado con Python 3.11+ y FastAPI.
-* `web-admin/`: Portal web ligero para edicion y marketing (version escritorio).
-* `docs/`: Definicion de contratos de API, modelos de datos y especificaciones.
+## 1. Systemuebersicht und Architektur
+Die Plattform der Universidad Paraguayo Alemana (UPA) besteht aus drei produktiven Hauptkomponenten:
+* `web-app/`: Responsive Studenten PWA (Mobile First fuer Android und iOS, Trusted Web Activity Ready) mit Desktop QR Code Landingpage, Service Worker (`/sw.js`) und Web App Manifest (`/manifest.webmanifest`).
+* `web-admin/`: Administratives Desktop Cockpit (`/dashboard/`) fuer Redaktion (`Publicaciones` inkl. `Autocompletar con IA`), Zielgruppen (`Grupos`), Berechtigungsrollen (`Roles`), KI Steuerung (`Control de IA`), Systemdiagnose (`APIs`) und Audit Historie (`Historial`), ausgeliefert ueber Nginx.
+* `backend/`: Python 3.11+ FastAPI REST Service mit PostgreSQL 16, Google OAuth 2.0 (`@upa.edu.py`), Google Classroom Synchronisation mit persistentem DB Fallback und multimodaler Google Gemini Flash KI Integration.
+* `docs/`: Technische System, Architektur und OpenAPI Dokumentation.
 
-## 2. Politica de Seguridad: Cero Secretos en el Repositorio
-Todos los agentes deben cumplir estrictamente las siguientes reglas:
-* Nunca incluir claves de API reales, secretos de clientes OAuth, archivos de service accounts ni contrasenas en commits.
-* La configuracion se realiza exclusivamente mediante variables de entorno (.env).
-* Antes de cada commit, verificar que ningun dato privado o clave este hardcodeado en codigo, logs o pruebas.
-* Nuevas variables de entorno deben documentarse con valores de ejemplo en `.env.example`.
+## 2. Sicherheitsrichtlinie: Keine Geheimnisse im Repository
+* Niemals echte API Schluessel, OAuth Client Secrets, Service Account JSON Dateien oder Passwoerter in Commits aufnehmen.
+* Alle geheimen Konfigurationswerte werden ausschliesslich ueber `.env` Dateien oder die Serverdatenbank (`app_settings`) bezogen.
 
-## 3. Principios de Arquitectura y Convenciones
-* Idioma del Repositorio: Toda la documentacion, nombres de commits y comentarios de codigo se redactan en espanol.
-* API First: El backend expone una especificacion OpenAPI/Swagger interactiva en `/docs`. Los cambios de interfaz deben ser compatibles con versiones anteriores.
-* Single Source of Truth: Las publicaciones y eventos de calendario comparten el mismo modelo de datos relacional (hibrido post/evento).
-* Autenticacion: Google OAuth 2.0 con validacion estricta de dominio de correo (`@upa.edu.py`).
-* Modularidad: Cada componente (Android, Backend, Web-Admin) trabaja de forma independiente y se comunica mediante la API REST.
+## 3. Architekturprinzipien
+* **API First und OpenAPI 3.1:** Das Backend stellt unter `/docs` und `/openapi.json` die vollstaendige Spezifikation bereit.
+* **Single Source of Truth:** Mitteilungen und Kalenderveranstaltungen teilen sich dasselbe relationale Datenmodell (`posts` ueber `/api/publications`).
+* **Authentifizierung:** Ausschliesslich Google OAuth 2.0 fuer die Domain `@upa.edu.py` mit JWT Sitzungstokens.
+* **Zero Mock Standard:** Produktivcode und Tests werden durch `scripts/audit_zero_mock.py` geprueft.
 
-## 4. Comandos Utiles
-* Iniciar Backend: `cd backend && uvicorn src.main:app --reload --port 8000`
-* Ejecutar Pruebas: `pytest` dentro del directorio backend.
+## 4. Wichtige Befehle
+* Backend starten: `cd backend && uvicorn src.main:app --reload --port 8000`
+* Backend Tests ausfuehren: `PYTHONPATH=backend pytest backend/tests tests/test_audit_zero_mock.py`
+* PWA Tests ausfuehren: `npm --prefix web-app/tests test`
+* Web Admin Tests ausfuehren: `npm --prefix web-admin/tests test`
+* Zero Mock Audit ausfuehren: `python3 scripts/audit_zero_mock.py`

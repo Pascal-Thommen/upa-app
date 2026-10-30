@@ -1,40 +1,39 @@
-# UPA App: Especificacion Funcional y Operativa (Version Final)
+# UPA App: Operative und Funktionale Spezifikation (PWA und KI Stand)
 
-Documento vivo de ingenieria | Universidad Paraguayo Alemana (UPA)
+Technisches Referenzdokument | Universidad Paraguayo Alemana (UPA)
 
-## 1. Landing Page y Distribucion
-* Pantalla de Escritorio Minimalista: Muestra exactamente UN solo codigo QR que redirige a la URL de la PWA para instalacion en movil.
-* Galeria de Vista Previa: Dos capturas de pantalla de la app (estilo Play Store / App Store) que muestran el Feed y la Agenda.
-* Acceso Administrativo: Enlace discreto para inicio de sesion de marketing y administradores desde la PC.
+## 1. Desktop Landingpage und Bereitstellung (`web-app/index.html`)
+* **Schlanke Desktop Startseite:** Zeigt auf Desktop Bildschirmen links ein visuelles Smartphone Vorschaumodell (`phone-mockup`) mit der echten App Oberflaeche und rechts genau einen dynamisch generierten SVG QR Code (`#qr-box`), der direkt auf die URL der UPA Campus PWA verweist.
+* **Direkte Web Vorschau und Rueckkehr:** Ueber den Link `Probar la versión web aquí` (`/?app=1`) laesst sich die mobile PWA direkt am Desktop testen; eine dezente Kopfleiste (`Volver al código QR`) fuehrt jederzeit zur QR Code Ansicht zurueck.
+* **Administrativer Zugang:** Dezenter Link `Acceso Administrativo` im Footer mit Weiterleitung zum Web Admin Cockpit (`/dashboard/`).
 
-## 2. Experiencia de Usuario y Pantallas Moviles
+## 2. Mobile Benutzeroberflaeche der Studenten PWA (`web-app/`)
 
-### A. Modulo Inicio (Feed Central)
-* Avisos de Emergencia: Banners superiores temporales con fecha y hora de expiracion automatica ("Visible hasta").
-* Publicaciones y Charlas: Tarjetas interactivas con boton de 1 clic para Inscribirse y Cancelar inscripcion.
-* Modal de Pantalla Completa Estandarizado: Al hacer clic en cualquier elemento (noticia, aviso, evento de calendario o tarea), se abre siempre un modal a pantalla completa con texto integro, imagen en alta resolucion y boton de cierre (X).
+### A. Reiter Inicio (Zentraler Campus Feed)
+* **Eilmeldungen (`EMERGENCY_BANNER`):** Obere Warnbanner mit automatischer Ausblendung nach Erreichen des Ablaufzeitpunkts (`expires_at`).
+* **Beitraege, Instagram und Veranstaltungen:** Karten mit offiziellem Instagram Kamera Badge fuer Social Media Posts, KI generierten Eventdaten und direktem 1 Klick Button fuer Event Anmeldungen (`POST /api/events/{event_id}/register`) und Abmeldungen (`DELETE /api/events/{event_id}/register`).
+* **Vollbild Detailansicht:** Ein Tippen auf eine Karte oeffnet das Vollbild Overlay (`#detail`) mit hochaufloesendem Bild oder Video, komplettem Text, Metadaten, dedupliziertem Quellenbutton (`Ver en Instagram` bzw. `Abrir enlace`) und Unterstuetzung der Android Zurueck Geste (`createOverlayManager`).
 
-### B. Modulo Agenda (Calendario)
-* Vista Dual: Lista cronologica arriba y calendario mensual abajo con puntos de actividad.
-* Tareas de Google Classroom: Plazos oficiales con estado (Pendiente / Entregado) y enlace directo a Classroom.
-* Gestion de Asistencia: Si el estudiante pulsa "No asistire", el evento se atenua visualmente y deja de recibir recordatorios.
+### B. Reiter Agenda (Kalender und Google Classroom)
+* **Zweigeteilte Ansicht:** Chronologische Liste der anstehenden Veranstaltungen und Aufgaben im oberen Bereich sowie ein kompakter Monatskalender (`grid-auto-rows: 30px`) mit Aktivitaetspunkten im unteren Bereich.
+* **Google Classroom Aufgaben:** Zeigt Abgabefristen umgerechnet auf `America/Asuncion` mit direktem Link zur Aufgabe in Google Classroom. Bei Google API Verzoegerungen liefert das Backend automatisch den in PostgreSQL gespeicherten Stand (`classroom_deadlines_cache`).
 
-### C. Modulo Perfil y Configuracion
-* Identidad Universitaria: Nombre completo, foto de perfil, correo verificado (@upa.edu.py), carrera y semestre lectivo.
-* Boton de Cierre de Sesion: Borrado seguro de tokens OAuth y vaciado de cache de sesion.
-* Control de Almacenamiento Offline: Indicador de espacio ocupado en el dispositivo (ej. "3.2 MB usados") y boton "Vaciar y sincronizar datos locales".
-* Preferencias: Selector de Modo Oscuro / Claro y conmutadores de notificaciones push.
-* Version y Soporte: Numero de version (ej. v0.1.0) y enlace institucional de contacto.
+### C. Reiter Perfil (Identitaet und Einstellungen)
+* **Hochschulidentitaet:** Vollstaendiger Name, Initialen Avatar, verifizierte `@upa.edu.py` Adresse und Rollenbezeichnung (`Estudiante`, `Docente`, `Redacción`, `Administración`) ohne Offenlegung interner Zielgruppen.
+* **Design und Benachrichtigungen:** 3 Wege Theme Auswahl (`Sistema`, `Modo Claro`, `Modo Oscuro`) sowie Schalter fuer `Eventos`, `Avisos y comunicados` und `Fechas límite`.
+* **Sicheres Abmelden:** Loescht das JWT Token und leert den lokalen Nutzercache (`upa_campus_cache_*`).
 
-## 3. Panel de Administracion y Marketing (Escritorio)
+## 3. Web Admin Cockpit (`web-admin/` unter `/dashboard/`)
 
-### A. Feed de Entradas Unificadas (Single Source of Truth)
-* Terminologia: Cada elemento es una **Publicacion** unificada que puede activar la seccion de Noticia, la seccion de Evento o ambas simultaneamente.
-* Editor Simplificado: Titulo obligatorio, publicacion programada opcional, inscripcion RSVP desactivada por defecto, campo unico de carga multimedia para imagen o video (`JPG`, `PNG`, `WEBP`, `MP4`, `WEBM`, `PDF`), resumen corto (`caption`), texto principal unico (`content`), enlace de accion modular y fecha de vigencia (`expires_at`) obligatoria exclusivamente al fijar la publicacion arriba (`is_pinned`).
-* Barrera de Proteccion de Instagram: En publicaciones sincronizadas desde Instagram, el resumen corto toma automaticamente las dos primeras lineas del post y todos los campos sincronizados (`caption`, `content`, `media_url`, `permalink`, `published_at`) permanecen en modo de solo lectura.
-* Seccion de Evento: Hora de inicio obligatoria, hora de fin y lugar opcionales, grupos destinatarios preseleccionados por defecto para recordatorios y configuracion flexible de recordatorios en minutos, horas o dias (30 minutos por defecto).
-* Metricas de Alcance Real y Participantes: Muestra vistas unicas por usuario y conteo en tiempo real de inscritos y bajas.
+### A. Vereinheitlichter Publikations Editor (`/dashboard/publicaciones`)
+* **Single Source of Truth:** Jede Publikation kann gleichzeitig Mitteilung (`is_news`), Kalenderveranstaltung (`is_event`) oder beides sein.
+* **Multimodales KI Autocomplete (`Autocompletar con IA`):** Sendet die bereits eingetragenen Felder und das ausgewählte Bild oder Plakat an `POST /api/publications/autocomplete-ai` (Google Gemini Flash) und fuellt ausschliesslich die noch leeren Felder aus.
+* **Automatische KI Event Extraktion bei Instagram Sync:** Neue Instagram Posts werden beim Synchronisieren durch `backend/src/services/ai_extractor.py` multimodal analysiert. Erkannte Events werden direkt scharf geschaltet und mit dem Badge `IA` (`is_ai_generated = true`) markiert.
+* **Instagram Schreibschutz:** Bei synchronisierten Instagram Beiträgen bleiben Originaltext, Medien URL, Permalink und Veröffentlichungsdatum schreibgeschuetzt; der Kurztext (`caption`) wird aus den ersten zwei Zeilen abgeleitet.
+* **Reichweiten und RSVP Metriken:** Zeigt eindeutige Nutzeraufrufe (`views_count`) sowie Anmeldungen (`attending_count`) und Absagen (`declined_count`) in Echtzeit.
 
-### B. Gestion Alfabetica de Grupos y Matriz Segura de Roles
-* Grupos Ordenados Alfabeticamente: Lista plana sin jerarquias plegables artificiales de los grupos institucionales y de Google Workspace (`@upa.edu.py`), con filtro instantaneo en vivo y cache local en el servidor para evitar latencias y limites de cuota de Google Directory API.
-* Seguridad de Roles: Inicio de sesion limpio sin botones de acceso rapido de desarrollo y creacion de nuevos roles con todas las casillas de permisos (`publicaciones`, `grupos`, `roles`, `apis`) desmarcadas por defecto.
+### B. Gruppen, Rollen, KI Steuerung und Audit Historie
+* **Grupos (`/dashboard/grupos`):** Alphabetisch sortierte flache Liste der Zielgruppen und Google Workspace Gruppen mit Sofortfilter.
+* **Roles (`/dashboard/roles`):** Berechtigungsmatrix (`publicaciones`, `grupos`, `roles`, `apis`, `historial`) mit Least Privilege Standard.
+* **Control de IA (`/dashboard/ia`):** Maskierte Speicherung des Google Gemini API Schluessels und Live Verbindungstest (`POST /api/ai/test-connection`).
+* **APIs (`/dashboard/apis`) und Historial (`/dashboard/historial`):** Live Telemetrie aller Backend Integrationen und chronologisches Audit Protokoll im 24 Stunden Format.

@@ -79,6 +79,7 @@ jobs:
       - name: Install Campus PWA Test Dependencies
         run: |
           npm --prefix web-app/tests ci
+          npm --prefix web-admin/tests ci
 
       - name: Install Backend Dependencies
         run: |

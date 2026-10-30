@@ -1,49 +1,48 @@
-# Guía de Configuración: Google Cloud Console y Google Workspace
+# Konfigurationsleitfaden: Google Cloud Console, OAuth 2.0 und Gemini KI
 
-Guía técnica paso a paso para la configuración del acceso OAuth 2.0 y Google Classroom bajo el principio de mínimo privilegio y mínimo esfuerzo administrativo (Octubre 2026).
+Technische Dokumentation fuer die Einrichtung von Google OAuth 2.0, Google Classroom, Google Workspace Directory und Google Gemini Flash nach dem Least Privilege Prinzip.
 
----
+## 1. OAuth Nutzertyp: Intern (`upa.edu.py`)
 
-## 1. Tipo de Usuario OAuth: "Interno" (Recomendado)
+Durch Auswahl des Nutzertyps **Intern** in der Google Cloud Console fuer die Organisation `upa.edu.py`:
+* **Exklusiver Hochschulzugang:** Nur Konten der Domain `@upa.edu.py` koennen sich in der UPA Campus PWA und im Web Admin Cockpit anmelden (`hd=upa.edu.py`).
+* **Kryptografische Ablehnung externer Konten:** Private `@gmail.com` Adressen werden bereits beim OAuth Handshake sowie zusaetzlich im Backend (`_validate_and_normalize_email`) abgewiesen.
 
-Al seleccionar el tipo de usuario **Interno** en Google Cloud Console para la organización `upa.edu.py`:
-* **Acceso Exclusivo:** Únicamente cuentas con el dominio `@upa.edu.py` pueden iniciar sesión.
-* **Sin Verificación Externa:** No requiere someter la aplicación a revisión ni auditoría por parte de Google.
-* **Seguridad Estricta:** Las cuentas públicas de Gmail quedan automáticamente rechazadas a nivel criptográfico.
+## 2. Einrichtung in der Google Cloud Console
 
----
-
-## 2. Pasos en Google Cloud Console
-
-1. Acceder a [Google Cloud Console](https://console.cloud.google.com/) con una cuenta de administrador de `@upa.edu.py`.
-2. Crear un nuevo proyecto o seleccionar el proyecto institucional (ej. `upa-campus-app`).
-3. Ir a **APIs y servicios > Pantalla de consentimiento de OAuth**:
-   * Tipo de usuario: Seleccionar **Interno**.
-   * Nombre de la aplicación: `UPA Campus App`.
-   * Correo electrónico de asistencia: Correo institucional de soporte.
-4. Definir Permisos (Scopes) bajo el Principio de Mínimo Privilegio:
+1. In der [Google Cloud Console](https://console.cloud.google.com/) mit einem Administratorkonto von `@upa.edu.py` anmelden und das Projekt auswaehlen.
+2. Unter **APIs und Dienste > OAuth Zustimmungsbildschirm** konfigurieren:
+   * Nutzertyp: **Intern**
+   * Anwendungsname: `UPA Campus`
+   * Autorisierte Domains: `upa.edu.py` sowie die NetBird Ingress Domain (`netbird.services`)
+3. Folgende OAuth Scopes hinterlegen:
    * `openid`
    * `https://www.googleapis.com/auth/userinfo.email`
    * `https://www.googleapis.com/auth/userinfo.profile`
    * `https://www.googleapis.com/auth/classroom.courses.readonly`
    * `https://www.googleapis.com/auth/classroom.coursework.me.readonly`
-5. Ir a **APIs y servicios > Biblioteca** y habilitar:
+4. Unter **APIs und Dienste > Bibliothek** aktivieren:
    * **Google Classroom API**
-   * **Admin SDK API** (si se habilita sincronización de grupos)
-6. Crear Credenciales:
-   * **Cliente 1 (Servidor Backend):** Tipo "Aplicación web". Genera `Client ID` y `Client Secret`.
-   * **Cliente 2 (Cliente Android):** Tipo "Android". Requiere el Nombre de Paquete (Package Name) y la Huella Digital SHA-1 del Keystore de compilación.
+   * **Admin SDK API** (fuer Google Workspace Gruppensynchronisation)
+5. Unter **APIs und Dienste > Anmeldedaten** einen OAuth 2.0 Client vom Typ **Webanwendung** fuer das FastAPI Backend erstellen:
+   * Autorisierte Weiterleitungs URIs (`redirect_uri`):
+     * Produktion: `https://upa.eu1.netbird.services/api/auth/google`
+     * Beta: `https://upa-beta.eu1.netbird.services/api/auth/google`
+     * Lokal: `http://localhost:8000/api/auth/google` und `http://localhost:8085/api/auth/google`
+   * Sowohl die Studenten PWA (`/api/auth/login-google?return_to=campus`) als auch das Web Admin Cockpit (`/api/auth/login-google`) nutzen denselben zentralen Web OAuth Client ueber das Backend (`resolve_google_redirect_uri`).
 
----
+## 3. Google Gemini API Schluessel fuer KI Funktionen
 
-## 3. Capa Intermedia de Grupos (Target Groups Mapping)
+Fuer die multimodale Instagram Event Extraktion (`backend/src/services/ai_extractor.py`) und den Editor Button `Autocompletar con IA` (`POST /api/publications/autocomplete-ai`):
+1. Unter `https://aistudio.google.com/app/apikey` einen API Schluessel erstellen.
+2. Im Web Admin Cockpit unter `/dashboard/ia` (`Control de IA`) einfuegen, speichern (`POST /api/ai/config`) und per `Probar conexión` (`POST /api/ai/test-connection`) verifizieren. Alternativ kann die Umgebungsvariable `GEMINI_API_KEY` gesetzt werden.
 
-Para evitar que el equipo de Marketing deba gestionar más de 200 grupos de Google, el backend implementa un catálogo de grupos lógicos simplificado:
+## 4. Logische Zielgruppen Abbildung (Target Groups Mapping)
 
-* `ALL`: Toda la comunidad universitaria.
-* `TIE`: Ingeniería Empresarial.
-* `PI`: Ingeniería Industrial.
-* `TI`: Tecnologías de la Información.
-* `PROF`: Cuerpo docente y académico.
-
-El backend resuelve las membresías internas mapeando los grupos de Google correspondientes hacia estas categorías maestras.
+Um ueber 200 einzelne Google Workspace Verteiler fuer die Redaktion uebersichtlich zu halten, bildet das Backend (`backend/src/services/google_groups.py`) die Workspace Gruppen auf kuratierte Zielgruppen in `audience_groups` ab:
+* `ALL`: Gesamte Hochschulgemeinschaft
+* `estudiantes`, `docentes`, `staff`, `egresados`: Institutionelle Basisgruppen
+* `TIE`: Ingenieria Empresarial
+* `PI`: Ingenieria Industrial
+* `TI`: Tecnologias de la Informacion
+* `PROF`: Lehrkoerper

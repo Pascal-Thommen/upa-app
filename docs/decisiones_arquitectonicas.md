@@ -1,55 +1,45 @@
-# UPA App: Especificación de Alcance, Usuarios y Matriz de Decisiones Arquitectónicas (Versión v2 / v3)
+# UPA App: Umfang, Rollenmodell und Architekturentscheidungen
 
-Documento Técnico y Estratégico de Ingeniería de Sistemas | Universidad Paraguayo Alemana (UPA)  
-Autores: Pascal Thommen, Equipo de Ingeniería Móvil, Natasha Kolman  
-Actualización: 25 de Octubre de 2026  
+Technisches Architektur und Strategiedokument | Universidad Paraguayo Alemana (UPA)  
+Verantwortlich: Pascal Thommen  
+Stand: 30. Oktober 2026  
 
----
+## 1. Systemzweck und Designphilosophie
+Ziel der Plattform UPA App ist die Konsolidierung des akademischen, kommunikativen und gemeinschaftlichen Campuslebens der Universidad Paraguayo Alemana in einer einzigen verlässlichen Datenquelle (Single Source of Truth).
+* **Fokussierter Minimalismus:** Klare, schnelle und ablenkungsfreie Benutzeroberflaeche auf Mobilgeraeten und am Desktop.
+* **Zero Mock Doktrin:** Jede Ansicht, jedes Formular und jeder Button ist direkt mit realer Backend Logik und PostgreSQL 16 verbunden.
 
-## 1. Propósito del Sistema y Filosofía de Diseño
-El objetivo de la plataforma UPA App es consolidar en un punto único de acceso (Single Source of Truth) la vida académica, comunicacional y comunitaria de la Universidad Paraguayo Alemana.
-* **Minimalismo Radical:** Interfaz limpia, ágil y directa, eliminando elementos accesorios o redundantes.
-* **Doctrina Zero-Mock (Cero Simulaciones):** Todo botón, formulario o vista está conectado a lógica real y fuentes auténticas en el backend.
+## 2. Benutzerrollen im System
+* **Studierende (`role = "user"`):** Nutzen die mobile Progressive Web App (`web-app/`), lesen Eilmeldungen und Campus News, melden sich mit einem Fingertipp zu Veranstaltungen an und verfolgen ihre Google Classroom Abgabefristen in der Agenda.
+* **Dozierende:** Sehen zielgruppenspezifische Mitteilungen, akademische Termine und Veranstaltungen ihrer Fakultaet.
+* **Redaktion und Marketing (`role = "editor"`):** Pflegen im Web Admin Cockpit (`web-admin/`) Publikationen, Veranstaltungen, Medienanhaenge und nutzen das multimodale KI Autocomplete.
+* **Systemadministration (`role = "admin"`):** Verwaltet zusaetzlich Zielgruppen (`Grupos`), Berechtigungsrollen (`Roles`), den Google Gemini API Schluessel (`Control de IA`), Systemdiagnosen (`APIs`) und das Audit Protokoll (`Historial`).
+* **Nicht angemeldete Besucher:** Sehen im oeffentlichen Modus der PWA ausschliesslich oeffentliche Instagram Beitraege (`@upalemana`) und koennen sich jederzeit mit ihrem institutionellen Konto `@upa.edu.py` ueber Google OAuth 2.0 anmelden.
 
----
+## 3. Verbindliche Architekturentscheidungen
 
-## 2. Análisis Exhaustivo de Usuarios y Roles (Personas del Sistema)
-* **Estudiante de Grado (Segmentado por Carrera y Semestre):** Consulta avisos urgentes, agenda con fechas límite de Google Classroom y participa en eventos institucionales mediante la aplicación móvil nativa.
-* **Personal Docente y Catedráticos:** Comunicación de avisos para el claustro, seguimiento de entregas académicas e interacción formativa.
-* **Personal Administrativo y Equipo de Marketing:** Gestión integral de contenidos desde el Portal Web Administrativo de escritorio (noticias, eventos, afiches multimedia y segmentación por audiencias).
-* **Usuario No Autenticado:** Acceso bloqueado. Únicamente se presenta la pantalla de inicio de sesión con Google OAuth 2.0 restringido al dominio `@upa.edu.py`.
+### 3.1. Mobiles Frontend: Progressive Web App (PWA) mit Desktop QR Code Landingpage
+* **Entscheidung:** Die Plattform setzt verbindlich auf eine plattformuebergreifende Progressive Web App (`web-app/`) fuer Android (Chrome und Trusted Web Activity) und iOS (Safari Homescreen Web App) inklusive vorgeschalteter Desktop QR Code Landingpage anstelle separater nativer Store Apps.
+* **Begruendung:** Sofortige Nutzbarkeit per Link ohne Installationszwang auf iOS und Android, einheitliche Codebasis ohne Store Freigabeverzoegerungen, vollstaendige Standalone Installation ueber `manifest.webmanifest`, Offline Shell Caching per Service Worker (`/sw.js`) sowie TWA Kompatibilitaet ueber `/.well-known/assetlinks.json`.
 
----
+### 3.2. Persistenzmodell: PostgreSQL 16 im Backend und geschichteter Client Cache in der PWA
+* **Entscheidung:** PostgreSQL 16 bildet den zentralen relationalen Datenspeicher im Backend (inklusive persistentem `classroom_deadlines_cache` pro Nutzer), waehrend die PWA einen Service Worker Shell Cache (`upa-campus-shell-1.0.0`) mit einem nutzergebundenen LocalStorage Datencache (`upa_campus_cache_*`) kombiniert.
+* **Begruendung:** Transaktionssichere Speicherung von RSVP Anmeldungen, Beitragsaufrufen, Rollen und Audit Logs auf dem Server; gleichzeitige Offline Verfuegbarkeit der App Oberflaeche und der zuletzt synchronisierten Inhalte auf dem Smartphone mit sauberer Bereinigung beim Abmelden.
 
-## 3. Matriz de Decisiones Arquitectónicas Oficiales (Actualizado v2 &bull; 23 de Octubre 2026)
+### 3.3. Drei Container Architektur mit Nginx Reverse Proxy
+* **Entscheidung:** Betrieb in drei getrennten Docker Containern (`upa-postgres`, `upa-backend`, `upa-frontend`). Der Nginx Container liefert sowohl die Studenten PWA (`/`, `/campus/`, `/sw.js`, `/manifest.webmanifest`) als auch das Web Admin Cockpit (`/dashboard/`) statisch aus und leitet `/api/`, `/uploads/`, `/health`, `/docs` und `/openapi.json` an FastAPI weiter.
+* **Begruendung:** Klare Trennung zwischen statischer Asset Auslieferung und API Ausfuehrung, einheitliche Origin fuer PWA und API ohne CORS Reibung im Produktivbetrieb sowie paralleler Betrieb einer isolierten Beta Umgebung (`docker-compose.beta.yml` auf Port 8185).
 
-### 3.1. Frontend Móvil: Aplicación Nativa Android (Kotlin / Jetpack Compose)
-* **Decisión:** Se determinó de forma definitiva desarrollar la solución móvil como aplicación nativa Android utilizando Kotlin y Jetpack Compose, descartando la alternativa de Progressive Web App (PWA).
-* **Fundamentación:** Acceso directo a APIs del sistema operativo móvil, rendimiento optimizado en animaciones y renderizado de listas, ciclo de vida robusto en segundo plano para notificaciones y persistencia local nativa mediante Room/SQLite.
+### 3.4. Zero Trust Netzwerkzugang ueber NetBird
+* **Entscheidung:** Bereitstellung der Produktions und Beta Umgebung ueber verschluesselte NetBird Ingress Endpunkte (`https://upa.eu1.netbird.services` und `https://upa-beta.eu1.netbird.services`).
+* **Begruendung:** Sichere TLS Terminierung und geschuetzte interne Containerkommunikation ohne offene Datenbankports im oeffentlichen Internet.
 
-### 3.2. Modelo de Persistencia Dual: PostgreSQL (Backend) y SQLite / Room (Móvil)
-* **Decisión:** PostgreSQL opera como motor relacional centralizado en el servidor, mientras que SQLite (vía Room) se reserva para la persistencia y caché local en el cliente móvil.
-* **Fundamentación:** El backend gestiona alta concurrencia, transacciones seguras de inscripciones a eventos (RSVP) e integridad referencial de auditoría. El cliente móvil aprovecha SQLite para garantizar soporte offline inmediato en caso de intermitencias de red.
+### 3.5. Institutionelle Authentifizierung ueber Google OAuth 2.0 (`@upa.edu.py`)
+* **Entscheidung:** Ausschliessliche Anmeldung ueber Google OAuth 2.0 fuer die Domain `@upa.edu.py` mit Offline Refresh Token fuer Google Classroom, automatischer Google Workspace Gruppensynchronisation, JWT Sitzungstokens und striktem Datenschutzfilter (`groups: []` fuer regulaere Studierende).
+* **Begruendung:** Keine lokale Passwortverwaltung, nahtlose Classroom Synchronisation mit automatischem Token Refresh im Hintergrund und Schutz interner E-Mail Verteilerlisten.
 
-### 3.3. Desacoplamiento de Contenedores Frontend y Backend
-* **Decisión:** Separar la interfaz web administrativa en su propio contenedor frontend independiente, desacoplándolo del contenedor de ejecución de la API en FastAPI.
-* **Fundamentación:** Modularidad de despliegue, escalabilidad independiente de tráfico para recursos estáticos y aislamiento de seguridad de los componentes de presentación respecto al núcleo de la API.
-
-### 3.4. Red Privada Mallada Zero-Trust (NetBird)
-* **Decisión:** Despliegue de servidores sobre túneles seguros punto a punto con NetBird (`upa.eu1.netbird.services`).
-* **Fundamentación:** Permite la comunicación segura y cifrada entre el entorno de desarrollo, el servidor staging y la red universitaria sin exponer puertos de bases de datos o servicios administrativos directamente a la Internet pública.
-
-### 3.5. Autenticación y Federación de Identidades (Google OAuth 2.0)
-* **Decisión:** Autenticación delegada exclusiva para el dominio institucional `@upa.edu.py`, con obtención de `refresh_token` (`prompt=consent select_account`) y emisión de tokens JWT propios de corta duración para la API interna.
-* **Fundamentación:** Eliminación del riesgo de gestionar contraseñas locales y sincronización automática de permisos basada en los grupos de Google Workspace Admin Directory API.
-
-### 3.6. Portal Web-Admin y Cockpit Editorial (En preparación para Documento v3)
-* **Decisión:** Arquitectura modular con menú lateral institucional de cuatro módulos (`Publicaciones`, `Grupos`, `Roles`, `APIs`). El editor de publicaciones unifica noticias y eventos en un solo formulario limpio (con soporte de video `MP4`/`WEBM`, vigencia obligatoria al fijar arriba, recordatorios en minutos/horas/días y protección de solo lectura para Instagram), el módulo de Grupos presenta una lista plana alfabética con filtro instantáneo y caché de Google Directory API en el backend, y el módulo de Roles aplica privilegio mínimo estricto (casillas vacías por defecto y ausencia de botones de acceso rápido de desarrollo).
-
----
-
-## 4. Modelo Operativo del Equipo
-* **Pascal Thommen:** Product Owner, Arquitectura de Integración, Backend (FastAPI, PostgreSQL) e Infraestructura de Servidor (NetBird, Docker).
-* **Equipo de Desarrollo Móvil:** Desarrollo del Frontend Móvil Nativo Android (Kotlin, Jetpack Compose, Room/SQLite).
-* **Natasha Kolman:** Soporte de proyecto y coordinación institucional.
-* **Mika (Chief of Staff &bull; IA):** Coordinación técnica, bitácora de avances, especificaciones Zero-Mock y control de calidad CI/CD.
+### 3.6. Multimodale Google Gemini Flash KI Integration
+* **Entscheidung:** Einsatz von Google Gemini Flash fuer zwei Kernfunktionen:
+  1. **Automatische Instagram Event Extraktion (`backend/src/services/ai_extractor.py`):** Analysiert neue Instagram Posts multimodal (Caption Text und Flyer Bild) und veroeffentlicht erkannte Veranstaltungen direkt mit `is_ai_generated = true` unter Einhaltung der Eintages Plausibilitaetsregel.
+  2. **Smart Editor Autocomplete (`POST /api/publications/autocomplete-ai`):** Vervollstaendigt auf Klick im Editor (`Autocompletar con IA`) ausschliesslich noch leere Formularfelder anhand der vorhandenen Angaben und des hochgeladenen Plakats.
+* **Begruendung:** Drastische Reduktion des manuellen Redaktionsaufwands bei gleichzeitiger Ausfallsicherheit (nahtloser Fallback auf Standard News Post bei deaktivierter KI oder API Timeout).

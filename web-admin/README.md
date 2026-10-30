@@ -1,19 +1,24 @@
-# Portal de Administracion Web y Dashboard Institucional (Escritorio)
+# Web Admin Cockpit und Redaktionsportal (`web-admin/`)
 
-Panel web institucional y sistema de gestión para la Universidad Paraguayo Alemana (UPA).
+Administratives Desktop Portal der Universidad Paraguayo Alemana (UPA), erreichbar unter `/dashboard/`.
 
-## Responsabilidades y Funciones
-* **Publicaciones (`/dashboard/publicaciones`):** Editor unificado para noticias, eventos e ítems híbridos con título obligatorio, publicación programada opcional (`ed-pub-scheduled`), inscripción RSVP desactivada por defecto, notificación push (`Notificar por push`), carga centralizada de foto o video (`JPG`, `PNG`, `WEBP`, `MP4`, `WEBM`, `PDF`), texto principal único (`ed-pub-content`), fecha de vigencia obligatoria al fijar en el feed (`ed-pub-pinned` + `ed-pub-expires`), recordatorios flexibles en minutos, horas o días y protección de solo lectura para publicaciones sincronizadas de Instagram (con resumen automático de dos líneas).
-* **Grupos (`/dashboard/grupos`):** Lista plana ordenada alfabéticamente de audiencias y grupos reales de Google Workspace (`@upa.edu.py`) con filtro instantáneo en vivo y caché local en el backend para Google Directory API.
-* **Roles (`/dashboard/roles`):** Matriz interactiva de permisos por módulo (`publicaciones`, `grupos`, `roles`, `apis`) con todas las casillas desmarcadas por defecto al autorizar una nueva cuenta institucional y sin botones de acceso rápido de desarrollo en la vista de inicio de sesión.
-* **APIs (`/dashboard/apis`):** Estado en vivo de integraciones (Google OAuth, Google Directory, Google Classroom, Instagram Graph), cursos y entregas reales de Classroom y telemetría técnica.
+## Module und Funktionen
+* **Publicaciones (`/dashboard/publicaciones`):** Vereinheitlichter Editor fuer Mitteilungen, Veranstaltungen und hybride Beitraege mit Pflichtfeld Titel, optionaler Zeitplanung (`ed-pub-scheduled`), RSVP Schalter, Push Benachrichtigung, Medienupload (`JPG`, `PNG`, `WEBP`, `MP4`, `WEBM`, `PDF`), Pflichtablaufdatum beim Anpinnen (`ed-pub-pinned` + `ed-pub-expires`), Instagram Schreibschutz fuer synchronisierte Felder, `IA` Badge fuer automatisch extrahierte Instagram Events und dem Button `Autocompletar con IA` (`POST /api/publications/autocomplete-ai`).
+* **Grupos (`/dashboard/grupos`):** Alphabetisch sortierte Liste institutioneller Zielgruppen und realer Google Workspace Gruppen (`@upa.edu.py`) mit Echtzeit Filter.
+* **Roles (`/dashboard/roles`):** Berechtigungsmatrix pro Modul (`publicaciones`, `grupos`, `roles`, `apis`, `historial`) nach dem Least Privilege Prinzip.
+* **Control de IA (`/dashboard/ia`):** Verwaltung des Google Gemini API Schluessels (`GET/POST /api/ai/config`) und Live Verbindungstest (`POST /api/ai/test-connection`).
+* **APIs (`/dashboard/apis`) und Historial (`/dashboard/historial`):** Echtzeit Systemdiagnose (`/api/system/diagnostics`) und tabellarisches Audit Log (`/api/history`).
 
-## Componentes y Arquitectura
-* `index.html`: Interfaz SPA con barra lateral de 4 módulos dinámicos según permisos.
-* `editorial-core.js`: Validación pura, construcción de payloads, conversión de unidades de recordatorios, detección automática de imagen/video y cliente REST con timeout.
-* `editorial.js`: Controlador del editor unificado de publicaciones, barrera de protección de Instagram y carga multimedia.
-* `app.js`: Autenticación institucional `@upa.edu.py`, enrutador SPA (`UpaRouter`), gestión alfabética de grupos con filtro instantáneo y matriz de roles.
-* `style.css` y `editorial.css`: Estilos institucionales e indicadores de estado.
+## Komponenten
+* `index.html`: SPA Oberflaeche mit rollenbasierter Seitenleiste.
+* `editorial-core.js`: Formularvalidierung, Payload Erstellung, Erinnerungsumrechnung, Medienerkennung und REST Client mit Timeout.
+* `editorial.js`: Controller des Publikations Editors inklusive `Autocompletar con IA` und Instagram Schreibschutz.
+* `app.js`: Google OAuth Anmeldung (`@upa.edu.py`), SPA Router (`UpaRouter`), Gruppenverwaltung, Rollenmatrix, KI Steuerung und Diagnoseansicht.
+* `nginx.conf` und `Dockerfile`: Nginx Produktionskonfiguration fuer die Auslieferung der Studenten PWA (`/`) und des Web Admin Cockpits (`/dashboard/`).
 
-## Ejecución
-El portal es servido automáticamente por el backend en `/dashboard/` y `/admin/`, o de forma independiente mediante cualquier servidor web estático.
+## Automatisierte Tests
+
+```bash
+cd web-admin/tests
+npm test
+```

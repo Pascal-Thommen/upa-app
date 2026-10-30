@@ -611,5 +611,64 @@ def test_openapi_docs_and_integration_guide_completeness():
         "DELETE /api/events/{event_id}",
         "classroom_refresh_token",
         "/api/classroom/deadlines",
+        "manifest.webmanifest",
+        "/sw.js",
+        "/api/publications/autocomplete-ai",
+        "/api/ai/config",
     ]:
         assert expected_snippet in guide_text, f"Missing {expected_snippet} in FRONTEND_INTEGRATION_GUIDE.md"
+
+
+def test_pwa_and_ai_documentation_integrity():
+    import re
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    md_files = [
+        repo_root / "README.md",
+        repo_root / "AGENTS.md",
+        repo_root / "web-app" / "README.md",
+        repo_root / "web-admin" / "README.md",
+        repo_root / "android" / "README.md",
+        repo_root / "docs" / "FRONTEND_INTEGRATION_GUIDE.md",
+        repo_root / "docs" / "api_documentation.md",
+        repo_root / "docs" / "decisiones_arquitectonicas.md",
+        repo_root / "docs" / "functional_spec.md",
+        repo_root / "docs" / "especificacion_funcional.md",
+        repo_root / "docs" / "google_cloud_setup.md",
+        repo_root / "docs" / "LOGBOOK.md",
+    ]
+
+    link_pattern = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+
+    for md_path in md_files:
+        assert md_path.is_file(), f"Missing markdown file: {md_path}"
+        content = md_path.read_text(encoding="utf-8")
+        assert content.strip(), f"Empty markdown file: {md_path}"
+        assert "\u2013" not in content, f"En-dash found in {md_path.name}"
+        assert "\u2014" not in content, f"Em-dash found in {md_path.name}"
+        assert "descartando la alternativa de Progressive Web App" not in content
+
+        for raw_target in link_pattern.findall(content):
+            target = raw_target.strip().split("#")[0]
+            if not target or target.startswith(("http://", "https://", "mailto:")):
+                continue
+            resolved = (md_path.parent / target).resolve()
+            assert resolved.exists(), f"Broken link '{raw_target}' in {md_path}"
+
+    readme_text = (repo_root / "README.md").read_text(encoding="utf-8")
+    for snippet in ("PWA", "web-app/", "TWA", "Autocompletar con IA", "docs/api_documentation.md"):
+        assert snippet in readme_text
+
+    api_doc_text = (repo_root / "docs" / "api_documentation.md").read_text(encoding="utf-8")
+    for snippet in (
+        "Nginx",
+        "Acceso Administrativo",
+        "/sw.js",
+        "/manifest.webmanifest",
+        "/api/publications/autocomplete-ai",
+        "/api/ai/config",
+        "/api/ai/test-connection",
+    ):
+        assert snippet in api_doc_text
+

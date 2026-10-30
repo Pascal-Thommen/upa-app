@@ -1,44 +1,39 @@
-# Bitácora de Decisiones Arquitectónicas y Evolución Técnica (LOGBOOK)
+# Technisches Architektur Logbuch (LOGBOOK)
 
-Este documento constituye el registro maestro cronológico de la evolución técnica, decisiones arquitectónicas, estándares de desarrollo y modificaciones críticas de la plataforma **UPA App** de la Universidad Paraguayo Alemana.
+Chronologische Aufzeichnung der technischen Meilensteine, Architekturentscheidungen und Systemerweiterungen der Plattform **UPA App** der Universidad Paraguayo Alemana (UPA).
 
----
+## Chronologie der Meilensteine
 
-### Registro Cronológico de Hitos y Decisiones
+1. **Basisarchitektur und Google OAuth 2.0 (`@upa.edu.py`):**
+   * Einrichtung der institutionellen Authentifizierung ueber Google OAuth 2.0 fuer die Domain `@upa.edu.py` mit JWT Sitzungstokens.
+   * Anbindung des Google Workspace Directory Service Accounts (`admin.directory.group.readonly`) zur Gruppensynchronisation.
+   * Rollentrennung zwischen `admin`, `editor` und `user`.
 
-1. **Arquitectura Base y Conexión OAuth 2.0 (Google Workspace / OIDC):**  
-   * Establecimiento del protocolo de autenticación federada con Google Workspace mediante OAuth 2.0 para el dominio institucional `@upa.edu.py`.  
-   * Configuración de la Service Account delegada para consulta de grupos (`admin.directory.group.readonly`).  
-   * Separación de roles: `admin` (gestión institucional y redacción) y `user` (estudiantes/docentes).
-2. **Sincronización Asíncrona con Google Classroom:**  
-   * Integración de la API de Google Classroom (`courses.readonly`, `coursework.me.readonly`) con tokens offline delegados.  
-   * Implementación de sincronización periódica en segundo plano para entrega de tareas y plazos académicos (`deadlines`) directamente agregados en la vista móvil.
-3. **Módulo Editorial y Feed Institucional:**  
-   * Rediseño del panel de redacción para creación de noticias y eventos universitarios con soporte de RSVP.  
-   * Sincronización automática de publicaciones desde Instagram Graph API (`instagram_service.py`).
-4. **Desacoplamiento en Microservicios y Contenedor Frontend Dedicado Nginx (SRV-150):**  
-   * Desacoplamiento de la arquitectura monolítica original (donde FastAPI servía directamente los archivos estáticos de la interfaz web) hacia una arquitectura moderna de 3 capas.  
-   * Contenedor Nginx Alpine optimizado para servir exclusivamente el portal administrativo (`web-admin`) y actuar como reverse proxy hacia el backend FastAPI (`http://backend:8000`).  
-   * Preservación intacta del flujo de autenticación Google OAuth 2.0 y su URI de redirección (`https://upa.eu1.netbird.services/api/auth/google`).  
-   * Infraestructura final en 3 contenedores productivos: `upa-postgres`, `upa-backend` y `upa-frontend`.
-5. **Hardening de Producción y Rediseño Institucional UPA (SRV-152):**  
-   * Incorporación del logotipo oficial de la UPA (Heidelberg - Asunción) y paleta institucional en verde oliva (#6c9339) en concordancia visual con la aplicación móvil.  
-   * Corrección definitiva del bug de renderizado en API 2 (Google Mailgruppen), extrayendo propiedades de nombre y correo para eliminar el formato `[object Object]`.  
-   * Optimización del flujo Google OAuth: cambio de `prompt=consent select_account` a `prompt=select_account`, eliminando la solicitud repetitiva de permisos cuando el usuario ya autorizó el acceso, preservando el `refresh_token` offline en PostgreSQL.  
-   * Eliminación del parpadeo de inicio de sesión mediante detección inmediata de token en `localStorage`, cargando la interfaz administrativa de forma instantánea.  
-   * Supresión radical de textos artificiales o marketing accesorio, adoptando un diseño minimalista y profesional.
-6. **Purga Radical de AI Slop, Separación de Diagnóstico y Alineación Visual con App UPA (SRV-153):**  
-   * **Encabezado institucional:** Eliminación definitiva de insignias de estado de APIs y etiquetas "EN VIVO", conservando logotipo oficial, título institucional y avatar con acción de logout.  
-   * **Barra lateral sobria:** Supresión de tarjeta informativa sobre stack móvil Kotlin/Compose y sustitución de emojis por iconografía SVG minimalista.  
-   * **Separación de diagnóstico y títulos funcionales:** Reubicación de visores y botones de volcado JSON al módulo exclusivo de Diagnóstico de APIs. Reemplazo de títulos técnicos de backend por títulos orientados a la gestión académica y universitaria.  
-   * **Agenda académica estilo app móvil:** Lista cronológica limpia con insignias de fecha (ej. VIE 16, VIE 23) idéntica a la interfaz nativa.  
-   * **Control de caché:** Cabeceras HTTP `Cache-Control: no-cache, must-revalidate` en Nginx y versionado `?v=1.1.0` en scripts y estilos.
-7. **Enrutamiento URL Dedicado por Módulo y Persistencia de Subrutas (SRV-155):**  
-   * **Enrutador History API:** Direcciones dedicadas para cada módulo (`/dashboard/publicaciones`, `/dashboard/grupos`, `/dashboard/roles`, `/dashboard/diagnostico`, `/dashboard/estudiantes`).  
-   * **Navegación nativa:** Actualización fluida de la barra del navegador, historial de navegación (`popstate`) y persistencia del módulo activo tras recarga (F5).  
-   * **Compatibilidad de enlaces directos (Deep Linking):** Soporte en Nginx y backend FastAPI para resolver y cargar directamente cualquier pestaña solicitada sin error 404, redirigiendo rutas no reconocidas a `/dashboard/publicaciones`.
-8. **Persistencia Real en PostgreSQL para Grupos, Roles y Diagnóstico Técnico (SRV-157 - Zero Facade):**  
-   * **Eliminación total de fachadas mock:** Supresión definitiva de llaves simuladas en `localStorage` (`upa_app_groups_v1` y `upa_app_admins_v1`).  
-   * **Modelos relacionales en PostgreSQL:** Creación de tablas `audience_groups` y `user_roles` con inicialización semilla (seed) para grupos de sistema (`estudiantes`, `docentes`, `staff`, `egresados`) y administrador primario (`pascal.thommen@upa.edu.py`).  
-   * **Endpoints REST en FastAPI:** Controladores `/api/groups` (GET, POST, DELETE), `/api/roles` (GET, POST, DELETE) con validación de dominios `@upa.edu.py` y protección de entidades críticas de sistema, junto con `/api/system/diagnostics` para telemetría en vivo del pool de base de datos y APIs externas.  
-   * **Integración asíncrona en cliente web:** Sincronización transparente de grupos y roles contra backend real y vinculación dinámica en el formulario de redacción editorial.
+2. **Google Classroom Synchronisation mit Auto Refresh:**
+   * Integration der Google Classroom API (`courses.readonly`, `coursework.me.readonly`) mit Offline Refresh Tokens (`classroom_refresh_token`).
+   * Automatischer Token Refresh im Backend bei abgelaufenem Access Token (`HTTP 401`).
+
+3. **Drei Schichten Container Architektur mit Nginx Frontend (`SRV-150` bis `SRV-176`):**
+   * Trennung in drei produktive Container: `upa-postgres` (PostgreSQL 16), `upa-backend` (FastAPI) und `upa-frontend` (Nginx Alpine).
+   * Bereitstellung einer isolierten Beta Umgebung (`docker-compose.beta.yml` auf Port 8185 / 8100 / 5433) und dynamische Aufloesung der `GOOGLE_REDIRECT_URI`.
+
+4. **Persistente Datenbank Modelle fuer Gruppen, Rollen, Historie und Vereinheitlichte Publikationen (`SRV-157` bis `SRV-177`):**
+   * Vollstaendige Persistenz in PostgreSQL (`posts`, `event_registrations`, `post_views`, `audience_groups`, `user_roles`, `admin_audit_logs`, `app_settings`).
+   * Vereinheitlichter Publikations Editor (`/api/publications`) mit Bildupload, Videoupload (`MP4`, `WEBM`), Pflichtablaufdatum beim Anpinnen (`expires_at`), Instagram Schreibschutz und tabellarischer Audit Historie (`/api/history`).
+
+5. **API Sicherheits Hardening (`SRV-186`):**
+   * Vollstaendige Entfernung von `dev-login`, Absicherung von `GET /api/groups` mit Datenschutzfilter fuer E-Mail Listen, Beschraenkung von `POST /api/media/upload` auf Redakteure und Administratoren sowie Zugriffsschutz fuer `GET /api/system/diagnostics` (`apis` Berechtigung).
+
+6. **UPA Campus PWA fuer Android und iOS mit Desktop QR Code Landingpage (`SRV-185` und `SRV-208`):**
+   * Entwicklung der Progressive Web App unter `web-app/` (ausgeliefert ueber Nginx unter `/` und `/campus/`) mit `manifest.webmanifest`, Service Worker (`/sw.js`), Maskable Icons und Android TWA Asset Links (`/.well-known/assetlinks.json`).
+   * Desktop Landingpage mit Smartphone Vorschau (`phone-mockup`), dynamischem SVG QR Code, Web Vorschau Modus (`/?app=1`) mit Rueckkehrleiste und dezentem Admin Zugang (`Acceso Administrativo`).
+   * Mobile Oberflaeche mit `Inicio`, kompaktem `Agenda` Monatskalender, offiziellem Instagram Kamera Badge, deduplizierten Aktionsbuttons und bereinigtem `Perfil`.
+
+7. **Classroom Datenbank Fallback und Strikter API Datenschutz (`SRV-207`):**
+   * Persistente Speicherung synchronisierter Google Classroom Fristen in `users.classroom_deadlines_cache` mit nahtlosem Fallback (`X-Classroom-Cache: db_fallback`) bei Google API Timeouts und exakter Zeitzonenumrechnung auf `America/Asuncion`.
+   * Bereinigung redundanter Gruppen Tags und strikte Ausgabe von `groups: []` fuer regulaere Studierende in `/api/auth/me` und `/api/users/me`.
+
+8. **Multimodale Google Gemini Flash KI Integration (`SRV-179`, `SRV-180`, `SRV-181`):**
+   * Neuer Reiter `Control de IA` (`/dashboard/ia`) im Web Admin Cockpit mit maskierter Speicherung des Gemini API Schluessels (`GET/POST /api/ai/config`) und Live Verbindungstest (`POST /api/ai/test-connection`).
+   * Multimodale KI Event Extraktion (`backend/src/services/ai_extractor.py`) beim Instagram Sync: Analysiert Caption und Flyer Bild, prueft die Eintages Plausibilitaetsregel und veroeffentlicht erkannte Veranstaltungen direkt mit dem Badge `IA` (`is_ai_generated = true`).
+   * Intelligenter Editor Button `Autocompletar con IA` (`POST /api/publications/autocomplete-ai`): Analysiert vorhandene Formulardaten sowie das hochgeladene Bild und fuellt ausschliesslich noch leere Formularfelder automatisch aus.
