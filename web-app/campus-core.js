@@ -368,6 +368,52 @@
     return { urgent: "Aviso urgente", event: "Evento", instagram: "Instagram", news: "Noticia", deadline: "Tarea" }[kind] || "";
   }
 
+  function resolveDetailLinks(detail) {
+    const d = detail || {};
+    const linkUrl = safeUrl(d.linkUrl);
+    const source = safeUrl(d.source);
+    const norm = (u) => u.replace(/\/+$/, "").toLowerCase();
+    const isInstaType = d.kind === "instagram" || String(d.postType || "").toUpperCase() === "INSTAGRAM";
+    const isInstaLink = (u, lbl) => /instagram\.com/i.test(u) || lbl === "Ver en Instagram";
+    const sameTarget = Boolean(linkUrl && source && norm(linkUrl) === norm(source));
+    const bothInsta = Boolean(linkUrl && source && isInstaLink(linkUrl, d.linkLabel) && isInstaLink(source, d.sourceLabel));
+
+    if (isInstaType || sameTarget || bothInsta) {
+      const href = source || linkUrl;
+      if (!href) return [];
+      const isInstagram = isInstaType || isInstaLink(href, d.sourceLabel) || isInstaLink(href, d.linkLabel);
+      return [
+        {
+          id: "detail-source",
+          href,
+          label: isInstagram ? "Ver en Instagram" : d.sourceLabel || d.linkLabel || "Ver fuente original",
+          isInstagram,
+        },
+      ];
+    }
+
+    const out = [];
+    if (linkUrl) {
+      const isInstagram = isInstaLink(linkUrl, d.linkLabel);
+      out.push({
+        id: "detail-link",
+        href: linkUrl,
+        label: d.linkLabel || (isInstagram ? "Ver en Instagram" : "Abrir enlace"),
+        isInstagram,
+      });
+    }
+    if (source) {
+      const isInstagram = isInstaLink(source, d.sourceLabel);
+      out.push({
+        id: "detail-source",
+        href: source,
+        label: d.sourceLabel || (isInstagram ? "Ver en Instagram" : "Ver fuente original"),
+        isInstagram,
+      });
+    }
+    return out;
+  }
+
   function publishedMs(post) {
     const ms = Date.parse(post.published_at || post.created_at || "");
     return Number.isNaN(ms) ? 0 : ms;
@@ -665,6 +711,7 @@
     isVideoMedia,
     postKind,
     kindLabel,
+    resolveDetailLinks,
     sortFeed,
     normalizeFeed,
     mergePosts,

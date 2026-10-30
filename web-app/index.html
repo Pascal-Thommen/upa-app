@@ -36,20 +36,59 @@
       <img src="/campus/icons/upa-logo.png" alt="Universidad Paraguayo Alemana" class="landing-logo" width="120" height="79">
     </header>
     <main class="landing-main">
-      <section class="landing-card">
+      <div class="phone-mockup" aria-hidden="true">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="phone-topbar">
+              <img src="/campus/icons/upa-logo.png" alt="" class="phone-logo" width="34" height="22">
+              <strong>Inicio</strong>
+            </div>
+            <div class="phone-feed">
+              <div class="phone-card">
+                <div class="phone-card-meta">
+                  <span class="badge">Evento</span>
+                  <span>Auditorio UPA</span>
+                </div>
+                <strong>Foro de Ingeniería 2026</strong>
+                <span class="phone-pill">Inscripción en un toque</span>
+              </div>
+              <div class="phone-card">
+                <div class="phone-card-meta">
+                  <span class="badge badge-instagram">
+                    <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="17.5" cy="6.5" r="1.3" fill="currentColor"/></svg>
+                    <span>Instagram</span>
+                  </span>
+                  <span>@upa_py</span>
+                </div>
+                <strong>Vida en el campus y novedades</strong>
+              </div>
+              <div class="phone-card phone-card-agenda">
+                <div class="phone-date"><strong>30</strong><span>OCT</span></div>
+                <div>
+                  <strong>Agenda Classroom</strong>
+                  <span>Tareas y fechas límite</span>
+                </div>
+              </div>
+            </div>
+            <div class="phone-tabbar">
+              <span class="active">Inicio</span>
+              <span>Agenda</span>
+              <span>Perfil</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section class="landing-card" aria-label="Código QR para abrir la app">
         <p class="eyebrow">UPA Campus</p>
         <h1>Escanea con tu celular para abrir la app</h1>
-        <p class="landing-lead">Noticias, eventos y agenda de la Universidad Paraguayo Alemana en tu bolsillo. Funciona en Android y iPhone directamente desde el navegador, sin instalar nada.</p>
-        <ul class="landing-points">
-          <li><strong>Inicio:</strong> noticias, Instagram y eventos con inscripción en un toque.</li>
-          <li><strong>Agenda:</strong> tus eventos y tareas de Google Classroom en un calendario.</li>
-          <li><strong>Perfil:</strong> tema claro u oscuro y avisos a tu medida.</li>
-        </ul>
-        <a class="landing-link" href="/?app=1">Probar la versión web aquí</a>
-      </section>
-      <section class="landing-qr" aria-label="Código QR para abrir la app">
-        <div id="qr-box" class="qr-box"></div>
-        <p id="qr-url" class="qr-url"></p>
+        <p class="landing-lead">Noticias, eventos y tu agenda en el bolsillo, directo desde el navegador.</p>
+        <div class="landing-qr">
+          <div id="qr-box" class="qr-box"></div>
+          <p id="qr-url" class="qr-url"></p>
+        </div>
+        <a id="try-web-link" class="landing-link" href="/?app=1">Probar la versión web aquí</a>
       </section>
     </main>
     <footer class="landing-footer">
@@ -60,6 +99,12 @@
 
   <!-- Aplicacion movil -->
   <div id="app" class="app" hidden>
+    <div id="desktop-return-bar" class="desktop-return-bar" hidden>
+      <button id="btn-back-landing" class="btn-back-landing" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Volver al código QR</span>
+      </button>
+    </div>
     <div id="offline-banner" class="offline-banner" role="status" aria-live="polite" hidden></div>
 
     <header class="topbar">
@@ -123,7 +168,6 @@
               <p><span id="profile-role" class="badge"></span></p>
             </div>
           </div>
-          <div id="profile-groups" class="chips" aria-label="Grupos"></div>
         </div>
 
         <h3 class="section-title">Diseño</h3>

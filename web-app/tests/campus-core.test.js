@@ -204,6 +204,41 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
   assert.equal(Core.safeUrl("/uploads/cartel.png"), "/uploads/cartel.png");
   assert.equal(Core.safeUrl("https://classroom.google.com/c/1"), "https://classroom.google.com/c/1");
 
+  // Deduplicacion de botones de accion en el detalle (Instagram y enlaces identicos)
+  const dupInsta = Core.resolveDetailLinks({
+    kind: "instagram",
+    postType: "INSTAGRAM",
+    source: "https://www.instagram.com/p/Cxyz123/",
+    sourceLabel: "Ver en Instagram",
+    linkUrl: "https://www.instagram.com/p/Cxyz123",
+    linkLabel: "Ver en Instagram",
+  });
+  assert.equal(dupInsta.length, 1);
+  assert.equal(dupInsta[0].id, "detail-source");
+  assert.equal(dupInsta[0].label, "Ver en Instagram");
+  assert.equal(dupInsta[0].isInstagram, true);
+
+  const eventFromInsta = Core.resolveDetailLinks({
+    kind: "event",
+    postType: "INSTAGRAM",
+    source: "https://www.instagram.com/p/Cev999/",
+    sourceLabel: "Ver en Instagram",
+    linkUrl: "https://www.instagram.com/p/Cev999/",
+    linkLabel: "Ver en Instagram",
+  });
+  assert.equal(eventFromInsta.length, 1);
+  assert.equal(eventFromInsta[0].label, "Ver en Instagram");
+
+  const distinctLinks = Core.resolveDetailLinks({
+    kind: "news",
+    postType: "MANUAL",
+    source: "https://upa.edu.py/noticia",
+    sourceLabel: "Ver fuente original",
+    linkUrl: "https://forms.gle/inscripcion",
+    linkLabel: "Formulario",
+  });
+  assert.equal(distinctLinks.length, 2);
+
   const nowMs = Date.parse("2026-11-05T10:00:00Z");
   const entries = [
     { key: "deadline:1", kind: "deadline", title: "TP", timeLabel: "20:59", date: new Date("2026-11-05T23:59:00Z"), raw: {} },
