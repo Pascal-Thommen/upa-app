@@ -27,8 +27,8 @@
     }
   </script>
 
-  <link rel="stylesheet" href="/dashboard/style.css?v=2.2.0">
-  <link rel="stylesheet" href="/dashboard/editorial.css?v=2.2.0">
+  <link rel="stylesheet" href="/dashboard/style.css?v=2.3.0">
+  <link rel="stylesheet" href="/dashboard/editorial.css?v=2.3.0">
   <script>
     if (localStorage.getItem("upa_access_token") || localStorage.getItem("upa_auth_token") || window.location.search.includes("token=")) {
       document.documentElement.classList.add("has-auth");
@@ -179,6 +179,10 @@
             <button id="nav-mod-students" data-perm="apis" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
               <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
               <span class="flex-1">APIs</span>
+            </button>
+            <button id="nav-mod-ai" data-perm="apis" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+              <span class="flex-1">Control de IA</span>
             </button>
           </nav>
         </aside>
@@ -678,6 +682,66 @@
             </details>
           </div>
 
+          <!-- =============================================================== -->
+          <!-- MÓDULO 5: CONTROL DE IA (Google Gemini API + Prueba en vivo)     -->
+          <!-- =============================================================== -->
+          <section id="view-ai" class="hidden space-y-5" aria-label="Control de IA">
+            <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-6">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-9 h-9 rounded-xl bg-emerald-50 text-[#6c9339] flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+                  </span>
+                  <div>
+                    <h3 class="font-bold text-slate-900 text-base">Control de IA &bull; Inteligencia Artificial</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Conector directo con Google Gemini (Google AI Studio) para redacción y asistencia inteligente del campus.</p>
+                  </div>
+                </div>
+                <span id="ai-status-badge" class="ed-badge ed-badge-neutral">Sin configurar</span>
+              </div>
+
+              <!-- Estado actual de la clave -->
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div class="space-y-0.5">
+                  <div class="font-semibold text-slate-700">Clave actual configurada</div>
+                  <div id="ai-key-source" class="text-[11px] text-slate-500">Pendiente de configuración</div>
+                </div>
+                <code id="ai-masked-key" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 font-mono text-xs text-slate-800">Sin clave guardada</code>
+              </div>
+
+              <!-- Guía paso a paso minimalista -->
+              <div class="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200/80 space-y-2">
+                <h4 class="text-xs font-bold text-slate-900">Cómo obtener tu clave de Google Gemini en 3 pasos:</h4>
+                <ol class="list-decimal list-inside space-y-1.5 text-xs text-slate-700 leading-relaxed">
+                  <li>Abre <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="font-semibold text-[#6c9339] underline hover:text-emerald-800">https://aistudio.google.com/app/apikey</a> con tu cuenta de Google.</li>
+                  <li>Haz clic en <strong>'Create API key'</strong> y copia la clave generada.</li>
+                  <li>Pega la clave aquí y haz clic en <strong>'Guardar y Probar'</strong>.</li>
+                </ol>
+              </div>
+
+              <!-- Banner de resultado de conexión en vivo (verde en éxito / rojo con causa exacta en error) -->
+              <div id="ai-connection-banner" class="hidden rounded-xl p-4 text-xs font-semibold border" role="alert"></div>
+
+              <!-- Formulario de configuración y prueba en vivo -->
+              <form id="form-ai-config" class="space-y-4" novalidate>
+                <div>
+                  <label class="ed-label" for="ai-input-api-key">Clave de API de Google Gemini (GEMINI_API_KEY)</label>
+                  <input id="ai-input-api-key" type="password" autocomplete="off" placeholder="Pega aquí tu clave (ej. AIzaSy...)" class="ed-input font-mono">
+                  <p id="ai-key-error" class="ed-field-error hidden" data-error-for="ai-key"></p>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-end gap-2.5 pt-1">
+                  <button id="btn-ai-test-connection" type="button" class="ed-btn ed-btn-secondary">
+                    Probar conexión
+                  </button>
+                  <button id="btn-ai-save-test" type="submit" class="ed-btn ed-btn-primary">
+                    Guardar y Probar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+
           <!-- Contenedor heredado oculto por compatibilidad de selectores -->
           <section id="view-diagnostic" class="hidden" aria-hidden="true"></section>
 
@@ -716,8 +780,8 @@
     </div>
   </div>
 
-  <script src="/dashboard/editorial-core.js?v=2.2.0"></script>
-  <script src="/dashboard/editorial.js?v=2.2.0"></script>
-  <script src="/dashboard/app.js?v=2.2.0"></script>
+  <script src="/dashboard/editorial-core.js?v=2.3.0"></script>
+  <script src="/dashboard/editorial.js?v=2.3.0"></script>
+  <script src="/dashboard/app.js?v=2.3.0"></script>
 </body>
 </html>

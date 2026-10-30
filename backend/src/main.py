@@ -11,6 +11,7 @@ from sqlalchemy import asc, desc, or_
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 
+from .api.ai import router as ai_router
 from .api.auth import (
     _derive_full_name,
     _filter_google_groups_for_privacy,
@@ -103,6 +104,7 @@ app.include_router(groups_router)
 app.include_router(roles_router)
 app.include_router(history_router)
 app.include_router(diagnostics_router)
+app.include_router(ai_router)
 
 
 @app.get(

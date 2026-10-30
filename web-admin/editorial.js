@@ -985,7 +985,7 @@
     const editorialEl = $("view-editorial");
     if (studentEl) studentEl.classList.toggle("hidden", editorial);
     if (editorialEl) editorialEl.classList.toggle("hidden", !editorial);
-    ["view-groups", "view-admins", "view-diagnostic"].forEach((vid) => {
+    ["view-groups", "view-admins", "view-diagnostic", "view-ai"].forEach((vid) => {
       const v = $(vid);
       if (v) v.classList.add("hidden");
     });

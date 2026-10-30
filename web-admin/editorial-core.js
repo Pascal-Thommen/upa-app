@@ -937,6 +937,12 @@
           ? request("GET", `/api/history/${encodeURIComponent(entityType)}/${encodeURIComponent(key)}`)
           : request("GET", `/api/history/${encodeURIComponent(entityType)}`),
 
+      // Control de IA (Google Gemini)
+      getAiConfig: () => request("GET", "/api/ai/config"),
+      saveAiConfig: (apiKey) => request("POST", "/api/ai/config", { json: { api_key: apiKey } }),
+      testAiConnection: (apiKey) =>
+        request("POST", "/api/ai/test-connection", apiKey ? { json: { api_key: apiKey } } : {}),
+
       // Compatibilidad con endpoints de noticias y eventos
       listNews: (params) => request("GET", `/api/news${qs({ limit: 100, ...params })}`),
       createNews: (payload) => request("POST", "/api/news", { json: payload }),

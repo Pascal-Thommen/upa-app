@@ -62,6 +62,8 @@ const state = {
   feedLoaded: false,
   groupsLoaded: false,
   adminsLoaded: false,
+  aiLoaded: false,
+  aiConfig: null,
   diagnostics: null,
   currentMonth: new Date().getMonth(),
   currentYear: new Date().getFullYear(),
@@ -172,6 +174,8 @@ function logout() {
   state.feedLoaded = false;
   state.groupsLoaded = false;
   state.adminsLoaded = false;
+  state.aiLoaded = false;
+  state.aiConfig = null;
   state.diagnostics = null;
   appGroupsCache = [];
   appAdminsCache = [];
@@ -1490,6 +1494,186 @@ async function renderAdminsModule() {
 }
 
 // ===========================================================================
+// Módulo 5: Control de IA (Google Gemini API + prueba de conexión en vivo)
+// ===========================================================================
+
+function setAiConnectionBanner(type, message) {
+  const banner = document.getElementById("ai-connection-banner");
+  if (!banner) return;
+  if (!message) {
+    banner.className = "hidden rounded-xl p-4 text-xs font-semibold border";
+    banner.textContent = "";
+    return;
+  }
+  if (type === "success") {
+    banner.className =
+      "rounded-xl p-4 text-xs font-semibold border bg-emerald-50 text-emerald-900 border-emerald-300 is-success";
+  } else if (type === "info") {
+    banner.className =
+      "rounded-xl p-4 text-xs font-semibold border bg-blue-50 text-blue-900 border-blue-200 is-info";
+  } else {
+    banner.className =
+      "rounded-xl p-4 text-xs font-semibold border bg-red-50 text-red-900 border-red-300 is-error";
+  }
+  banner.textContent = message;
+}
+
+function renderAiConfigState(cfg) {
+  const badge = document.getElementById("ai-status-badge");
+  const maskedEl = document.getElementById("ai-masked-key");
+  const sourceEl = document.getElementById("ai-key-source");
+  const configured = Boolean(cfg && cfg.configured);
+
+  if (badge) {
+    badge.textContent = configured ? "Configurado" : "Sin configurar";
+    badge.className = configured ? "ed-badge ed-badge-ok" : "ed-badge ed-badge-neutral";
+  }
+  if (maskedEl) {
+    maskedEl.textContent = configured && cfg.masked_key ? cfg.masked_key : "Sin clave guardada";
+  }
+  if (sourceEl) {
+    if (configured && cfg.source === "database") {
+      sourceEl.textContent = "Clave guardada en la base de datos";
+    } else if (configured && cfg.source === "environment") {
+      sourceEl.textContent = "Clave activa desde variable de entorno (GEMINI_API_KEY)";
+    } else {
+      sourceEl.textContent = "Pendiente de configuración";
+    }
+  }
+}
+
+async function fetchAiConfig() {
+  try {
+    const res = await apiRequest("/api/ai/config");
+    if (res.ok) {
+      const data = await res.json();
+      state.aiConfig = data;
+      state.aiLoaded = true;
+      renderAiConfigState(data);
+      return data;
+    }
+  } catch (err) {
+    console.error("Error cargando configuración de IA:", err);
+  }
+  return state.aiConfig;
+}
+
+async function runAiConnectionTest(candidateKey) {
+  const btnTest = document.getElementById("btn-ai-test-connection");
+  const prevLabel = btnTest ? btnTest.textContent : "Probar conexión";
+  if (btnTest) {
+    btnTest.disabled = true;
+    btnTest.textContent = "Probando...";
+  }
+  try {
+    const cleanCandidate = String(candidateKey || "").trim();
+    const res = await apiRequest("/api/ai/test-connection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cleanCandidate ? { api_key: cleanCandidate } : {}),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body) {
+      if (body.ok) {
+        setAiConnectionBanner(
+          "success",
+          body.message || "Conexión exitosa con Google Gemini (Modelo gemini-1.5-flash listo)"
+        );
+      } else {
+        setAiConnectionBanner("error", body.message || "Clave de API inválida o expirada.");
+      }
+      return body;
+    }
+    setAiConnectionBanner("error", body.detail || body.message || "Clave de API inválida o expirada.");
+    return null;
+  } catch (_) {
+    setAiConnectionBanner("error", "Error de red con Google: no se pudo establecer la conexión.");
+    return null;
+  } finally {
+    if (btnTest) {
+      btnTest.disabled = false;
+      btnTest.textContent = prevLabel;
+    }
+  }
+}
+
+async function renderAiModule() {
+  if (state.aiLoaded && state.aiConfig) {
+    renderAiConfigState(state.aiConfig);
+  }
+  await fetchAiConfig();
+}
+
+function setupAiFormHandlers() {
+  const form = document.getElementById("form-ai-config");
+  const input = document.getElementById("ai-input-api-key");
+  const btnTest = document.getElementById("btn-ai-test-connection");
+  const btnSave = document.getElementById("btn-ai-save-test");
+
+  if (input) {
+    input.addEventListener("input", () => {
+      setInlineFieldError("ai-key-error", "ai-input-api-key", "");
+    });
+  }
+
+  if (btnTest) {
+    btnTest.addEventListener("click", async () => {
+      setInlineFieldError("ai-key-error", "ai-input-api-key", "");
+      const candidate = input ? input.value.trim() : "";
+      await runAiConnectionTest(candidate);
+    });
+  }
+
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      setInlineFieldError("ai-key-error", "ai-input-api-key", "");
+      const key = input ? input.value.trim() : "";
+      if (!key || key.length < 10 || /\s/.test(key)) {
+        const msg = "La clave de API no es válida: debe tener al menos 10 caracteres y no contener espacios.";
+        setInlineFieldError("ai-key-error", "ai-input-api-key", msg);
+        setAiConnectionBanner("error", msg);
+        if (input && input.focus) input.focus();
+        return;
+      }
+
+      const prevSaveLabel = btnSave ? btnSave.textContent : "Guardar y Probar";
+      if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.textContent = "Guardando...";
+      }
+      try {
+        const res = await apiRequest("/api/ai/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: key }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          const detail = err.detail || "No se pudo guardar la clave de API.";
+          setInlineFieldError("ai-key-error", "ai-input-api-key", detail);
+          setAiConnectionBanner("error", detail);
+          return;
+        }
+        const saved = await res.json();
+        state.aiConfig = saved;
+        state.aiLoaded = true;
+        renderAiConfigState(saved);
+        if (input) input.value = "";
+        await runAiConnectionTest();
+      } catch (_) {
+        setAiConnectionBanner("error", "Error de red con Google: no se pudo guardar la configuración.");
+      } finally {
+        if (btnSave) {
+          btnSave.disabled = false;
+          btnSave.textContent = prevSaveLabel;
+        }
+      }
+    });
+  }
+}
+
+// ===========================================================================
 // Enrutamiento SPA de los 4 módulos y control dinámico de permisos en sidebar
 // ===========================================================================
 
@@ -1516,6 +1700,12 @@ const ROUTE_CONFIG = {
     path: "/dashboard/apis",
     btnId: "nav-mod-students",
     viewId: "student-workspace",
+    perm: "apis",
+  },
+  ia: {
+    path: "/dashboard/ia",
+    btnId: "nav-mod-ai",
+    viewId: "view-ai",
     perm: "apis",
   },
 };
@@ -1553,6 +1743,15 @@ function resolveRoute(rawPath) {
     lower === "/dashboard/control"
   ) {
     return { name: "apis", path: "/dashboard/apis", isRedirect: lower !== "/dashboard/apis" };
+  }
+  if (
+    lower === "/dashboard/ia" ||
+    lower === "/dashboard/ai" ||
+    lower === "/dashboard/control-ia" ||
+    lower === "/dashboard/control-de-ia" ||
+    lower === "/dashboard/inteligencia-artificial"
+  ) {
+    return { name: "ia", path: "/dashboard/ia", isRedirect: lower !== "/dashboard/ia" };
   }
 
   return { name: "publicaciones", path: "/dashboard/publicaciones", isRedirect: true };
@@ -1700,6 +1899,12 @@ function applyRoute(routeName, options = {}) {
     if (!options.skipDataLoad) {
       renderAdminsModule();
     }
+  } else if (effectiveRoute === "ia") {
+    if (edBtn) edBtn.classList.remove("is-active");
+    if (stBtn) stBtn.classList.remove("is-active");
+    if (!options.skipDataLoad) {
+      renderAiModule();
+    }
   }
 }
 
@@ -1720,6 +1925,7 @@ const UpaRouter = {
     GRUPOS: "/dashboard/grupos",
     ROLES: "/dashboard/roles",
     APIS: "/dashboard/apis",
+    IA: "/dashboard/ia",
     DIAGNOSTICO: "/dashboard/apis",
     ESTUDIANTES: "/dashboard/apis",
   },
@@ -2010,6 +2216,7 @@ function setupSidebarNavigation() {
   const btnAdmins = document.getElementById("nav-mod-admins");
   const btnDiag = document.getElementById("nav-mod-diagnostic");
   const btnStudents = document.getElementById("nav-mod-students");
+  const btnAi = document.getElementById("nav-mod-ai");
   const headerLogoLink = document.getElementById("header-logo-link");
 
   if (btnPubs) btnPubs.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.PUBLICACIONES));
@@ -2017,6 +2224,7 @@ function setupSidebarNavigation() {
   if (btnAdmins) btnAdmins.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.ROLES));
   if (btnDiag) btnDiag.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.APIS));
   if (btnStudents) btnStudents.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.APIS));
+  if (btnAi) btnAi.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.IA));
   if (headerLogoLink) {
     headerLogoLink.addEventListener("click", (e) => {
       e.preventDefault();
@@ -2035,6 +2243,7 @@ function setupSidebarNavigation() {
   UpaRouter.init();
   setupGroupsFormHandlers();
   setupRolesFormHandlers();
+  setupAiFormHandlers();
 }
 
 function translateOAuthError(code) {

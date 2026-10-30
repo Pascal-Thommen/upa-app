@@ -174,3 +174,14 @@ class UserRole(Base):
     is_primary = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+
+
+class AppSetting(Base):
+    """Configuracion global clave/valor persistente (por ejemplo la clave de API de Gemini)."""
+
+    __tablename__ = "app_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False, default="")
+    updated_by = Column(String(255), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
