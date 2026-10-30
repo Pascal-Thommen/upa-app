@@ -171,6 +171,8 @@ class PublicationResponse(BaseModel):
     is_event: bool = False
     is_pinned: bool = False
     is_edited: bool = True
+    is_ai_generated: bool = False
+    status: str = "edited"
     has_registration: bool = False
     target_groups: list[str] = Field(default_factory=lambda: ["ALL"])
     notify_groups: list[str] = Field(default_factory=list)
@@ -225,6 +227,8 @@ class PublicationResponse(BaseModel):
 
         raw_is_edited = getattr(post, "is_edited", None)
         is_edited = bool(raw_is_edited) if raw_is_edited is not None else (post_type != "INSTAGRAM")
+        is_ai_generated = bool(getattr(post, "is_ai_generated", False))
+        status_val = "ai" if (is_ai_generated and not is_edited) else ("edited" if is_edited else "pending")
 
         return cls(
             id=int(getattr(post, "id", 0) or 0),
@@ -238,6 +242,8 @@ class PublicationResponse(BaseModel):
             is_event=bool(getattr(post, "is_event", False)),
             is_pinned=bool(getattr(post, "is_pinned", False)),
             is_edited=is_edited,
+            is_ai_generated=is_ai_generated,
+            status=status_val,
             has_registration=bool(getattr(post, "has_registration", False)),
             target_groups=normalize_target_groups(getattr(post, "target_groups", None)),
             notify_groups=clean_group_codes(getattr(post, "notify_groups", None)),

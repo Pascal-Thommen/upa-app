@@ -701,8 +701,16 @@
         $("ed-metric-declined").textContent = `${Number(values.declinedCount || 0)} bajas`;
         const badge = $("ed-metric-edited");
         if (badge) {
-          badge.textContent = values.isEdited ? "Editado" : "Pendiente";
-          badge.className = `ed-badge ${values.isEdited ? "ed-badge-ok" : "ed-badge-warn"}`;
+          if (values.isAiGenerated && !values.isEdited) {
+            badge.textContent = "IA";
+            badge.className = "ed-badge ed-badge-ai";
+          } else if (values.isEdited) {
+            badge.textContent = values.isAiGenerated ? "Editado · IA" : "Editado";
+            badge.className = "ed-badge ed-badge-ok";
+          } else {
+            badge.textContent = "Pendiente";
+            badge.className = "ed-badge ed-badge-warn";
+          }
         }
       }
     }

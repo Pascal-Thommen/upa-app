@@ -514,6 +514,12 @@
   color: var(--ed-social);
 }
 
+.ed-badge-ai {
+  background: #f3e8ff;
+  color: #6b21a8;
+  border-color: #d8b4fe;
+}
+
 /* Historial discreto al pie sobre el fondo gris de la página (sin caja blanca) */
 .ed-audit-trail {
   margin-top: 0.25rem;

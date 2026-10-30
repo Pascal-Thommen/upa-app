@@ -61,6 +61,7 @@ class FeedItemResponse(BaseModel):
     is_news: bool = Field(default=True, description="Indica si pertenece a noticias")
     is_event: bool = Field(default=False, description="Indica si es un evento")
     is_pinned: bool = Field(default=False, description="Indica si esta fijado arriba")
+    is_ai_generated: bool = Field(default=False, description="Indica si fue extraido con IA")
     expires_at: datetime | None = Field(default=None, description="Fecha de expiracion opcional")
     event_start: datetime | None = Field(default=None, description="Inicio del evento opcional")
     event_end: datetime | None = Field(default=None, description="Fin del evento opcional")
@@ -110,6 +111,7 @@ class FeedItemResponse(BaseModel):
             is_news=bool(getattr(post, "is_news", True)),
             is_event=bool(getattr(post, "is_event", False)),
             is_pinned=bool(getattr(post, "is_pinned", False)),
+            is_ai_generated=bool(getattr(post, "is_ai_generated", False)),
             expires_at=ensure_utc_datetime(raw_expires) if raw_expires else None,
             event_start=ensure_utc_datetime(raw_start) if raw_start else None,
             event_end=ensure_utc_datetime(raw_end) if raw_end else None,

@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Post
-from ..schemas.publication import extract_instagram_teaser
+from ..schemas.publication import clean_group_codes, extract_instagram_teaser
+from .ai_extractor import extract_event_from_instagram_post, to_utc_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,7 @@ class InstagramSyncService:
 
         created_count = 0
         updated_count = 0
+        ai_events_count = 0
 
         try:
             for item in posts_data:
@@ -233,28 +235,80 @@ class InstagramSyncService:
                     existing.updated_at = datetime.now(UTC)
                     updated_count += 1
                 else:
-                    title = self.extract_title_from_caption(item.caption)
                     pub_ts = item.timestamp or datetime.now(UTC)
-                    new_post = Post(
-                        title=title,
-                        caption=teaser,
-                        content=item.caption,
-                        post_type="INSTAGRAM",
-                        is_news=True,
-                        is_event=False,
-                        is_pinned=False,
-                        is_edited=False,
-                        target_groups=["ALL"],
-                        instagram_id=item.instagram_id,
-                        media_type=item.media_type,
+                    fallback_title = self.extract_title_from_caption(item.caption)
+                    extraction = extract_event_from_instagram_post(
+                        caption=item.caption,
                         media_url=item.media_url,
-                        permalink=item.permalink,
-                        link_url=item.permalink,
-                        link_label="Ver en Instagram",
-                        author_id=author_id,
-                        created_at=pub_ts,
-                        published_at=pub_ts,
+                        media_type=item.media_type,
+                        db=db,
+                        reference_date=pub_ts,
                     )
+                    start_dt = to_utc_datetime(extraction.start_time) if extraction.is_event else None
+                    is_valid_ai_event = bool(extraction.is_event and start_dt is not None)
+
+                    if is_valid_ai_event:
+                        end_dt = to_utc_datetime(extraction.end_time)
+                        ai_title = (extraction.event_title or "").strip()[:255] or fallback_title
+                        ai_location = (extraction.location or "").strip()[:255] or None
+                        conservative_groups = clean_group_codes(extraction.target_groups)
+                        effective_groups = conservative_groups if conservative_groups else ["ALL"]
+                        notify_push = bool(extraction.notify_push)
+                        push_groups = list(effective_groups) if notify_push else []
+
+                        new_post = Post(
+                            title=ai_title,
+                            caption=teaser,
+                            content=item.caption,
+                            post_type="INSTAGRAM",
+                            is_news=True,
+                            is_event=True,
+                            is_pinned=False,
+                            is_edited=False,
+                            is_ai_generated=True,
+                            event_start=start_dt,
+                            event_end=end_dt,
+                            location=ai_location,
+                            has_registration=bool(extraction.allow_registration),
+                            target_groups=effective_groups,
+                            send_push_notification=notify_push,
+                            notify_groups=push_groups,
+                            event_notify_groups=push_groups,
+                            reminder_minutes_before=30,
+                            reminders=[30],
+                            instagram_id=item.instagram_id,
+                            media_type=item.media_type,
+                            media_url=item.media_url,
+                            permalink=item.permalink,
+                            link_url=item.permalink,
+                            link_label="Ver en Instagram",
+                            author_id=author_id,
+                            created_at=pub_ts,
+                            published_at=pub_ts,
+                        )
+                        ai_events_count += 1
+                    else:
+                        new_post = Post(
+                            title=fallback_title,
+                            caption=teaser,
+                            content=item.caption,
+                            post_type="INSTAGRAM",
+                            is_news=True,
+                            is_event=False,
+                            is_pinned=False,
+                            is_edited=False,
+                            is_ai_generated=False,
+                            target_groups=["ALL"],
+                            instagram_id=item.instagram_id,
+                            media_type=item.media_type,
+                            media_url=item.media_url,
+                            permalink=item.permalink,
+                            link_url=item.permalink,
+                            link_label="Ver en Instagram",
+                            author_id=author_id,
+                            created_at=pub_ts,
+                            published_at=pub_ts,
+                        )
                     db.add(new_post)
                     created_count += 1
 
@@ -264,6 +318,7 @@ class InstagramSyncService:
                 "synced_count": len(posts_data),
                 "created_count": created_count,
                 "updated_count": updated_count,
+                "ai_events_count": ai_events_count,
             }
         except Exception as e:
             db.rollback()
