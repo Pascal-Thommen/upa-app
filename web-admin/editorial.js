@@ -323,7 +323,9 @@
     const dz = {
       uploading: false,
       readOnly: false,
+      lastFile: null,
       getUrl: () => (urlField ? urlField.value : ""),
+      getFile: () => dz.lastFile,
       setStatus(type, message) {
         if (!status) return;
         status.textContent = message || "";
@@ -363,11 +365,13 @@
         preview.classList.remove("hidden");
         preview.querySelector("[data-dz-remove]").addEventListener("click", () => {
           if (dz.readOnly) return;
+          dz.lastFile = null;
           dz.setUrl("");
           dz.setStatus("", "");
         });
       },
       reset() {
+        dz.lastFile = null;
         dz.setUrl("");
         dz.setStatus("", "");
       },
@@ -381,6 +385,7 @@
         return;
       }
       dz.uploading = true;
+      dz.lastFile = file;
       zone.classList.add("is-uploading");
       dz.setStatus("", `Subiendo ${file.name}...`);
       try {
@@ -873,6 +878,157 @@
     }
   }
 
+  function setAiBusy(button, busy) {
+    if (!button) return;
+    const busyLabel = (Core.TEXTS && Core.TEXTS.aiAutocompleteBusy) || "Analizando contenido e imagen...";
+    if (busy) {
+      if (!button.dataset.origHtml) {
+        button.dataset.origHtml = button.innerHTML;
+      }
+      button.innerHTML = `<span class="ed-ai-spinner" aria-hidden="true"></span><span>${Core.escapeHtml(
+        busyLabel
+      )}</span>`;
+      button.disabled = true;
+      button.classList.add("is-loading");
+    } else {
+      if (button.dataset.origHtml) {
+        button.innerHTML = button.dataset.origHtml;
+      }
+      button.disabled = false;
+      button.classList.remove("is-loading");
+    }
+  }
+
+  async function autocompletePublicationWithAi() {
+    if (state.dropzones.pub && state.dropzones.pub.uploading) {
+      showNotice("warning", "Espere a que finalice la subida del archivo antes de autocompletar.");
+      return null;
+    }
+
+    const button = $("ed-pub-autocomplete-ai");
+    const values = readPublicationForm();
+    const options = resolveGroupOptions();
+    const allIds = options.map((g) => g.value);
+    const isUntouchedNewOrInstagram = !state.editingItem || state.editingItem.is_edited === false;
+    const isAllDefaultSelected =
+      isUntouchedNewOrInstagram &&
+      allIds.length > 0 &&
+      values.targetGroups.length === allIds.length &&
+      allIds.every((id) => values.targetGroups.includes(id));
+    const effectiveTargetGroups = isAllDefaultSelected ? [] : values.targetGroups;
+
+    const reqPayload = {
+      title: values.title,
+      caption: values.caption,
+      content: values.content,
+      location: values.location,
+      event_start: values.eventStart,
+      event_end: values.eventEnd,
+      target_groups: effectiveTargetGroups,
+      link_label: values.linkLabel,
+      link_url: values.linkUrl,
+      media_url: values.imageUrl,
+      post_type: values.postType,
+      is_news: values.isNews,
+      is_event: values.isEvent,
+      has_registration: values.hasRegistration,
+    };
+
+    const file = state.dropzones.pub && state.dropzones.pub.getFile ? state.dropzones.pub.getFile() : null;
+    setAiBusy(button, true);
+    try {
+      const suggestions = await getClient().autocompletePublicationAi(reqPayload, file);
+      const baseForMerge = { ...values, targetGroups: effectiveTargetGroups };
+      const merged = Core.applyAiSuggestionsToFormValues(baseForMerge, suggestions);
+
+      const titleEl = $("ed-pub-title");
+      if (titleEl && !titleEl.value.trim() && merged.title) {
+        titleEl.value = merged.title;
+      }
+
+      const captionEl = $("ed-pub-caption");
+      if (captionEl && !captionEl.readOnly && !captionEl.disabled && !captionEl.value.trim() && merged.caption) {
+        captionEl.value = merged.caption;
+      }
+
+      const contentEl = $("ed-pub-content");
+      if (contentEl && !contentEl.readOnly && !contentEl.disabled && !contentEl.value.trim() && merged.content) {
+        contentEl.value = merged.content;
+      }
+
+      const linkLabelEl = $("ed-pub-link-label");
+      if (
+        linkLabelEl &&
+        !linkLabelEl.readOnly &&
+        !linkLabelEl.disabled &&
+        !linkLabelEl.value.trim() &&
+        merged.linkLabel
+      ) {
+        linkLabelEl.value = merged.linkLabel;
+      }
+
+      const linkUrlEl = $("ed-pub-link-url");
+      if (linkUrlEl && !linkUrlEl.readOnly && !linkUrlEl.disabled && !linkUrlEl.value.trim() && merged.linkUrl) {
+        linkUrlEl.value = merged.linkUrl;
+      }
+
+      if (effectiveTargetGroups.length === 0 && Array.isArray(merged.targetGroups) && merged.targetGroups.length > 0) {
+        renderTargetGroupCheckboxes(merged.targetGroups);
+        const normalizedTargets = readCheckedValues("ed-pub-target-groups");
+        const targetList = normalizedTargets.length > 0 ? normalizedTargets : merged.targetGroups;
+        const currentNotify = readCheckedValues("ed-pub-notify-groups").filter((g) => targetList.includes(g));
+        renderSubsetGroupCheckboxes("ed-pub-notify-groups", targetList, currentNotify);
+        renderSubsetGroupCheckboxes("ed-pub-event-notify-groups", targetList, targetList);
+      }
+
+      if (!values.hasRegistration && merged.hasRegistration && $("ed-pub-rsvp")) {
+        $("ed-pub-rsvp").checked = true;
+      }
+
+      if (!values.isEvent && merged.isEvent && $("ed-pub-is-event") && !$("ed-pub-is-event").disabled) {
+        $("ed-pub-is-event").checked = true;
+        if (state.reminders.length === 0) {
+          renderRemindersList([30]);
+        }
+        const currentTargets = readCheckedValues("ed-pub-target-groups");
+        const currentEventNotify = readCheckedValues("ed-pub-event-notify-groups");
+        if (currentEventNotify.length === 0 && currentTargets.length > 0) {
+          renderSubsetGroupCheckboxes("ed-pub-event-notify-groups", currentTargets, currentTargets);
+        }
+      }
+
+      const startEl = $("ed-pub-event-start");
+      if (startEl && !startEl.value.trim() && merged.eventStart) {
+        startEl.value = merged.eventStart;
+      }
+
+      const endEl = $("ed-pub-event-end");
+      if (endEl && !endEl.value.trim() && merged.eventEnd) {
+        endEl.value = merged.eventEnd;
+      }
+
+      const locEl = $("ed-pub-location");
+      if (locEl && !locEl.value.trim() && merged.location) {
+        locEl.value = merged.location;
+      }
+
+      showFieldErrors("pub", {});
+      applyTypeAndSectionRules();
+      showNotice("success", (Core.TEXTS && Core.TEXTS.aiAutocompleteSuccess) || "Campos completados por IA");
+      return suggestions;
+    } catch (error) {
+      const fallbackMsg =
+        (Core.TEXTS && Core.TEXTS.aiAutocompleteError) ||
+        "No se pudo autocompletar: Verifique la clave de IA en Control de IA";
+      const rawMsg = Core.describeError(error);
+      const msg = rawMsg && rawMsg.includes(fallbackMsg) ? rawMsg : fallbackMsg;
+      showNotice("error", msg);
+      return null;
+    } finally {
+      setAiBusy(button, false);
+    }
+  }
+
   async function submitPublication(event) {
     event.preventDefault();
     const values = readPublicationForm();
@@ -1035,6 +1191,9 @@
       $("ed-btn-toggle-participants").addEventListener("click", toggleParticipants);
     }
     if ($("ed-btn-sync")) $("ed-btn-sync").addEventListener("click", syncInstagram);
+    if ($("ed-pub-autocomplete-ai")) {
+      $("ed-pub-autocomplete-ai").addEventListener("click", autocompletePublicationWithAi);
+    }
     if ($("ed-form-pub")) $("ed-form-pub").addEventListener("submit", submitPublication);
 
     if ($("ed-pub-scheduled")) $("ed-pub-scheduled").addEventListener("change", applyTypeAndSectionRules);

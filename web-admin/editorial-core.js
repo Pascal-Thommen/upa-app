@@ -90,6 +90,10 @@
     errPublishedPast: "La fecha programada de publicación no puede estar en el pasado.",
     errSectionRequired: "Active al menos una sección: Noticia o Evento.",
     errUrgentNoEvent: "Los avisos urgentes no admiten sección de Evento.",
+    aiAutocompleteButton: "Autocompletar con IA",
+    aiAutocompleteBusy: "Analizando contenido e imagen...",
+    aiAutocompleteSuccess: "Campos completados por IA",
+    aiAutocompleteError: "No se pudo autocompletar: Verifique la clave de IA en Control de IA",
   };
 
   // ---------------------------------------------------------------------------
@@ -132,7 +136,7 @@
     if (status === 400 || status === 413 || status === 422) {
       return new ApiError("validation", detailText || `Datos inválidos (HTTP ${status}).`, status, detail);
     }
-    if (status >= 500) return new ApiError("server", TEXTS.errServer, status, detail);
+    if (status >= 500) return new ApiError("server", detailText || TEXTS.errServer, status, detail);
     return new ApiError("client", detailText || `Error HTTP ${status}.`, status, detail);
   }
 
@@ -497,6 +501,99 @@
       isEdited: p.is_edited !== undefined ? Boolean(p.is_edited) : postType !== POST_TYPE_INSTAGRAM,
       isAiGenerated: Boolean(p.is_ai_generated || p.status === "ai"),
     };
+  }
+
+  function normalizeAiDatetimeLocal(raw) {
+    const clean = String(raw || "").trim();
+    if (!clean) return "";
+    const localMatch = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::\d{2})?$/.exec(clean);
+    if (localMatch) {
+      return `${localMatch[1]}T${localMatch[2]}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+      return `${clean}T09:00`;
+    }
+    return isoToDatetimeLocal(clean);
+  }
+
+  function applyAiSuggestionsToFormValues(currentValues, suggestions) {
+    const cur = currentValues || {};
+    const sug = suggestions && typeof suggestions === "object" ? suggestions : {};
+    const next = {
+      ...cur,
+      targetGroups: Array.isArray(cur.targetGroups) ? cur.targetGroups.slice() : [],
+      notifyGroups: Array.isArray(cur.notifyGroups) ? cur.notifyGroups.slice() : [],
+      eventNotifyGroups: Array.isArray(cur.eventNotifyGroups) ? cur.eventNotifyGroups.slice() : [],
+      reminders: Array.isArray(cur.reminders) ? cur.reminders.slice() : [30],
+    };
+
+    if (!String(next.title || "").trim() && typeof sug.title === "string" && sug.title.trim()) {
+      next.title = sug.title.trim().slice(0, LIMITS.title);
+    }
+    if (!String(next.caption || "").trim() && typeof sug.caption === "string" && sug.caption.trim()) {
+      next.caption = sug.caption.trim().slice(0, LIMITS.teaser);
+    }
+    if (!String(next.content || "").trim() && typeof sug.content === "string" && sug.content.trim()) {
+      next.content = sug.content.trim().slice(0, LIMITS.content);
+    }
+    const rawDetail = sug.detail_text !== undefined ? sug.detail_text : sug.detailText;
+    if (!String(next.detailText || "").trim() && typeof rawDetail === "string" && rawDetail.trim()) {
+      next.detailText = rawDetail.trim().slice(0, LIMITS.detailText);
+    }
+    if (
+      !String(next.category || "").trim() &&
+      typeof sug.category === "string" &&
+      CATEGORIES.some((c) => c.value === sug.category.trim())
+    ) {
+      next.category = sug.category.trim();
+    }
+    const rawLinkLabel = sug.link_label !== undefined ? sug.link_label : sug.linkLabel;
+    if (!String(next.linkLabel || "").trim() && typeof rawLinkLabel === "string" && rawLinkLabel.trim()) {
+      next.linkLabel = rawLinkLabel.trim().slice(0, LIMITS.linkLabel);
+    }
+    const rawLinkUrl = sug.link_url !== undefined ? sug.link_url : sug.linkUrl;
+    if (!String(next.linkUrl || "").trim() && typeof rawLinkUrl === "string" && rawLinkUrl.trim()) {
+      next.linkUrl = rawLinkUrl.trim().slice(0, LIMITS.linkUrl);
+    }
+    if (!String(next.location || "").trim() && typeof sug.location === "string" && sug.location.trim()) {
+      next.location = sug.location.trim().slice(0, LIMITS.location);
+    }
+
+    const rawStart = sug.event_start !== undefined ? sug.event_start : sug.eventStart;
+    if (!String(next.eventStart || "").trim() && typeof rawStart === "string" && rawStart.trim()) {
+      const formattedStart = normalizeAiDatetimeLocal(rawStart);
+      if (formattedStart) next.eventStart = formattedStart;
+    }
+
+    const rawEnd = sug.event_end !== undefined ? sug.event_end : sug.eventEnd;
+    if (!String(next.eventEnd || "").trim() && typeof rawEnd === "string" && rawEnd.trim()) {
+      const formattedEnd = normalizeAiDatetimeLocal(rawEnd);
+      if (formattedEnd) next.eventEnd = formattedEnd;
+    }
+
+    const currentGroups = cleanGroups(next.targetGroups);
+    const suggestedGroups = cleanGroups(sug.target_groups !== undefined ? sug.target_groups : sug.targetGroups);
+    if (currentGroups.length === 0 && suggestedGroups.length > 0) {
+      next.targetGroups = suggestedGroups;
+    }
+
+    const postType = String(next.postType || POST_TYPE_NORMAL).toUpperCase();
+    if (postType !== POST_TYPE_URGENT && !next.isEvent) {
+      const eventInferred =
+        sug.is_event === true ||
+        sug.isEvent === true ||
+        Boolean(next.eventStart && !String(cur.eventStart || "").trim()) ||
+        Boolean(next.location && !String(cur.location || "").trim());
+      if (eventInferred) {
+        next.isEvent = true;
+      }
+    }
+
+    if (!next.hasRegistration && (sug.has_registration === true || sug.hasRegistration === true)) {
+      next.hasRegistration = true;
+    }
+
+    return next;
   }
 
   function renderPublicationRows(items, options) {
@@ -948,6 +1045,18 @@
       saveAiConfig: (apiKey) => request("POST", "/api/ai/config", { json: { api_key: apiKey } }),
       testAiConnection: (apiKey) =>
         request("POST", "/api/ai/test-connection", apiKey ? { json: { api_key: apiKey } } : {}),
+      autocompletePublicationAi(payload, file) {
+        if (file) {
+          const formData = new FormData();
+          formData.append("data", JSON.stringify(payload || {}));
+          formData.append("file", file, file.name || "upload");
+          return request("POST", "/api/publications/autocomplete-ai", { formData, timeoutMs: uploadTimeoutMs });
+        }
+        return request("POST", "/api/publications/autocomplete-ai", {
+          json: payload || {},
+          timeoutMs: uploadTimeoutMs,
+        });
+      },
 
       // Compatibilidad con endpoints de noticias y eventos
       listNews: (params) => request("GET", `/api/news${qs({ limit: 100, ...params })}`),
@@ -1011,6 +1120,8 @@
     validatePublicationValues,
     buildPublicationPayload,
     publicationToFormValues,
+    normalizeAiDatetimeLocal,
+    applyAiSuggestionsToFormValues,
     renderPublicationRows,
     renderHistoryEntries,
     validateNewsValues,
