@@ -572,4 +572,12 @@ test("grupos y matriz de roles en vivo contra SQLite/PostgreSQL", live, async ()
   });
   assert.deepEqual(updatedRole.permissions, ["grupos", "apis"]);
   await ctx.admin.revokeRole("coordinador.test@upa.edu.py");
+
+  // Control de IA: guardar clave de Gemini y consultar clave enmascarada
+  const aiBefore = await ctx.admin.getAiConfig();
+  assert.equal(typeof aiBefore.configured, "boolean");
+  const aiSaved = await ctx.admin.saveAiConfig("AIzaSyLiveCockpitKey1234");
+  assert.equal(aiSaved.configured, true);
+  assert.equal(aiSaved.masked_key, "AIza********1234");
+  assert.equal(aiSaved.source, "database");
 });

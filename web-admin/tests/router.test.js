@@ -287,9 +287,15 @@ test("resolucion: rutas canonicas de los 4 modulos del portal", () => {
     isRedirect: false,
   });
 
-  assert.deepEqual(r.resolveRoute("/dashboard/apis"), {
+    assert.deepEqual(r.resolveRoute("/dashboard/apis"), {
     name: "apis",
     path: "/dashboard/apis",
+    isRedirect: false,
+  });
+
+  assert.deepEqual(r.resolveRoute("/dashboard/ia"), {
+    name: "ia",
+    path: "/dashboard/ia",
     isRedirect: false,
   });
 });
@@ -357,6 +363,11 @@ test("navegacion: clic en las 4 pestanas actualiza la URL con pushState y altern
   assert.equal(window.location.pathname, "/dashboard/apis");
   assert.ok(!elements["student-workspace"].classList.contains("hidden"));
   assert.ok(elements["nav-mod-students"].classList.contains("is-active"));
+
+  elements["nav-mod-ai"].click();
+  assert.equal(window.location.pathname, "/dashboard/ia");
+  assert.ok(!elements["view-ai"].classList.contains("hidden"));
+  assert.ok(elements["nav-mod-ai"].classList.contains("is-active"));
 
   elements["header-logo-link"].click();
   assert.equal(window.location.pathname, "/dashboard/publicaciones");
@@ -545,4 +556,18 @@ test("historial: Rollenmatrix enthält Historial-Spalte und verbirgt Audit-Log o
 
   assert.ok(histEl.classList.contains("hidden"), "Ohne historial-Berechtigung muss das Audit-Log verborgen sein");
   assert.equal(histEl.innerHTML, "");
+});
+
+test("control de ia: index.html contiene reiter Control de IA, guia en 3 pasos y controles de conexion", () => {
+  const indexHtml = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf8");
+  assert.ok(indexHtml.includes('id="nav-mod-ai"'));
+  assert.ok(indexHtml.includes("Control de IA"));
+  assert.ok(indexHtml.includes("https://aistudio.google.com/app/apikey"));
+  assert.ok(indexHtml.includes("Create API key"));
+  assert.ok(indexHtml.includes("Guardar y Probar"));
+  assert.ok(indexHtml.includes("Probar conexión"));
+
+  const env = createTestEnvironment("/dashboard/control-de-ia");
+  assert.equal(env.window.location.pathname, "/dashboard/ia");
+  assert.equal(env.router.getCurrentRoute(), "ia");
 });
