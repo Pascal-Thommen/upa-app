@@ -44,6 +44,7 @@ services:
       GOOGLE_REDIRECT_URI: https://upa-beta.eu1.netbird.services/api/auth/google
       ALLOWED_EMAIL_DOMAIN: upa.edu.py
       GOOGLE_SERVICE_ACCOUNT_FILE: /app/secrets/service-account.json
+      AI_EVENT_EXTRACTION_ENABLED: "true"
     ports:
       - "8100:8000"
     volumes:

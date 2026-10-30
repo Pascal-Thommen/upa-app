@@ -52,10 +52,12 @@ class Settings(BaseSettings):
     FCM_API_BASE_URL: str = "https://fcm.googleapis.com"
 
     # Control de IA: Google Gemini (Google AI Studio). Fallback si no hay clave guardada en la base de datos.
+    AI_EVENT_EXTRACTION_ENABLED: bool = True
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash"
     GEMINI_API_BASE_URL: str = "https://generativelanguage.googleapis.com"
     GEMINI_TIMEOUT_SECONDS: float = 15.0
+    GEMINI_MAX_IMAGE_BYTES: int = 4 * 1024 * 1024
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -70,6 +70,8 @@ class Post(Base):
 
     # Estado editorial: False = pendiente de revision, True = revisado/editado
     is_edited = Column(Boolean, default=False, nullable=False, server_default=false())
+    # True si el evento fue extraido y publicado directamente por IA (Gemini multimodal)
+    is_ai_generated = Column(Boolean, default=False, nullable=False, server_default=false())
 
     # Campos de sincronizacion con Instagram
     instagram_id = Column(String(100), unique=True, nullable=True, index=True)
@@ -86,6 +88,46 @@ class Post(Base):
     author = relationship("User", back_populates="posts")
     registrations = relationship("EventRegistration", back_populates="post", cascade="all, delete-orphan")
     views = relationship("PostView", back_populates="post", cascade="all, delete-orphan")
+
+    @property
+    def status(self) -> str:
+        if bool(getattr(self, "is_ai_generated", False)) and not bool(getattr(self, "is_edited", False)):
+            return "ai"
+        if bool(getattr(self, "is_edited", False)) or (getattr(self, "post_type", "MANUAL") != "INSTAGRAM"):
+            return "edited"
+        return "pending"
+
+    @property
+    def event_date(self):
+        return self.event_start
+
+    @event_date.setter
+    def event_date(self, value) -> None:
+        self.event_start = value
+
+    @property
+    def event_end_date(self):
+        return self.event_end
+
+    @event_end_date.setter
+    def event_end_date(self, value) -> None:
+        self.event_end = value
+
+    @property
+    def event_location(self) -> str | None:
+        return self.location
+
+    @event_location.setter
+    def event_location(self, value: str | None) -> None:
+        self.location = value
+
+    @property
+    def notify_push(self) -> bool:
+        return bool(self.send_push_notification)
+
+    @notify_push.setter
+    def notify_push(self, value: bool) -> None:
+        self.send_push_notification = bool(value)
 
 
 class EventRegistration(Base):

@@ -38,6 +38,7 @@ _COLUMN_UPGRADES: tuple[tuple[str, str, str], ...] = (
     ("posts", "link_url", "TEXT"),
     ("posts", "link_label", "VARCHAR(100)"),
     ("posts", "is_edited", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("posts", "is_ai_generated", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("audience_groups", "google_groups", "JSON"),
     ("admin_audit_logs", "target_key", "VARCHAR(255)"),
 )

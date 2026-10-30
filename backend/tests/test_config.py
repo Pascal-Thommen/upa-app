@@ -119,7 +119,7 @@ def test_index_html_asset_version_busts_cache_and_roles_header_matches_permissio
     repo_root = Path(__file__).resolve().parent.parent.parent
     html = (repo_root / "web-admin" / "index.html").read_text(encoding="utf-8")
     versions = set(re.findall(r"/dashboard/[\w.-]+\.(?:js|css)\?v=([\d.]+)", html))
-    assert versions == {"2.3.0"}
+    assert versions == {"2.4.0"}
     thead = html.split('<tbody id="admin-table-rows"')[0].split('aria-label="Roles"')[1]
     assert thead.count("<th ") == 7
     assert "Historial</th>" in thead

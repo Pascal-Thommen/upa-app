@@ -438,6 +438,27 @@ test("renderPublicationRows y renderHistoryEntries muestran etiquetas, metricas 
   assert.ok(html.includes("18 vistas"));
   assert.ok(html.includes("9 inscritos / 2 bajas"));
 
+  const aiHtml = Core.renderPublicationRows(
+    [
+      {
+        id: 43,
+        title: "Evento extraído con IA",
+        summary: "Charla en Aula Magna",
+        post_type: "INSTAGRAM",
+        is_news: true,
+        is_event: true,
+        is_edited: false,
+        is_ai_generated: true,
+        status: "ai",
+        published_at: "2030-06-15T12:00:00Z",
+        event_start: "2030-06-20T15:00:00Z",
+      },
+    ],
+    { timeZone: "UTC" }
+  );
+  assert.ok(aiHtml.includes("ed-badge-ai"));
+  assert.ok(aiHtml.includes(">IA<"));
+
   const hist = Core.renderHistoryEntries(
     [
       {

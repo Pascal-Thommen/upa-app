@@ -495,6 +495,7 @@
       attendingCount: Number(p.attending_count || 0),
       declinedCount: Number(p.declined_count || 0),
       isEdited: p.is_edited !== undefined ? Boolean(p.is_edited) : postType !== POST_TYPE_INSTAGRAM,
+      isAiGenerated: Boolean(p.is_ai_generated || p.status === "ai"),
     };
   }
 
@@ -536,9 +537,14 @@
         </div>`;
 
         const isEdited = item.is_edited !== undefined ? Boolean(item.is_edited) : postType !== POST_TYPE_INSTAGRAM;
-        const editBadge = isEdited
-          ? `<span class="ed-badge ed-badge-ok">Editado</span>`
-          : `<span class="ed-badge ed-badge-warn">Pendiente</span>`;
+        const isAiGenerated = Boolean(item.is_ai_generated || item.status === "ai");
+        const editBadge = isAiGenerated
+          ? isEdited
+            ? `<span class="ed-badge ed-badge-ok">Editado</span> <span class="ed-badge ed-badge-ai" title="Evento extraído automáticamente con IA">IA</span>`
+            : `<span class="ed-badge ed-badge-ai" title="Evento extraído automáticamente con IA">IA</span>`
+          : isEdited
+            ? `<span class="ed-badge ed-badge-ok">Editado</span>`
+            : `<span class="ed-badge ed-badge-warn">Pendiente</span>`;
 
         const pubDate = formatDateTime(item.published_at || item.created_at, opts);
         const eventDate = item.is_event && item.event_start ? formatDateTime(item.event_start, opts) : "";
