@@ -1,26 +1,28 @@
-# UPA App: Especificacion Funcional
+# UPA App: Funktionale Systemspezifikation
 
-## 1. Stack Tecnologico y Justificacion de Python (FastAPI)
-* 60 por ciento menos codigo repetitivo frente a Java, priorizando cumplimiento de plazos y entrega del MVP.
-* Integracion limpia y ligera con Google Workspace Admin SDK, Classroom API y feeds de redes sociales.
-* Documentacion interactiva Swagger generada automaticamente (/docs) para el equipo de Android Studio.
+## 1. Technologiestack und Architekturprinzipien
+* **PWA First (`web-app/`):** Responsive Progressive Web App fuer Studierende und Dozierende auf Android und iOS mit Desktop QR Code Landingpage, Web App Manifest (`manifest.webmanifest`), Service Worker (`/sw.js`) und Android TWA Unterstuetzung (`/.well-known/assetlinks.json`).
+* **Python FastAPI Backend (`backend/`):** Asynchroner REST Service mit Pydantic v2 Validierung, SQLAlchemy 2.0 ORM, PostgreSQL 16 und automatisch generierter OpenAPI 3.1 Dokumentation unter `/docs`.
+* **Multimodale KI (`Google Gemini Flash`):** Automatische Veranstaltungserkennung aus Instagram Beiträgen und intelligentes Ausfuellen leerer Editorfelder (`Autocompletar con IA`).
 
-## 2. Modulos y Funcionalidades Principales
+## 2. Kernmodule und Funktionen
 
-### Modulo Inicio (Feed del Campus)
-* Avisos de emergencia en formato banner superior ante situaciones imprevistas (ej. suspension por tormentas o granizo).
-* Publicacion de conferencias (Charlas) y eventos con registro de inscripcion y cancelacion en 1 clic.
-* Agregacion automatica de publicaciones oficiales de redes sociales mediante SociableKIT / Instagram API.
+### Modul Inicio (Campus Feed in der PWA)
+* Dringende Eilmeldungen (`EMERGENCY_BANNER`) als prominente obere Banner mit automatischem Ablaufdatum (`expires_at`).
+* Chronologischer Feed aus angepinnten Beitraegen, Campus Mitteilungen, Veranstaltungen und offiziellen Instagram Posts (`@upalemana`).
+* Direkte 1 Klick Anmeldung und Abmeldung fuer Veranstaltungen (`Inscribirme` / `Cancelar inscripcion`) auf der Karte und in der Vollbild Detailansicht.
 
-### Modulo Agenda (Calendario y Plazos)
-* Lista cronologica de actividades en la parte superior y calendario mensual sincronizado con puntos indicadores abajo.
-* Importacion automatica de fechas limite y entregas academicas desde Google Classroom.
+### Modul Agenda (Kalender und Abgabefristen in der PWA)
+* Kombinierte Ansicht aus chronologischer Terminliste im oberen Bereich und kompaktem Monatskalender mit farbigen Tagespunkten im unteren Bereich.
+* Automatische Synchronisation der persönlichen Google Classroom Aufgaben in der lokalen Zeitzone `America/Asuncion` inklusive persistentem Datenbank Fallback (`classroom_deadlines_cache`) bei Google API Timeouts.
 
-### Modulo Perfil y Personalizacion
-* Acceso exclusivo obligatorio con Google OAuth para cuentas @upa.edu.py.
-* Configuracion de modo oscuro/claro, preferencias de notificaciones y filtro por carrera.
+### Modul Perfil (Einstellungen und Sitzung in der PWA)
+* Verbindliche Anmeldung ueber Google OAuth 2.0 fuer Konten der Domain `@upa.edu.py` (`/api/auth/login-google?return_to=campus`).
+* 3 Wege Design Umschalter (`Sistema`, `Modo Claro`, `Modo Oscuro`), Benachrichtigungsschalter fuer Events, Mitteilungen und Fristen sowie sicheres Abmelden mit Bereinigung des lokalen Caches.
+* Strikter Datenschutz: Interne Zielgruppen und E-Mail Verteiler werden im Studentenprofil nicht angezeigt.
 
-### Modulo Administracion Web (Marketing Escritorio)
-* Fuente unica de verdad (Single Source of Truth): modelo de datos unificado en `/api/publications` para noticias, eventos de calendario y publicaciones hibridas, con soporte de imagen o video (`IMAGE` / `VIDEO`), vigencia obligatoria al fijar arriba, recordatorios configurables en minutos, horas o dias y bloqueo de solo lectura en campos sincronizados de Instagram.
-* Segmentacion de destinatarios mediante lista plana ordenada alfabeticamente de grupos reales de Google Workspace (`@upa.edu.py`) con filtro instantaneo y cache local de Google Directory API.
-* Seguridad de roles bajo principio de privilegio minimo: sin accesos rapidos de desarrollo en el login y con todas las casillas de permisos desmarcadas por defecto al crear nuevas cuentas.
+### Modul Web Admin Cockpit (`web-admin/` unter `/dashboard/`)
+* **Publicaciones (`/dashboard/publicaciones`):** Vereinheitlichtes Datenmodell in `/api/publications` fuer Mitteilungen, Veranstaltungen und hybride Beitraege mit Upload fuer Bilder (`JPG`, `PNG`, `WEBP`), Videos (`MP4`, `WEBM`) und `PDF`, Pflichtablaufdatum beim Anpinnen (`is_pinned`), flexiblen Erinnerungen, Instagram Schreibschutz und dem Button `Autocompletar con IA`.
+* **Grupos (`/dashboard/grupos`):** Alphabetisch sortierte Liste institutioneller Zielgruppen und realer Google Workspace Gruppen (`@upa.edu.py`) mit Echtzeit Suchfilter.
+* **Roles (`/dashboard/roles`):** Berechtigungsmatrix nach dem Least Privilege Prinzip (`publicaciones`, `grupos`, `roles`, `apis`, `historial`) mit standardmaessig deaktivierten Checkboxen fuer neue Konten.
+* **Control de IA (`/dashboard/ia`), APIs (`/dashboard/apis`) und Historial (`/dashboard/historial`):** Verwaltung und Live Test des Google Gemini API Schluessels, Echtzeit Systemdiagnose und lueckenlose Audit Historie.
