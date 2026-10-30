@@ -180,7 +180,7 @@ def test_classroom_parse_due_date_and_null_hardening():
     assert due_time_obj.hours == 23
     assert formatted == ""
 
-    # Caso 2: due_date diccionario con valores validos y due_time valido
+    # Caso 2: due_date diccionario con valores validos y due_time en UTC -> convertido a America/Asuncion (UTC-3)
     d2, t2, fmt2 = _parse_due_date_and_time(
         {"year": 2026, "month": 11, "day": 5},
         {"hours": 18, "minutes": 30},
@@ -188,9 +188,21 @@ def test_classroom_parse_due_date_and_null_hardening():
     assert d2.year == 2026
     assert d2.month == 11
     assert d2.day == 5
-    assert t2.hours == 18
+    assert t2.hours == 15
     assert t2.minutes == 30
-    assert fmt2 == "2026-11-05 18:30"
+    assert fmt2 == "2026-11-05 15:30"
+
+    # Caso 2b: Cruce de medianoche UTC -> America/Asuncion (31 Oct 02:59 UTC == 30 Oct 23:59 Asuncion)
+    d_oct, t_oct, fmt_oct = _parse_due_date_and_time(
+        {"year": 2026, "month": 10, "day": 31},
+        {"hours": 2, "minutes": 59},
+    )
+    assert d_oct.year == 2026
+    assert d_oct.month == 10
+    assert d_oct.day == 30
+    assert t_oct.hours == 23
+    assert t_oct.minutes == 59
+    assert fmt_oct == "2026-10-30 23:59"
 
     # Caso 3: Verificacion de esquema sin nulos
     item = ClassroomDeadlineResponse(
@@ -303,12 +315,16 @@ def test_classroom_auto_refresh_on_http_401_for_deadlines_and_courses(monkeypatc
     assert deadlines[0]["id"] == "work_900"
     assert deadlines[0]["title"] == "Proyecto Integrador Final"
     assert deadlines[0]["course_name"] == "Ingenieria de Software II"
-    assert deadlines[0]["due_date_formatted"] == "2026-11-15 23:59"
+    assert deadlines[0]["due_date_formatted"] == "2026-11-15 20:59"
 
-    # 2. Verificar que el nuevo access_token quedo persistido en la base de datos
+    # 2. Verificar que el nuevo access_token y el cache de deadlines quedaron persistidos en la base de datos
     db_verify = TestingSessionLocal()
     updated_student = db_verify.query(User).filter(User.id == 102).first()
     assert updated_student.classroom_token == "ya29.refreshed_live_token_2026"
+    assert isinstance(updated_student.classroom_deadlines_cache, list)
+    assert len(updated_student.classroom_deadlines_cache) == 1
+    assert updated_student.classroom_deadlines_cache[0]["id"] == "work_900"
+    assert updated_student.classroom_synced_at is not None
     db_verify.close()
 
     # 3. Forzar expiracion nuevamente y probar auto-refresh en /api/classroom/courses
@@ -363,3 +379,115 @@ def test_classroom_auto_refresh_handles_revoked_refresh_token_gracefully(monkeyp
     assert resp.status_code == 200
     assert resp.headers.get("X-Classroom-Status") == "permission_denied"
     assert resp.json() == []
+
+
+def test_classroom_persistent_db_fallback_on_timeout_401_429_500_and_agenda(monkeypatch):
+    """
+    Verifica que una vez sincronizados los plazos de Classroom en base de datos,
+    ningun fallo posterior de Google API (Timeout > 5s, HTTP 401/403, Rate Limit 429, HTTP 500)
+    ni la invalidacion de cache en memoria vacie las entregas del estudiante en /api/classroom/deadlines
+    ni en /api/v1/agenda.
+    """
+    import httpx
+    from src.api.classroom import clear_classroom_cache
+
+    clear_classroom_cache()
+    db = TestingSessionLocal()
+    student = db.query(User).filter(User.id == 102).first()
+    student.classroom_token = "ya29.live_token_ok"
+    student.classroom_refresh_token = None
+    student.classroom_deadlines_cache = []
+    db.commit()
+    db.close()
+
+    real_async_client = httpx.AsyncClient
+    mode = {"state": "ok"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        state = mode["state"]
+        if state == "timeout":
+            raise httpx.ReadTimeout("Simulated Google Classroom API timeout > 5s", request=request)
+        if state == "401":
+            return httpx.Response(401, json={"error": {"code": 401, "message": "Unauthenticated"}})
+        if state == "429":
+            return httpx.Response(429, json={"error": {"code": 429, "message": "Rate Limit Exceeded"}})
+        if state == "500":
+            return httpx.Response(500, json={"error": {"code": 500, "message": "Internal Error"}})
+        if state == "coursework_timeout" and "courseWork" in url:
+            raise httpx.ReadTimeout("Simulated courseWork timeout", request=request)
+
+        if "classroom.googleapis.com/v1/courses?" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "courses": [
+                        {
+                            "id": "c_301",
+                            "name": "Sistemas Distribuidos",
+                            "section": "2026",
+                            "alternateLink": "https://classroom.google.com/c/c_301",
+                        }
+                    ]
+                },
+            )
+        if "courseWork" in url:
+            # 2026-10-31 02:59 UTC corresponde a 2026-10-30 23:59 en America/Asuncion (UTC-3)
+            return httpx.Response(
+                200,
+                json={
+                    "courseWork": [
+                        {
+                            "id": "hw_oct30",
+                            "title": "Entrega Consenso Raft",
+                            "description": "Implementacion tolerante a fallos",
+                            "dueDate": {"year": 2026, "month": 10, "day": 31},
+                            "dueTime": {"hours": 2, "minutes": 59},
+                            "alternateLink": "https://classroom.google.com/c/c_301/a/hw_oct30",
+                            "maxPoints": 100,
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: real_async_client(transport=transport, timeout=kwargs.get("timeout", 5.0)),
+    )
+
+    jwt_token = create_access_token(data={"sub": "102", "email": "estudiante2@upa.edu.py", "role": "user"})
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
+    # 1. Sincronizacion inicial exitosa -> guarda en DB y convierte fecha UTC a America/Asuncion (2026-10-30)
+    ok_resp = client.get("/api/classroom/deadlines", headers=headers)
+    assert ok_resp.status_code == 200
+    assert ok_resp.headers.get("X-Classroom-Status") == "active"
+    items = ok_resp.json()
+    assert len(items) == 1
+    assert items[0]["id"] == "hw_oct30"
+    assert items[0]["due_date"] == {"year": 2026, "month": 10, "day": 30}
+    assert items[0]["due_time"] == {"hours": 23, "minutes": 59}
+    assert items[0]["due_date_formatted"] == "2026-10-30 23:59"
+
+    # 2. Simular fallos de Google API tras vaciar la cache en memoria (o actualizar token)
+    for failure_mode in ("timeout", "401", "429", "500", "coursework_timeout"):
+        mode["state"] = failure_mode
+        clear_classroom_cache()
+
+        dl_resp = client.get("/api/classroom/deadlines", headers=headers)
+        assert dl_resp.status_code == 200, f"Fallo en modo {failure_mode}"
+        assert dl_resp.headers.get("X-Classroom-Cache") == "db_fallback"
+        dl_data = dl_resp.json()
+        assert len(dl_data) == 1, f"Lista vacia en modo {failure_mode}"
+        assert dl_data[0]["id"] == "hw_oct30"
+        assert dl_data[0]["due_date_formatted"] == "2026-10-30 23:59"
+
+        agenda_resp = client.get("/api/v1/agenda", headers=headers)
+        assert agenda_resp.status_code == 200
+        agenda_data = agenda_resp.json()
+        assert len(agenda_data["deadlines"]) == 1
+        assert agenda_data["deadlines"][0]["id"] == "hw_oct30"
+        assert any(i["item_type"] == "DEADLINE" and i["id"] == "hw_oct30" for i in agenda_data["items"])

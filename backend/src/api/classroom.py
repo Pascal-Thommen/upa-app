@@ -1,6 +1,8 @@
 import asyncio
 import time
+from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, Response
@@ -19,6 +21,8 @@ from ..schemas.classroom import (
 from ..schemas.feed import ErrorResponse
 
 router = APIRouter(prefix="/api/classroom", tags=["Classroom"])
+
+ASUNCION_TZ = ZoneInfo("America/Asuncion")
 
 # Cache en memoria con TTL de 5 minutos
 _DEADLINES_CACHE: dict[str, tuple[float, list[ClassroomDeadlineResponse]]] = {}
@@ -110,11 +114,53 @@ async def refresh_classroom_access_token(
     return new_access_token
 
 
+def _deadline_sort_key(item: ClassroomDeadlineResponse) -> str:
+    return item.due_date_formatted if item.due_date_formatted else "9999-99-99"
+
+
+def _load_persisted_deadlines(user: User) -> list[ClassroomDeadlineResponse]:
+    """Recupera los plazos almacenados de forma persistente en la base de datos para el usuario."""
+    raw_cache = getattr(user, "classroom_deadlines_cache", None)
+    if not isinstance(raw_cache, list) or not raw_cache:
+        return []
+    restored: list[ClassroomDeadlineResponse] = []
+    for entry in raw_cache:
+        try:
+            if isinstance(entry, ClassroomDeadlineResponse):
+                restored.append(entry)
+            elif isinstance(entry, dict):
+                restored.append(ClassroomDeadlineResponse.model_validate(entry))
+        except Exception:
+            continue
+    restored.sort(key=_deadline_sort_key)
+    return restored
+
+
+def _persist_user_deadlines(
+    user: User,
+    db: Session,
+    deadlines: list[ClassroomDeadlineResponse],
+) -> None:
+    """Persiste los plazos sincronizados de Classroom en la base de datos del usuario."""
+    try:
+        user.classroom_deadlines_cache = [item.model_dump() for item in deadlines]
+        user.classroom_synced_at = datetime.now(UTC)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except Exception as exc:
+        db.rollback()
+        print(f"[Classroom Deadlines DB Persist Error] {exc}")
+
+
 def _parse_due_date_and_time(
     due_date_raw: Any,
     due_time_raw: Any,
 ) -> tuple[ClassroomDueDate, ClassroomDueTime, str]:
-    """Normaliza fechas y horas de Classroom evitando valores nulos o formatos rotos."""
+    """
+    Normaliza fechas y horas de Classroom convirtiendo dueTime (entregado por Google en UTC)
+    a la zona horaria local de Asuncion (America/Asuncion) para evitar desajustes de dia.
+    """
     due_date_obj = ClassroomDueDate(year=0, month=0, day=0)
     due_time_obj = ClassroomDueTime(hours=23, minutes=59)
     due_date_formatted = ""
@@ -137,10 +183,50 @@ def _parse_due_date_and_time(
                     hh, mm = 0, 0
                 hh = max(0, min(23, hh))
                 mm = max(0, min(59, mm))
-                due_time_obj = ClassroomDueTime(hours=hh, minutes=mm)
-                due_date_formatted += f" {hh:02d}:{mm:02d}"
+                try:
+                    utc_dt = datetime(y, m, d, hh, mm, tzinfo=UTC)
+                    local_dt = utc_dt.astimezone(ASUNCION_TZ)
+                    due_date_obj = ClassroomDueDate(
+                        year=local_dt.year,
+                        month=local_dt.month,
+                        day=local_dt.day,
+                    )
+                    due_time_obj = ClassroomDueTime(
+                        hours=local_dt.hour,
+                        minutes=local_dt.minute,
+                    )
+                    due_date_formatted = (
+                        f"{local_dt.year:04d}-{local_dt.month:02d}-{local_dt.day:02d} "
+                        f"{local_dt.hour:02d}:{local_dt.minute:02d}"
+                    )
+                except ValueError:
+                    due_time_obj = ClassroomDueTime(hours=hh, minutes=mm)
+                    due_date_formatted += f" {hh:02d}:{mm:02d}"
     elif isinstance(due_date_raw, str) and due_date_raw.strip():
-        due_date_formatted = due_date_raw.strip()
+        raw_str = due_date_raw.strip()
+        if "T" in raw_str and (raw_str.endswith("Z") or "+" in raw_str[10:] or "-" in raw_str[10:]):
+            try:
+                parsed_dt = datetime.fromisoformat(raw_str.replace("Z", "+00:00"))
+                if parsed_dt.tzinfo is None:
+                    parsed_dt = parsed_dt.replace(tzinfo=UTC)
+                local_dt = parsed_dt.astimezone(ASUNCION_TZ)
+                due_date_obj = ClassroomDueDate(
+                    year=local_dt.year,
+                    month=local_dt.month,
+                    day=local_dt.day,
+                )
+                due_time_obj = ClassroomDueTime(
+                    hours=local_dt.hour,
+                    minutes=local_dt.minute,
+                )
+                due_date_formatted = (
+                    f"{local_dt.year:04d}-{local_dt.month:02d}-{local_dt.day:02d} "
+                    f"{local_dt.hour:02d}:{local_dt.minute:02d}"
+                )
+                return due_date_obj, due_time_obj, due_date_formatted
+            except ValueError:
+                pass
+        due_date_formatted = raw_str
         date_part = due_date_formatted.split("T")[0].split(" ")[0]
         parts = date_part.split("-")
         if len(parts) == 3 and all(p.isdigit() for p in parts):
@@ -160,33 +246,40 @@ async def fetch_user_classroom_deadlines(
 ) -> list[ClassroomDeadlineResponse]:
     """
     Obtiene y sincroniza los plazos academicos de Google Classroom para el usuario,
-    ejecutando auto-refresh transparente del token OAuth si recibe HTTP 401.
+    persistiendo los resultados en base de datos y aplicando fallback transparente
+    (Stale-While-Revalidate) ante timeouts, HTTP 401/403, limites de tasa o fallos de red.
     """
+    persisted_deadlines = _load_persisted_deadlines(current_user)
     token = (current_user.classroom_token or "").strip()
     refresh_token = (getattr(current_user, "classroom_refresh_token", None) or "").strip()
     if not token and not refresh_token:
         if response is not None:
             response.headers["X-Classroom-Status"] = "missing_token"
-        return []
+            if persisted_deadlines:
+                response.headers["X-Classroom-Cache"] = "db_fallback"
+        return persisted_deadlines
 
     cache_key = (current_user.email or "").lower()
     if token:
         user_cache = _DEADLINES_CACHE.get(cache_key)
         if user_cache and (time.time() - user_cache[0] < CACHE_TTL_SECONDS):
-            if response is not None:
-                response.headers["X-Classroom-Status"] = "cached"
-            return user_cache[1]
+            if user_cache[1] or not persisted_deadlines:
+                if response is not None:
+                    response.headers["X-Classroom-Status"] = "cached"
+                return user_cache[1]
 
     deadlines: list[ClassroomDeadlineResponse] = []
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             if not token and refresh_token:
                 refreshed = await refresh_classroom_access_token(current_user, db, client=client)
                 if not refreshed:
                     if response is not None:
                         response.headers["X-Classroom-Status"] = "permission_denied"
-                    return []
+                        if persisted_deadlines:
+                            response.headers["X-Classroom-Cache"] = "db_fallback"
+                    return persisted_deadlines
                 token = refreshed
                 if response is not None:
                     response.headers["X-Classroom-Token-Refreshed"] = "true"
@@ -195,7 +288,7 @@ async def fetch_user_classroom_deadlines(
             courses_resp = await client.get(
                 "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
                 headers=headers,
-                timeout=6.0,
+                timeout=5.0,
             )
 
             if courses_resp.status_code == 401 and refresh_token:
@@ -208,17 +301,21 @@ async def fetch_user_classroom_deadlines(
                     courses_resp = await client.get(
                         "https://classroom.googleapis.com/v1/courses?studentId=me&courseStates=ACTIVE",
                         headers=headers,
-                        timeout=6.0,
+                        timeout=5.0,
                     )
 
             if courses_resp.status_code in (401, 403):
                 if response is not None:
                     response.headers["X-Classroom-Status"] = "permission_denied"
-                return []
+                    if persisted_deadlines:
+                        response.headers["X-Classroom-Cache"] = "db_fallback"
+                return persisted_deadlines
             if courses_resp.status_code != 200:
                 if response is not None:
                     response.headers["X-Classroom-Status"] = "api_error"
-                return []
+                    if persisted_deadlines:
+                        response.headers["X-Classroom-Cache"] = "db_fallback"
+                return persisted_deadlines
 
             courses_data = courses_resp.json()
             raw_courses = courses_data.get("courses") if isinstance(courses_data, dict) else []
@@ -226,13 +323,18 @@ async def fetch_user_classroom_deadlines(
             if not courses:
                 if response is not None:
                     response.headers["X-Classroom-Status"] = "no_courses"
-                return []
+                    if persisted_deadlines:
+                        response.headers["X-Classroom-Cache"] = "db_fallback"
+                return persisted_deadlines
 
-            async def fetch_course_work(course: dict[str, Any]) -> list[ClassroomDeadlineResponse]:
+            async def fetch_course_work(
+                course: dict[str, Any],
+            ) -> tuple[bool, list[ClassroomDeadlineResponse]]:
                 c_id = str(course.get("id") or "").strip()
                 if not c_id:
-                    return []
+                    return True, []
                 c_name = str(course.get("name") or "Curso sin nombre").strip() or "Curso sin nombre"
+                fallback_for_course = [d for d in persisted_deadlines if d.course_id == c_id]
                 try:
                     work_resp = await client.get(
                         f"https://classroom.googleapis.com/v1/courses/{c_id}/courseWork?courseWorkStates=PUBLISHED",
@@ -240,7 +342,7 @@ async def fetch_user_classroom_deadlines(
                         timeout=5.0,
                     )
                     if work_resp.status_code != 200:
-                        return []
+                        return False, fallback_for_course
                     work_json = work_resp.json()
                     raw_works = work_json.get("courseWork") if isinstance(work_json, dict) else []
                     works = [w for w in (raw_works or []) if isinstance(w, dict)]
@@ -278,23 +380,38 @@ async def fetch_user_classroom_deadlines(
                                 max_points=max_points,
                             )
                         )
-                    return items
+                    return True, items
                 except Exception:
-                    return []
+                    return False, fallback_for_course
 
             tasks = [fetch_course_work(c) for c in courses[:10]]
             results = await asyncio.gather(*tasks, return_exceptions=True)
+            any_course_ok = False
+            had_course_error = False
             for res in results:
-                if isinstance(res, list):
-                    deadlines.extend(res)
+                if isinstance(res, tuple) and len(res) == 2:
+                    ok, course_items = res
+                    if ok:
+                        any_course_ok = True
+                    else:
+                        had_course_error = True
+                    deadlines.extend(course_items)
+                else:
+                    had_course_error = True
+
+        if (not deadlines or not any_course_ok) and persisted_deadlines:
+            if response is not None:
+                response.headers["X-Classroom-Status"] = "active" if any_course_ok else "api_error"
+                response.headers["X-Classroom-Cache"] = "db_fallback"
+            return persisted_deadlines
 
         if response is not None:
             response.headers["X-Classroom-Status"] = "active"
-
-        def _deadline_sort_key(item: ClassroomDeadlineResponse) -> str:
-            return item.due_date_formatted if item.due_date_formatted else "9999-99-99"
+            if had_course_error and persisted_deadlines:
+                response.headers["X-Classroom-Cache"] = "db_fallback"
 
         deadlines.sort(key=_deadline_sort_key)
+        _persist_user_deadlines(current_user, db, deadlines)
         _DEADLINES_CACHE[cache_key] = (time.time(), deadlines)
         return deadlines
 
@@ -302,7 +419,9 @@ async def fetch_user_classroom_deadlines(
         print(f"[Classroom Deadlines Sync Error] {e}")
         if response is not None:
             response.headers["X-Classroom-Status"] = "network_error"
-        return []
+            if persisted_deadlines:
+                response.headers["X-Classroom-Cache"] = "db_fallback"
+        return persisted_deadlines
 
 
 @router.get(

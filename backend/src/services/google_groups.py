@@ -194,16 +194,16 @@ async def get_google_groups_for_user(user_email: str) -> list[dict[str, str]]:
 
 def map_groups_to_logical_tags(groups: list[dict[str, str]]) -> list[str]:
     """
-    Asocia los grupos de Google Workspace a etiquetas institucionales estandarizadas (ej. TIE, ALL, PROF)
-    para la segmentacion de contenido en el feed del campus.
+    Asocia los grupos de Google Workspace a etiquetas institucionales limpias
+    para la segmentacion de contenido en el feed del campus, excluyendo las
+    pseudo-etiquetas redundantes ALL y TIE aislado.
     """
-    tags = {"ALL"}
+    tags: set[str] = set()
     for g in groups:
-        name = g.get("name", "").lower()
-        email = g.get("email", "").lower()
+        raw_name = str(g.get("name") or "").strip()
+        name = raw_name.lower()
+        email = str(g.get("email") or "").strip().lower()
 
-        if "tie" in name or "tie" in email:
-            tags.add("TIE")
         if "industrial" in name or "pi" in email or "pi" in name:
             tags.add("PI")
         if "docente" in name or "prof" in name or "prof" in email:
@@ -211,10 +211,10 @@ def map_groups_to_logical_tags(groups: list[dict[str, str]]) -> list[str]:
         if "informatica" in name or "software" in name:
             tags.add("TI")
 
-        if g.get("name"):
-            tags.add(g["name"])
+        if raw_name and raw_name.upper() not in {"ALL", "TIE"}:
+            tags.add(raw_name)
 
-    return sorted(list(tags))
+    return sorted(tags)
 
 
 class WorkspaceDirectoryUnavailable(Exception):

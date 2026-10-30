@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine, ensure_schema_upgrades
 from .models import AudienceGroup, Post, User, UserRole
+from .schemas.user import REDUNDANT_GROUP_TAGS, sanitize_user_groups
 
 
 def ensure_schema_columns(bind_engine=engine) -> None:
@@ -19,6 +20,10 @@ def ensure_schema_columns(bind_engine=engine) -> None:
                     conn.execute(text("ALTER TABLE users ADD COLUMN classroom_refresh_token TEXT"))
                 if "device_token" not in existing_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN device_token VARCHAR(512)"))
+                if "classroom_deadlines_cache" not in existing_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN classroom_deadlines_cache JSON"))
+                if "classroom_synced_at" not in existing_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN classroom_synced_at TIMESTAMP"))
     except Exception as exc:
         print(f"[Schema Sync Notice] {exc}")
 
@@ -36,12 +41,26 @@ def seed_database():
                 email="pascal.thommen@upa.edu.py",
                 full_name="Pascal Thommen",
                 role="admin",
-                groups=["TIE", "Semester_4", "ALL"],
+                groups=["Semester_4"],
             )
             db.add(admin)
             db.commit()
             db.refresh(admin)
             print(f"[Seed] Administrador inicial creado: {admin.email}")
+
+        # Limpiar pseudo-grupos redundantes (ALL, TIE aislado) en usuarios existentes
+        for existing_user in db.query(User).all():
+            cleaned_groups = sanitize_user_groups(existing_user.groups)
+            if list(existing_user.groups or []) != cleaned_groups:
+                existing_user.groups = cleaned_groups
+
+        # Eliminar posibles grupos de audiencia ficticios ALL o TIE aislado
+        for existing_group in db.query(AudienceGroup).all():
+            if (
+                (existing_group.id or "").strip().upper() in REDUNDANT_GROUP_TAGS
+                or (existing_group.name or "").strip().upper() in REDUNDANT_GROUP_TAGS
+            ):
+                db.delete(existing_group)
 
         insta_post = db.query(Post).filter(Post.title == "Búsqueda Laboral: Recepcionista").first()
         if not insta_post:
@@ -90,8 +109,8 @@ def seed_database():
                 event_start=event_start,
                 event_end=event_end,
                 location="Auditorio Edificio 1, Piso 1",
-                target_groups=["ALL", "TIE", "Informatica"],
-                event_notify_groups=["ALL", "TIE", "Informatica"],
+                target_groups=["ALL", "Informatica"],
+                event_notify_groups=["Informatica"],
                 has_registration=True,
                 send_push_notification=True,
                 reminder_minutes_before=30,
@@ -102,6 +121,11 @@ def seed_database():
             )
             db.add(event_post)
             print("[Seed] Evento hibrido registrado: Charla IA Daniel Romero")
+        else:
+            if isinstance(event_post.target_groups, list) and "TIE" in event_post.target_groups:
+                event_post.target_groups = [g for g in event_post.target_groups if g != "TIE"]
+            if isinstance(event_post.event_notify_groups, list):
+                event_post.event_notify_groups = sanitize_user_groups(event_post.event_notify_groups)
 
         default_groups = [
             {

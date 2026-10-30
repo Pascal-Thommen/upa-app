@@ -19,7 +19,7 @@ from .api.auth import (
 from .api.auth import (
     router as auth_router,
 )
-from .api.classroom import fetch_user_classroom_deadlines
+from .api.classroom import ASUNCION_TZ, fetch_user_classroom_deadlines
 from .api.classroom import router as classroom_router
 from .api.diagnostics import router as diagnostics_router
 from .api.events import router as events_router
@@ -183,7 +183,7 @@ async def get_agenda(
 
     combined_items: list[AgendaItemResponse] = []
     for ev in events:
-        sort_key = ev.event_start.strftime("%Y-%m-%d %H:%M")
+        sort_key = ev.event_start.astimezone(ASUNCION_TZ).strftime("%Y-%m-%d %H:%M")
         combined_items.append(
             AgendaItemResponse(
                 item_type="EVENT",
@@ -294,9 +294,10 @@ async def get_app_state(
             email=clean_email,
             full_name=clean_name,
             role=clean_role,
-            groups=_filter_user_groups_for_privacy(clean_email, current_user.groups),
+            groups=_filter_user_groups_for_privacy(clean_email, current_user.groups, role=clean_role),
             google_groups=[
-                g.model_dump() for g in _filter_google_groups_for_privacy(clean_email, current_user.google_groups)
+                g.model_dump()
+                for g in _filter_google_groups_for_privacy(clean_email, current_user.google_groups, role=clean_role)
             ],
             has_classroom_token=has_token,
         )

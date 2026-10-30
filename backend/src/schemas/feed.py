@@ -1,11 +1,12 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .classroom import ClassroomDeadlineResponse
 from .event import EventResponse
 from .post import effective_published_at, ensure_utc_datetime, extra_detail_fields, normalize_target_groups
+from .user import sanitize_user_groups
 
 
 class ErrorResponse(BaseModel):
@@ -234,6 +235,15 @@ class AppStateUser(BaseModel):
         default_factory=list, description="Detalle de grupos de Google Workspace"
     )
     has_classroom_token: bool = Field(default=False, description="Indica si tiene Classroom vinculado")
+
+    @model_validator(mode="after")
+    def _enforce_privacy_and_clean_groups(self) -> "AppStateUser":
+        if (self.role or "").strip().lower() != "admin":
+            self.groups = []
+            self.google_groups = []
+        else:
+            self.groups = sanitize_user_groups(self.groups)
+        return self
 
 
 class AppStateResponse(BaseModel):

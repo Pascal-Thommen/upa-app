@@ -86,9 +86,13 @@ def user_can_access_post(user: Any, raw_groups: Any) -> bool:
     if getattr(user, "role", "user") in ("admin", "editor"):
         return True
     raw_user_groups = getattr(user, "groups", None) or []
-    user_groups = {"ALL", "ESTUDIANTES"} | {
-        str(g).strip().upper() for g in raw_user_groups if g is not None and str(g).strip()
-    }
+    user_groups = {"ALL", "ESTUDIANTES"}
+    for g in raw_user_groups:
+        if g is not None and str(g).strip():
+            upper_g = str(g).strip().upper()
+            user_groups.add(upper_g)
+            if "TIE" in upper_g:
+                user_groups.add("TIE")
     return bool(post_groups & user_groups)
 
 
