@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>UPA Campus</title>
+  <meta name="description" content="UPA Campus: noticias, eventos y agenda de la Universidad Paraguayo Alemana.">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="UPA Campus">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="/campus/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="/campus/icons/apple-touch-icon.png">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("upa_campus_theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+        var dark = t === "dark" || (t !== "light" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.querySelector('meta[name="theme-color"]').setAttribute("content", dark ? "#0f172a" : "#ffffff");
+      } catch (e) { /* almacenamiento no disponible: se usa el tema del sistema */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/campus/campus.css?v=1.0.0">
+</head>
+<body>
+  <noscript><p class="noscript">UPA Campus necesita JavaScript para funcionar.</p></noscript>
+
+  <!-- Landing de escritorio -->
+  <div id="landing" class="landing" hidden>
+    <header class="landing-header">
+      <img src="/campus/icons/upa-logo.png" alt="Universidad Paraguayo Alemana" class="landing-logo" width="120" height="79">
+    </header>
+    <main class="landing-main">
+      <section class="landing-card">
+        <p class="eyebrow">UPA Campus</p>
+        <h1>Escanea con tu celular para abrir la app</h1>
+        <p class="landing-lead">Noticias, eventos y agenda de la Universidad Paraguayo Alemana en tu bolsillo. Funciona en Android y iPhone directamente desde el navegador, sin instalar nada.</p>
+        <ul class="landing-points">
+          <li><strong>Inicio:</strong> noticias, Instagram y eventos con inscripción en un toque.</li>
+          <li><strong>Agenda:</strong> tus eventos y tareas de Google Classroom en un calendario.</li>
+          <li><strong>Perfil:</strong> tema claro u oscuro y avisos a tu medida.</li>
+        </ul>
+        <a class="landing-link" href="/?app=1">Probar la versión web aquí</a>
+      </section>
+      <section class="landing-qr" aria-label="Código QR para abrir la app">
+        <div id="qr-box" class="qr-box"></div>
+        <p id="qr-url" class="qr-url"></p>
+      </section>
+    </main>
+    <footer class="landing-footer">
+      <span>Universidad Paraguayo Alemana &bull; Asunción</span>
+      <a id="admin-link" class="admin-link" href="/dashboard/">Acceso Administrativo</a>
+    </footer>
+  </div>
+
+  <!-- Aplicacion movil -->
+  <div id="app" class="app" hidden>
+    <div id="offline-banner" class="offline-banner" role="status" aria-live="polite" hidden></div>
+
+    <header class="topbar">
+      <img src="/campus/icons/upa-logo.png" alt="UPA" class="topbar-logo" width="48" height="32">
+      <h1 id="view-title" class="topbar-title">Inicio</h1>
+      <button id="btn-refresh" class="icon-btn" type="button" aria-label="Actualizar">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </header>
+
+    <main class="views">
+      <section id="view-inicio" class="view" aria-labelledby="view-title">
+        <div id="install-banner" class="install-banner" hidden>
+          <div class="install-text">
+            <strong>Instalar en pantalla de inicio</strong>
+            <span id="install-sub">Abre UPA Campus como una app, sin barra del navegador.</span>
+          </div>
+          <button id="install-action" class="btn btn-primary btn-small" type="button">Instalar</button>
+          <button id="install-dismiss" class="icon-btn" type="button" aria-label="Cerrar aviso">&times;</button>
+        </div>
+        <div id="login-prompt" class="login-prompt" hidden>
+          <p><strong>Inicia sesión con tu cuenta @upa.edu.py</strong> para ver noticias internas, eventos y tu agenda.</p>
+          <a class="btn btn-primary" id="login-link-inicio" href="/api/auth/login-google?return_to=campus">Iniciar sesión con Google</a>
+        </div>
+        <div id="urgent-list" class="urgent-list"></div>
+        <div id="feed-status" class="status" hidden></div>
+        <div id="feed-list" class="feed-list"></div>
+        <button id="feed-more" class="btn btn-secondary btn-block" type="button" hidden>Cargar más</button>
+      </section>
+
+      <section id="view-agenda" class="view agenda" aria-label="Agenda" hidden>
+        <div class="agenda-top">
+          <div class="agenda-heading">
+            <h2 id="agenda-heading">Próximos eventos y tareas</h2>
+            <button id="agenda-clear" class="chip-btn" type="button" hidden>Ver todo</button>
+          </div>
+          <div id="agenda-status" class="status" hidden></div>
+          <ul id="agenda-list" class="agenda-list"></ul>
+        </div>
+        <div class="agenda-bottom">
+          <div class="cal-head">
+            <button id="cal-prev" class="icon-btn" type="button" aria-label="Mes anterior">&lsaquo;</button>
+            <strong id="cal-label"></strong>
+            <button id="cal-next" class="icon-btn" type="button" aria-label="Mes siguiente">&rsaquo;</button>
+          </div>
+          <div id="cal-grid" class="cal-grid" role="grid" aria-label="Calendario mensual"></div>
+        </div>
+      </section>
+
+      <section id="view-perfil" class="view" aria-label="Perfil" hidden>
+        <div id="profile-guest" class="login-prompt" hidden>
+          <p><strong>Aún no iniciaste sesión.</strong> Ingresa con tu cuenta institucional para ver tu perfil.</p>
+          <a class="btn btn-primary" id="login-link-perfil" href="/api/auth/login-google?return_to=campus">Iniciar sesión con Google</a>
+        </div>
+        <div id="profile-user" hidden>
+          <div class="profile-card">
+            <div id="profile-avatar" class="avatar" aria-hidden="true">U</div>
+            <div>
+              <h2 id="profile-name"></h2>
+              <p id="profile-email" class="muted"></p>
+              <p><span id="profile-role" class="badge"></span></p>
+            </div>
+          </div>
+          <div id="profile-groups" class="chips" aria-label="Grupos"></div>
+        </div>
+
+        <h3 class="section-title">Diseño</h3>
+        <div class="segmented" role="radiogroup" aria-label="Tema de la aplicación">
+          <button type="button" role="radio" data-theme-option="system" aria-checked="false">Sistema</button>
+          <button type="button" role="radio" data-theme-option="light" aria-checked="false">Modo Claro</button>
+          <button type="button" role="radio" data-theme-option="dark" aria-checked="false">Modo Oscuro</button>
+        </div>
+
+        <h3 class="section-title">Notificaciones</h3>
+        <ul class="switch-list">
+          <li><label><span>Eventos</span><input type="checkbox" data-notify="events" role="switch"></label></li>
+          <li><label><span>Avisos y comunicados</span><input type="checkbox" data-notify="announcements" role="switch"></label></li>
+          <li><label><span>Fechas límite</span><input type="checkbox" data-notify="deadlines" role="switch"></label></li>
+        </ul>
+        <p id="notify-hint" class="muted small" hidden></p>
+
+        <button id="btn-logout" class="btn btn-danger btn-block" type="button" hidden>Cerrar sesión</button>
+        <p class="muted small version">UPA Campus 1.0.0</p>
+      </section>
+    </main>
+
+    <nav class="tabbar" aria-label="Navegación principal">
+      <button type="button" class="tab" data-tab="inicio" aria-current="page">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Inicio</span>
+      </button>
+      <button type="button" class="tab" data-tab="agenda">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Agenda</span>
+      </button>
+      <button type="button" class="tab" data-tab="perfil">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 4-6 8-6s8 2 8 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Perfil</span>
+      </button>
+    </nav>
+
+    <!-- Detalle a pantalla completa -->
+    <div id="detail" class="overlay" role="dialog" aria-modal="true" aria-labelledby="detail-title" hidden>
+      <header class="overlay-bar">
+        <button id="detail-close" class="icon-btn" type="button" aria-label="Volver">
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span id="detail-kind" class="badge"></span>
+      </header>
+      <div class="overlay-body">
+        <div id="detail-media" class="detail-media"></div>
+        <div class="detail-content">
+          <h2 id="detail-title"></h2>
+          <p id="detail-meta" class="muted"></p>
+          <p id="detail-text" class="detail-text"></p>
+          <p id="detail-extra" class="detail-text" hidden></p>
+          <div id="detail-actions" class="detail-actions"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Instrucciones iOS -->
+    <div id="ios-sheet" class="overlay sheet" role="dialog" aria-modal="true" aria-labelledby="ios-title" hidden>
+      <div class="sheet-card">
+        <h2 id="ios-title">Instalar en iPhone o iPad</h2>
+        <ol class="ios-steps">
+          <li>Abre esta página en <strong>Safari</strong>.</li>
+          <li>Toca el botón <strong>Compartir</strong> <span class="share-glyph" aria-hidden="true">&#x2191;&#xFE0E;</span> en la barra inferior.</li>
+          <li>Elige <strong>Añadir a pantalla de inicio</strong> y confirma con <strong>Añadir</strong>.</li>
+        </ol>
+        <button id="ios-close" class="btn btn-primary btn-block" type="button">Entendido</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+
+  <script src="/campus/campus-core.js?v=1.0.0"></script>
+  <script src="/campus/vendor/qrcode.js?v=1.0.0"></script>
+  <script src="/campus/campus.js?v=1.0.0"></script>
+</body>
+</html>

@@ -267,9 +267,27 @@ def resolve_google_redirect_uri(request: Request) -> str:
     return DEFAULT_GOOGLE_REDIRECT_URI
 
 
+CAMPUS_STATE = "campus"
+
+
+def _post_login_redirect(state: str | None, token: str | None = None, error: str | None = None) -> RedirectResponse:
+    """Destino tras el callback OAuth: la PWA Campus recibe el resultado en el fragmento (#), el portal en la query."""
+    safe_error = urllib.parse.quote(error or "missing_code", safe="")
+    if (state or "").strip() == CAMPUS_STATE:
+        if token:
+            return RedirectResponse(f"/#token={token}")
+        return RedirectResponse(f"/#auth_error={safe_error}")
+    if token:
+        return RedirectResponse(f"/dashboard/?token={token}")
+    return RedirectResponse(f"/dashboard/?auth_error={safe_error}")
+
+
 @router.get("/login-google", summary="Iniciar flujo web OAuth 2.0 con Google")
-def login_google(request: Request, force_consent: bool = False):
-    """Inicia el flujo oficial de redireccion Google OAuth 2.0 Web con permisos de Classroom."""
+def login_google(request: Request, force_consent: bool = False, return_to: str | None = None):
+    """
+    Inicia el flujo oficial de redireccion Google OAuth 2.0 Web con permisos de Classroom.
+    Con return_to=campus el callback devuelve la sesion a la PWA Campus en lugar del portal web.
+    """
     client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
     if not client_id:
         logger.error(
@@ -282,17 +300,18 @@ def login_google(request: Request, force_consent: bool = False):
         )
 
     prompt_val = "consent select_account" if force_consent else "select_account"
-    params = urllib.parse.urlencode(
-        {
-            "client_id": client_id,
-            "redirect_uri": resolve_google_redirect_uri(request),
-            "response_type": "code",
-            "scope": "openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-            "access_type": "offline",
-            "prompt": prompt_val,
-            "hd": settings.ALLOWED_EMAIL_DOMAIN,
-        }
-    )
+    oauth_params = {
+        "client_id": client_id,
+        "redirect_uri": resolve_google_redirect_uri(request),
+        "response_type": "code",
+        "scope": "openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+        "access_type": "offline",
+        "prompt": prompt_val,
+        "hd": settings.ALLOWED_EMAIL_DOMAIN,
+    }
+    if (return_to or "").strip().lower() == CAMPUS_STATE:
+        oauth_params["state"] = CAMPUS_STATE
+    params = urllib.parse.urlencode(oauth_params)
     return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
 
 
@@ -301,6 +320,7 @@ async def google_callback(
     request: Request,
     code: str | None = None,
     error: str | None = None,
+    state: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -308,13 +328,13 @@ async def google_callback(
     verifica el dominio institucional y redirige al portal con el JWT de sesion.
     """
     if error or not code:
-        return RedirectResponse(f"/dashboard/?auth_error={error or 'missing_code'}")
+        return _post_login_redirect(state, error=error or "missing_code")
 
     client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
     client_secret = (settings.GOOGLE_CLIENT_SECRET or "").strip()
     if not client_id:
         logger.error("Error de configuracion Google OAuth en callback: GOOGLE_CLIENT_ID esta ausente o vacio.")
-        return RedirectResponse("/dashboard/?auth_error=missing_client_id")
+        return _post_login_redirect(state, error="missing_client_id")
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as http_client:
@@ -331,10 +351,10 @@ async def google_callback(
                 timeout=10.0,
             )
     except httpx.HTTPError:
-        return RedirectResponse("/dashboard/?auth_error=token_exchange_failed")
+        return _post_login_redirect(state, error="token_exchange_failed")
 
     if token_resp.status_code != 200:
-        return RedirectResponse("/dashboard/?auth_error=token_exchange_failed")
+        return _post_login_redirect(state, error="token_exchange_failed")
 
     token_data = token_resp.json()
     id_token = token_data.get("id_token")
@@ -342,18 +362,18 @@ async def google_callback(
     refresh_token = token_data.get("refresh_token")
 
     if not id_token:
-        return RedirectResponse("/dashboard/?auth_error=missing_id_token")
+        return _post_login_redirect(state, error="missing_id_token")
 
     try:
         google_data = await verify_google_id_token(id_token)
     except HTTPException:
-        return RedirectResponse("/dashboard/?auth_error=invalid_id_token")
+        return _post_login_redirect(state, error="invalid_id_token")
 
     email = (google_data.get("email") or "").strip().lower()
     full_name = _derive_full_name(email, google_data.get("name"))
 
     if not email.endswith(f"@{settings.ALLOWED_EMAIL_DOMAIN}"):
-        return RedirectResponse("/dashboard/?auth_error=forbidden_domain")
+        return _post_login_redirect(state, error="forbidden_domain")
 
     raw_google_groups = await get_google_groups_for_user(email)
     mapped_tags = map_groups_to_logical_tags(raw_google_groups)
@@ -386,7 +406,7 @@ async def google_callback(
     db.refresh(user)
 
     session_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
-    return RedirectResponse(f"/dashboard/?token={session_token}")
+    return _post_login_redirect(state, token=session_token)
 
 
 @router.post(

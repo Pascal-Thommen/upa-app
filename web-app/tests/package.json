@@ -1,0 +1,12 @@
+{
+  "name": "upa-campus-pwa-tests",
+  "private": true,
+  "description": "Pruebas de la PWA Campus UPA (logica, interfaz y servidor real).",
+  "scripts": {
+    "test": "node --test campus-core.test.js campus-dom.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "jsqr": "1.4.0"
+  }
+}

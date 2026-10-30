@@ -1,0 +1,13 @@
+.git
+.github
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/node_modules
+**/tests
+android
+backend
+docs
+scripts
+tests
+*.md

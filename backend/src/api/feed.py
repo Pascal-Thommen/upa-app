@@ -53,7 +53,7 @@ def get_feed(
                 continue
             if not matches_group_filter(b.target_groups, group):
                 continue
-            banners.append(FeedItemResponse.from_orm_post(b))
+            banners.append(FeedItemResponse.from_orm_post(b, current_user_id=user.id))
 
     posts_query = db.query(Post).filter(
         Post.post_type != "EMERGENCY_BANNER",
@@ -74,7 +74,7 @@ def get_feed(
             continue
         if not matches_group_filter(p.target_groups, group):
             continue
-        filtered_posts.append(FeedItemResponse.from_orm_post(p))
+        filtered_posts.append(FeedItemResponse.from_orm_post(p, current_user_id=user.id if user else None))
 
     paginated_posts = filtered_posts[offset : offset + limit]
 

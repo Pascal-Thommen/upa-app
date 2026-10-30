@@ -74,11 +74,13 @@ class FeedItemResponse(BaseModel):
     detail_text: str = Field(default="", description="Texto adicional exclusivo al abrir la publicacion en la app")
     link_url: str = Field(default="", description="URL del boton de enlace opcional (cadena vacia si no aplica)")
     link_label: str = Field(default="", description="Texto del boton de enlace opcional (cadena vacia si no aplica)")
+    is_registered: bool = Field(default=False, description="Indica si el usuario autenticado esta inscrito (eventos)")
+    registered_count: int = Field(default=0, ge=0, description="Total de inscritos al evento")
     created_at: datetime = Field(..., description="Fecha de creacion en ISO-8601 UTC")
     published_at: datetime = Field(..., description="Fecha de publicacion en ISO-8601 UTC")
 
     @classmethod
-    def from_orm_post(cls, post: Any) -> "FeedItemResponse":
+    def from_orm_post(cls, post: Any, current_user_id: int | None = None) -> "FeedItemResponse":
         raw_title = (getattr(post, "title", None) or "").strip() or "Publicacion UPA"
         raw_caption = (getattr(post, "caption", None) or "").strip()
         raw_content = (getattr(post, "content", None) or "").strip()
@@ -92,6 +94,11 @@ class FeedItemResponse(BaseModel):
         raw_expires = getattr(post, "expires_at", None)
         raw_start = getattr(post, "event_start", None)
         raw_end = getattr(post, "event_end", None)
+        raw_regs = getattr(post, "registrations", None) or []
+        attending = [r for r in raw_regs if (getattr(r, "status", "attending") or "attending") == "attending"]
+        is_registered = current_user_id is not None and any(
+            int(getattr(r, "user_id", 0) or 0) == int(current_user_id) for r in attending
+        )
         return cls(
             id=int(getattr(post, "id", 0) or 0),
             title=raw_title,
@@ -114,6 +121,8 @@ class FeedItemResponse(BaseModel):
             image_url=img,
             permalink=(getattr(post, "permalink", None) or "").strip(),
             **extra_detail_fields(post),
+            is_registered=is_registered,
+            registered_count=len(attending),
             created_at=created,
             published_at=published,
         )

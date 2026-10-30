@@ -1,15 +1,11 @@
 FROM nginx:alpine
 
-# Remove default nginx assets
 RUN rm -rf /usr/share/nginx/html/*
 
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY web-admin/nginx.conf /etc/nginx/conf.d/default.conf
+COPY web-admin/ /usr/share/nginx/html/
+COPY web-app/ /usr/share/nginx/html/campus/
 
-# Copy web-admin assets to document root
-COPY . /usr/share/nginx/html/
-
-# Create symlink for /dashboard directory inside document root
 RUN ln -s /usr/share/nginx/html /usr/share/nginx/html/dashboard 2>/dev/null || true
 
 EXPOSE 80

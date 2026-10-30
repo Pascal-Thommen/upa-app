@@ -50,8 +50,8 @@ services:
 
   frontend:
     build:
-      context: ./web-admin
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: web-admin/Dockerfile
     container_name: upa-frontend
     restart: unless-stopped
     depends_on:

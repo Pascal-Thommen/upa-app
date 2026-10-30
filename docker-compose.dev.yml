@@ -1,8 +1,8 @@
 services:
   dev-pwa:
     build:
-      context: ./web-admin
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: web-admin/Dockerfile
     container_name: upa-dev-pwa
     restart: "no"
     ports:

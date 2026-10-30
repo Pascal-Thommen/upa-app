@@ -57,8 +57,8 @@ services:
 
   upa-frontend-beta:
     build:
-      context: ./web-admin
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: web-admin/Dockerfile
     container_name: upa-frontend-beta
     restart: unless-stopped
     depends_on:
