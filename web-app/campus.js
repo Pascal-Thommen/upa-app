@@ -123,6 +123,51 @@
     return svg;
   }
 
+  function instagramIcon(size) {
+    const px = String(size || 14);
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", px);
+    svg.setAttribute("height", px);
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("class", "ig-glyph");
+    const rect = doc.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", "2");
+    rect.setAttribute("y", "2");
+    rect.setAttribute("width", "20");
+    rect.setAttribute("height", "20");
+    rect.setAttribute("rx", "5");
+    rect.setAttribute("ry", "5");
+    rect.setAttribute("fill", "none");
+    rect.setAttribute("stroke", "currentColor");
+    rect.setAttribute("stroke-width", "2.2");
+    const circle = doc.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", "12");
+    circle.setAttribute("cy", "12");
+    circle.setAttribute("r", "4.5");
+    circle.setAttribute("fill", "none");
+    circle.setAttribute("stroke", "currentColor");
+    circle.setAttribute("stroke-width", "2.2");
+    const dot = doc.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("cx", "17.5");
+    dot.setAttribute("cy", "6.5");
+    dot.setAttribute("r", "1.3");
+    dot.setAttribute("fill", "currentColor");
+    svg.append(rect, circle, dot);
+    return svg;
+  }
+
+  function kindBadge(kind, labelText) {
+    const label = labelText || Core.kindLabel(kind);
+    if (kind === "instagram") {
+      return h("span", { class: "badge badge-instagram" }, instagramIcon(13), h("span", { text: label }));
+    }
+    if (kind === "urgent") {
+      return h("span", { class: "badge badge-urgent", text: label });
+    }
+    return h("span", { class: "badge", text: label });
+  }
+
   /* ------------------------------------------------------------------ entorno y sesion */
 
   function readEnvironment() {
@@ -409,7 +454,7 @@
         h(
           "div",
           { class: "card-meta" },
-          h("span", { class: `badge ${urgent ? "badge-urgent" : ""}`, text: Core.kindLabel(kind) }),
+          kindBadge(kind),
           post.is_pinned ? h("span", { class: "pin", text: "Fijado" }) : null,
           h("span", { text: postTimeLine(post) }),
         ),
@@ -450,6 +495,7 @@
     const kind = Core.postKind(post);
     return {
       kind,
+      postType: post.post_type || "",
       kindLabel: Core.kindLabel(kind),
       title: post.title,
       meta: postTimeLine(post) || "",
@@ -473,6 +519,7 @@
       const when = entry.timeLabel ? `${Core.formatDayLong(entry.dayKey)} · ${entry.timeLabel}` : Core.formatDayLong(entry.dayKey);
       return {
         kind: "deadline",
+        postType: "",
         kindLabel: "Tarea de Google Classroom",
         title: entry.title,
         meta: [entry.place, when].filter(Boolean).join(" · "),
@@ -492,6 +539,7 @@
     const when = `${Core.formatDayLong(entry.dayKey)} · ${entry.timeLabel}`;
     return {
       kind: "event",
+      postType: (raw && raw.post_type) || "",
       kindLabel: "Evento",
       title: entry.title,
       meta: [when, entry.place].filter(Boolean).join(" · "),
@@ -499,7 +547,7 @@
       extra: raw.detail_text || "",
       media: { media_url: raw.image_url, media_type: "" },
       source: Core.safeUrl(raw.permalink),
-      sourceLabel: "Ver fuente original",
+      sourceLabel: raw.post_type === "INSTAGRAM" ? "Ver en Instagram" : "Ver fuente original",
       linkUrl: Core.safeUrl(raw.link_url),
       linkLabel: raw.link_label || "Abrir enlace",
       eventId: raw.has_registration ? raw.id : null,
@@ -525,17 +573,36 @@
       box.append(button);
       if (d.count > 0) box.append(h("p", { class: "muted small", text: `${d.count} personas inscritas` }));
     }
-    if (d.linkUrl) {
-      box.append(h("a", { class: "btn btn-secondary btn-block", href: d.linkUrl, target: "_blank", rel: "noopener noreferrer" }, d.linkLabel, externalIcon()));
-    }
-    if (d.source) {
-      box.append(h("a", { class: "btn btn-secondary btn-block", id: "detail-source", href: d.source, target: "_blank", rel: "noopener noreferrer" }, d.sourceLabel, externalIcon()));
+    const links = Core.resolveDetailLinks(d);
+    for (const item of links) {
+      box.append(
+        h(
+          "a",
+          {
+            class: `btn btn-secondary btn-block ${item.isInstagram ? "btn-instagram" : ""}`.trim(),
+            id: item.id,
+            href: item.href,
+            target: "_blank",
+            rel: "noopener noreferrer",
+          },
+          item.isInstagram ? instagramIcon(18) : null,
+          h("span", { text: item.label }),
+          externalIcon(),
+        ),
+      );
     }
   }
 
   function openDetail(detail) {
     state.detail = detail;
-    $("detail-kind").textContent = detail.kindLabel;
+    const kindEl = $("detail-kind");
+    clear(kindEl);
+    kindEl.className = `badge ${detail.kind === "instagram" ? "badge-instagram" : detail.kind === "urgent" ? "badge-urgent" : ""}`.trim();
+    if (detail.kind === "instagram") {
+      kindEl.append(instagramIcon(13), h("span", { text: detail.kindLabel }));
+    } else {
+      kindEl.textContent = detail.kindLabel;
+    }
     $("detail-title").textContent = detail.title;
     $("detail-meta").textContent = detail.meta;
     $("detail-text").textContent = detail.text;
@@ -687,10 +754,7 @@
       $("profile-avatar").textContent = Core.initials(name);
       $("profile-name").textContent = name;
       $("profile-email").textContent = (user && user.email) || "";
-      $("profile-role").textContent = user ? Core.roleLabel(user) : "";
-      const groups = $("profile-groups");
-      clear(groups);
-      ((user && user.groups) || []).forEach((g) => groups.append(h("span", { text: g })));
+      if ($("profile-role")) $("profile-role").textContent = user ? Core.roleLabel(user) : "";
     }
     doc.querySelectorAll("[data-notify]").forEach((input) => {
       input.checked = Boolean(state.prefs[input.getAttribute("data-notify")]);
@@ -830,9 +894,20 @@
 
   /* ------------------------------------------------------------------ landing de escritorio */
 
+  function isDesktopWebPreview() {
+    const baseEnv = { ...readEnvironment(), search: "" };
+    return !Core.isMobileEnvironment(baseEnv);
+  }
+
+  function updateDesktopReturnBar() {
+    const bar = $("desktop-return-bar");
+    if (bar) bar.hidden = !isDesktopWebPreview();
+  }
+
   function showLanding() {
     $("landing").hidden = false;
     $("app").hidden = true;
+    if ($("desktop-return-bar")) $("desktop-return-bar").hidden = true;
     const url = `${win.location.origin}/`;
     $("qr-url").textContent = url;
     const box = $("qr-box");
@@ -843,6 +918,17 @@
     } catch (_) {
       box.textContent = url;
     }
+  }
+
+  function returnToLanding() {
+    session.removeItem(FORCE_APP_KEY);
+    try {
+      win.history.replaceState(null, "", win.location.pathname);
+    } catch (_) {
+      /* el historial no admite replaceState en este contexto */
+    }
+    if (overlays) overlays.closeAll();
+    showLanding();
   }
 
   /* ------------------------------------------------------------------ arranque */
@@ -856,7 +942,27 @@
     });
   }
 
+  let eventsBound = false;
+
   function bindEvents() {
+    if (eventsBound) return;
+    eventsBound = true;
+    const tryWeb = $("try-web-link") || doc.querySelector(".landing-link");
+    if (tryWeb) {
+      tryWeb.addEventListener("click", (event) => {
+        event.preventDefault();
+        session.setItem(FORCE_APP_KEY, "1");
+        try {
+          win.history.replaceState(null, "", "/?app=1");
+        } catch (_) {
+          /* el historial no admite replaceState en este contexto */
+        }
+        track(enterApp({}));
+      });
+    }
+    if ($("btn-back-landing")) {
+      $("btn-back-landing").addEventListener("click", () => returnToLanding());
+    }
     doc.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => showTab(btn.getAttribute("data-tab"))));
     $("btn-refresh").addEventListener("click", () => {
       toast("Actualizando…");
@@ -898,7 +1004,7 @@
       renderInstallBanner();
     });
     doc.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && overlays.depth()) overlays.close();
+      if (event.key === "Escape" && overlays && overlays.depth()) overlays.close();
     });
     doc.addEventListener("visibilitychange", () => {
       if (doc.visibilityState === "visible" && state.token && Date.now() - state.lastRefresh > REFRESH_AFTER_MS) track(refreshAll());
@@ -909,10 +1015,35 @@
     }
   }
 
+  async function enterApp(auth) {
+    $("landing").hidden = true;
+    $("app").hidden = false;
+    updateDesktopReturnBar();
+    if (!api) {
+      api = Core.createApi({
+        baseUrl: "",
+        getToken: () => state.token,
+        onUnauthorized: () => {
+          if (state.token) track(logout("Tu sesión expiró. Inicia sesión nuevamente."));
+        },
+      });
+    }
+    if (!overlays) overlays = Core.createOverlayManager(win, onOverlayChange);
+    bindEvents();
+    registerServiceWorker();
+    renderInstallBanner();
+    renderAll();
+    if (auth && auth.error) toast(Core.translateAuthError(auth.error));
+    else if (auth && auth.token) toast("Sesión iniciada.");
+    if (!win.navigator.onLine) setOffline(true, false);
+    await refreshAll();
+  }
+
   async function start() {
     applyTheme(local.getItem(THEME_KEY));
     const auth = consumeAuthFragment();
     state.token = loadStoredToken();
+    bindEvents();
 
     const env = readEnvironment();
     if (!Core.isMobileEnvironment(env)) {
@@ -921,24 +1052,7 @@
     }
     if (/(^|[?&])app=1(&|$)/.test(String(win.location.search || ""))) session.setItem(FORCE_APP_KEY, "1");
 
-    $("landing").hidden = true;
-    $("app").hidden = false;
-    api = Core.createApi({
-      baseUrl: "",
-      getToken: () => state.token,
-      onUnauthorized: () => {
-        if (state.token) track(logout("Tu sesión expiró. Inicia sesión nuevamente."));
-      },
-    });
-    overlays = Core.createOverlayManager(win, onOverlayChange);
-    bindEvents();
-    registerServiceWorker();
-    renderInstallBanner();
-    renderAll();
-    if (auth.error) toast(Core.translateAuthError(auth.error));
-    else if (auth.token) toast("Sesión iniciada.");
-    if (!win.navigator.onLine) setOffline(true, false);
-    await refreshAll();
+    await enterApp(auth);
   }
 
   let bootPromise = null;

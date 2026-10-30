@@ -92,8 +92,11 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
         "Modo Claro",
         "Modo Oscuro",
         "Cerrar sesión",
+        "Volver al código QR",
+        "phone-mockup",
     ):
         assert expected in html
+    assert "profile-groups" not in html
 
     html_versions = set(re.findall(r"/campus/[\w./-]+\.(?:js|css)\?v=([\d.]+)", html))
     assert html_versions == {"1.0.0"}
@@ -116,6 +119,8 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert "env(safe-area-inset-bottom" in css
     assert "100dvh" in css
     assert ':root[data-theme="dark"]' in css
+    assert ".badge-instagram" in css
+    assert "grid-auto-rows: 30px" in css
 
     nginx = (REPO_ROOT / "web-admin" / "nginx.conf").read_text(encoding="utf-8")
     for snippet in (

@@ -164,12 +164,14 @@ test("preparacion: creacion de publicaciones reales (noticia, fijada, urgente y 
   seeded.eventId = event.body.id;
 });
 
-test("Escritorio: muestra landing con codigo QR dinamico y enlace discreto de Acceso Administrativo", live, async () => {
+test("Escritorio: muestra landing con telefono visual, codigo QR dinamico y navegacion ida/vuelta a la version web", live, async () => {
   const app = await openCampus({ userAgent: DESKTOP_UA });
   try {
     assert.equal(app.$("landing").hidden, false);
     assert.equal(app.$("app").hidden, true);
     assert.match(app.$("landing").textContent, /Escanea con tu celular para abrir la app/);
+    assert.ok(app.document.querySelector(".phone-mockup .phone-frame"), "Debe mostrar el marco visual de smartphone");
+    assert.equal(app.document.querySelector(".landing-points"), null, "No debe mostrar la lista larga de texto en escritorio");
     assert.equal(app.$("admin-link").getAttribute("href"), "/dashboard/");
     assert.equal(app.$("admin-link").textContent.trim(), "Acceso Administrativo");
     assert.equal(app.$("qr-url").textContent, `${BASE_URL}/`);
@@ -194,6 +196,18 @@ test("Escritorio: muestra landing con codigo QR dinamico y enlace discreto de Ac
       }
     }
     assert.equal(jsQR(rgba, side, side).data, `${BASE_URL}/`);
+
+    // Probar la version web desde escritorio muestra barra de retorno y permite volver al QR
+    await app.click(app.$("try-web-link"));
+    assert.equal(app.$("landing").hidden, true);
+    assert.equal(app.$("app").hidden, false);
+    assert.equal(app.$("desktop-return-bar").hidden, false);
+    assert.match(app.$("btn-back-landing").textContent, /Volver al código QR/);
+
+    await app.click(app.$("btn-back-landing"));
+    assert.equal(app.$("landing").hidden, false);
+    assert.equal(app.$("app").hidden, true);
+    assert.equal(app.$("desktop-return-bar").hidden, true);
   } finally {
     app.close();
   }
@@ -277,6 +291,24 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     await new Promise((r) => setTimeout(r, 20));
     assert.equal(app.$("detail").hidden, true);
     assert.equal(app.$("app").hidden, false);
+
+    // Publicacion de Instagram: insignia con icono oficial de camara y un unico boton "Ver en Instagram"
+    const igCard = app.document.querySelector('.card[data-kind="instagram"]');
+    assert.ok(igCard, "Debe existir la tarjeta de Instagram en el feed");
+    const igBadge = igCard.querySelector(".badge.badge-instagram");
+    assert.ok(igBadge, "La tarjeta de Instagram debe tener la clase badge-instagram");
+    assert.ok(igBadge.querySelector("svg.ig-glyph"), "El badge de Instagram debe incluir el icono de camara");
+
+    await app.click(igCard.querySelector(".card-open"));
+    assert.equal(app.$("detail").hidden, false);
+    assert.equal(app.$("detail-kind").classList.contains("badge-instagram"), true);
+    assert.ok(app.$("detail-kind").querySelector("svg.ig-glyph"));
+    const detailLinks = [...app.$("detail-actions").querySelectorAll("a.btn")];
+    assert.equal(detailLinks.length, 1, "El detalle de Instagram debe mostrar exactamente un boton de enlace");
+    assert.equal(detailLinks[0].textContent.trim(), "Ver en Instagram");
+    assert.equal(detailLinks[0].getAttribute("href"), "https://www.instagram.com/p/DerQoIzjtYf/");
+    app.window.history.back();
+    await new Promise((r) => setTimeout(r, 20));
   } finally {
     app.close();
   }
@@ -344,6 +376,7 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(app.$("profile-email").textContent, "ana.gomez@upa.edu.py");
     assert.equal(app.$("profile-role").textContent, "Estudiante");
     assert.equal(app.$("profile-avatar").textContent, "AG");
+    assert.equal(app.$("profile-groups"), null, "El contenedor #profile-groups no debe existir en el perfil");
 
     const meta = app.document.querySelector('meta[name="theme-color"]');
     await app.click(app.document.querySelector('[data-theme-option="dark"]'));
