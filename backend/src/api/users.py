@@ -7,10 +7,26 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import DeviceToken, User
+from ..permissions import effective_permissions
 from ..schemas.feed import ErrorResponse
 from ..schemas.post import ensure_utc_datetime
+from ..schemas.user import UserResponse
+from .auth import _build_user_response
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
+
+
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    summary="Obtener perfil del usuario autenticado con filtro estricto de privacidad",
+    responses={
+        401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
+    },
+)
+def get_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> UserResponse:
+    """Retorna el perfil del usuario actual garantizando groups=[] para usuarios regulares."""
+    return _build_user_response(current_user, effective_permissions(db, current_user))
 
 ALLOWED_PLATFORMS = {"android", "ios", "web"}
 

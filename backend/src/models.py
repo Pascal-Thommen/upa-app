@@ -15,6 +15,8 @@ class User(Base):
     google_groups = Column(JSON, default=list, nullable=False)  # Registros de Google Groups
     classroom_token = Column(Text, nullable=True)  # Token de acceso OAuth para Google Classroom
     classroom_refresh_token = Column(Text, nullable=True)  # Refresh token OAuth para renovacion automatica
+    classroom_deadlines_cache = Column(JSON, default=list, nullable=False)  # Cache persistente de entregas Classroom
+    classroom_synced_at = Column(DateTime(timezone=True), nullable=True)  # Marca de tiempo de ultima sincronizacion
     device_token = Column(String(512), nullable=True)  # Token de dispositivo FCM legado
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)

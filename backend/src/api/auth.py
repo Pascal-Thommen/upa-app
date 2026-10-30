@@ -15,6 +15,12 @@ from ..database import get_db
 from ..models import User, UserRole
 from ..permissions import effective_permissions, normalize_permissions
 from ..schemas.feed import ErrorResponse
+from ..schemas.user import (
+    REDUNDANT_GROUP_TAGS,
+    GoogleGroupDetail,
+    UserResponse,
+    sanitize_user_groups,
+)
 from ..services.google_groups import get_google_groups_for_user, map_groups_to_logical_tags
 from .classroom import clear_classroom_cache
 
@@ -64,68 +70,6 @@ class GoogleLoginRequest(BaseModel):
     )
 
 
-class GoogleGroupDetail(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "id": "01abc234def",
-                "name": "Estudiantes TIE",
-                "email": "estudiantes.tie@upa.edu.py",
-                "description": "Grupo institucional de Ingenieria Empresarial",
-            }
-        }
-    )
-
-    id: str = Field(default="", description="ID del grupo en Google Workspace (nunca nulo)")
-    name: str = Field(default="", description="Nombre del grupo institucional (nunca nulo)")
-    email: str = Field(default="", description="Correo de la lista de distribucion (nunca nulo)")
-    description: str = Field(default="", description="Descripcion del grupo (nunca nulo)")
-
-
-class UserResponse(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "id": 1,
-                "email": "pascal.thommen@upa.edu.py",
-                "full_name": "Pascal Thommen",
-                "role": "admin",
-                "groups": ["ALL", "Semester_4", "TIE"],
-                "google_groups": [
-                    {
-                        "id": "01abc234def",
-                        "name": "Estudiantes TIE",
-                        "email": "estudiantes.tie@upa.edu.py",
-                        "description": "Grupo institucional de Ingenieria Empresarial",
-                    }
-                ],
-                "has_classroom_token": False,
-            }
-        }
-    )
-
-    id: int = Field(..., description="Identificador unico del usuario en la base de datos")
-    email: str = Field(..., description="Correo institucional @upa.edu.py")
-    full_name: str = Field(..., description="Nombre completo del usuario (nunca nulo)")
-    role: str = Field(..., description="Rol de autorizacion en el sistema: user o admin")
-    groups: list[str] = Field(
-        default_factory=list,
-        description="Etiquetas de grupos visibles segun politica de privacidad",
-    )
-    google_groups: list[GoogleGroupDetail] = Field(
-        default_factory=list,
-        description="Detalle de grupos de Google Workspace (exclusivo para cuenta autorizada)",
-    )
-    has_classroom_token: bool = Field(
-        default=False,
-        description="Indica si el usuario tiene un token de Google Classroom registrado",
-    )
-    permissions: list[str] = Field(
-        default_factory=list,
-        description="Modulos del portal habilitados: publicaciones, grupos, roles, apis",
-    )
-
-
 class ClassroomTokenRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
@@ -154,7 +98,7 @@ class AuthResponse(BaseModel):
                     "email": "pascal.thommen@upa.edu.py",
                     "full_name": "Pascal Thommen",
                     "role": "admin",
-                    "groups": ["ALL", "Semester_4", "TIE"],
+                    "groups": ["Semester_4", "Estudiantes TIE 2025"],
                     "google_groups": [],
                     "has_classroom_token": False,
                 },
@@ -167,28 +111,48 @@ class AuthResponse(BaseModel):
     user: UserResponse = Field(..., description="Perfil completo del usuario autenticado")
 
 
-def _filter_user_groups_for_privacy(email: str, groups: list[Any] | None) -> list[str]:
+def _filter_user_groups_for_privacy(
+    email: str,
+    groups: list[Any] | None,
+    role: str | None = None,
+) -> list[str]:
     """
-    Aplica la politica de privacidad de grupos:
-    Los estudiantes regulares no visualizan directamente las listas internas de distribucion.
-    La vista completa esta habilitada exclusivamente para pascal.thommen@upa.edu.py.
+    Aplica la politica estricta de privacidad de grupos:
+    - Los usuarios regulares (rol distinto de admin) reciben invariablemente un arreglo vacio [].
+    - Nunca se exponen listas internas ni las pseudo-etiquetas redundantes ALL o TIE aislado.
     """
-    if (email or "").strip().lower() == "pascal.thommen@upa.edu.py":
-        return [str(g).strip() for g in (groups or []) if g is not None and str(g).strip()]
-    return []
+    normalized_role = (role or "").strip().lower()
+    normalized_email = (email or "").strip().lower()
+    if normalized_role and normalized_role != "admin":
+        return []
+    if not normalized_role and normalized_email != "pascal.thommen@upa.edu.py":
+        return []
+    if normalized_email != "pascal.thommen@upa.edu.py" and normalized_role != "admin":
+        return []
+    return sanitize_user_groups(groups)
 
 
-def _filter_google_groups_for_privacy(email: str, google_groups: list[Any] | None) -> list[GoogleGroupDetail]:
-    """Garantiza visibilidad exclusiva de Google Groups para pascal.thommen@upa.edu.py sin valores nulos."""
+def _filter_google_groups_for_privacy(
+    email: str,
+    google_groups: list[Any] | None,
+    role: str | None = None,
+) -> list[GoogleGroupDetail]:
+    """Garantiza visibilidad exclusiva de Google Groups para administracion autorizada sin valores nulos."""
+    normalized_role = (role or "").strip().lower()
+    if normalized_role and normalized_role != "admin":
+        return []
     if (email or "").strip().lower() != "pascal.thommen@upa.edu.py":
         return []
     sanitized: list[GoogleGroupDetail] = []
     for g in google_groups or []:
         if isinstance(g, dict):
+            name = str(g.get("name") or "").strip()
+            if name.upper() in REDUNDANT_GROUP_TAGS:
+                continue
             sanitized.append(
                 GoogleGroupDetail(
                     id=str(g.get("id") or ""),
-                    name=str(g.get("name") or ""),
+                    name=name,
                     email=str(g.get("email") or ""),
                     description=str(g.get("description") or ""),
                 )
@@ -241,8 +205,8 @@ def _build_user_response(user: User, permissions: list[str] | None = None) -> Us
         email=clean_email,
         full_name=clean_name,
         role=clean_role,
-        groups=_filter_user_groups_for_privacy(clean_email, user.groups),
-        google_groups=_filter_google_groups_for_privacy(clean_email, user.google_groups),
+        groups=_filter_user_groups_for_privacy(clean_email, user.groups, role=clean_role),
+        google_groups=_filter_google_groups_for_privacy(clean_email, user.google_groups, role=clean_role),
         has_classroom_token=has_token,
         permissions=list(permissions or []),
     )
@@ -532,5 +496,5 @@ def update_classroom_token(
     },
 )
 def get_my_groups(current_user: User = Depends(get_current_user)) -> list[GoogleGroupDetail]:
-    """Retorna los grupos de Google Workspace sincronizados (exclusivo para pascal.thommen@upa.edu.py)."""
-    return _filter_google_groups_for_privacy(current_user.email, current_user.google_groups)
+    """Retorna los grupos de Google Workspace sincronizados (exclusivo para administracion autorizada)."""
+    return _filter_google_groups_for_privacy(current_user.email, current_user.google_groups, role=current_user.role)

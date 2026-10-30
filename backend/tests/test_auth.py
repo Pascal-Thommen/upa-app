@@ -79,7 +79,42 @@ def test_get_me_shows_mailgroups_exclusively_for_pascal():
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == "pascal.thommen@upa.edu.py"
-    assert data["groups"] == ["ALL", "TIE", "TI"]
+    # Las pseudo-etiquetas redundantes ALL y TIE aislado se filtran automaticamente
+    assert data["groups"] == ["TI"]
+    assert "ALL" not in data["groups"]
+    assert "TIE" not in data["groups"]
+
+
+def test_users_me_and_auth_me_enforce_empty_groups_for_non_admins():
+    db = TestingSessionLocal()
+    editor = User(
+        id=40,
+        email="editor.interno@upa.edu.py",
+        full_name="Editor Interno",
+        role="editor",
+        groups=["ALL", "TIE", "Estudiantes TIE 2025", "Docentes"],
+        google_groups=[{"id": "g1", "name": "Estudiantes TIE 2025", "email": "tie2025@upa.edu.py", "description": ""}],
+    )
+    db.add(editor)
+    db.commit()
+    db.close()
+
+    for uid, email, role in [
+        ("10", "student@upa.edu.py", "user"),
+        ("40", "editor.interno@upa.edu.py", "editor"),
+    ]:
+        token = create_access_token(data={"sub": uid, "email": email, "role": role})
+        headers = {"Authorization": f"Bearer {token}"}
+        for endpoint in ("/api/auth/me", "/api/users/me"):
+            resp = client.get(endpoint, headers=headers)
+            assert resp.status_code == 200
+            payload = resp.json()
+            assert payload["groups"] == []
+            assert payload["google_groups"] == []
+        app_state_resp = client.get("/api/v1/app-state", headers=headers)
+        assert app_state_resp.status_code == 200
+        assert app_state_resp.json()["user"]["groups"] == []
+        assert app_state_resp.json()["user"]["google_groups"] == []
 
 
 def test_create_news_forbidden_for_normal_student():
@@ -121,12 +156,24 @@ def test_map_groups_to_logical_tags():
     groups = [
         {"id": "1", "name": "Estudiantes TIE 2025", "email": "estudiantes.tie2025@upa.edu.py", "description": ""},
         {"id": "2", "name": "Profesores Ingenieria", "email": "prof.ingenieria@upa.edu.py", "description": ""},
+        {"id": "3", "name": "ALL", "email": "all@upa.edu.py", "description": ""},
+        {"id": "4", "name": "TIE", "email": "tie@upa.edu.py", "description": ""},
     ]
     tags = map_groups_to_logical_tags(groups)
-    assert "ALL" in tags
-    assert "TIE" in tags
+    assert "ALL" not in tags
+    assert "TIE" not in tags
     assert "PROF" in tags
     assert "Estudiantes TIE 2025" in tags
+    assert "Profesores Ingenieria" in tags
+
+
+def test_seed_database_strips_redundant_all_and_tie_groups():
+    from src.schemas.user import sanitize_user_groups
+
+    cleaned = sanitize_user_groups(
+        ["ALL", "Estudiantes - Activos", "Estudiantes TIE 2025", "Ing. Tecnologías - TODOS", "TIE", "  all  ", "tie"]
+    )
+    assert cleaned == ["Estudiantes - Activos", "Estudiantes TIE 2025", "Ing. Tecnologías - TODOS"]
 
 
 def test_login_google_redirect():
@@ -198,7 +245,12 @@ def test_google_login_admin_pascal_returns_full_jwt_session(monkeypatch):
 
     async def fake_get_google_groups(email: str):
         return [
-            {"id": "1", "name": "Estudiantes TIE", "email": "estudiantes.tie@upa.edu.py", "description": "TIE"},
+            {
+                "id": "1",
+                "name": "Estudiantes TIE 2025",
+                "email": "estudiantes.tie@upa.edu.py",
+                "description": "TIE",
+            },
         ]
 
     monkeypatch.setattr(auth_api, "verify_google_id_token", fake_verify_google_id_token)
@@ -219,8 +271,9 @@ def test_google_login_admin_pascal_returns_full_jwt_session(monkeypatch):
     assert user["email"] == "pascal.thommen@upa.edu.py"
     assert user["full_name"] == "Pascal Thommen"
     assert user["role"] == "admin"
-    assert "ALL" in user["groups"]
-    assert "TIE" in user["groups"]
+    assert "ALL" not in user["groups"]
+    assert "TIE" not in user["groups"]
+    assert "Estudiantes TIE 2025" in user["groups"]
     assert isinstance(user["google_groups"], list)
     assert user["has_classroom_token"] is False
 
@@ -233,7 +286,9 @@ def test_google_login_admin_pascal_returns_full_jwt_session(monkeypatch):
     me_data = me_resp.json()
     assert me_data["email"] == "pascal.thommen@upa.edu.py"
     assert me_data["role"] == "admin"
-    assert "TIE" in me_data["groups"]
+    assert "Estudiantes TIE 2025" in me_data["groups"]
+    assert "ALL" not in me_data["groups"]
+    assert "TIE" not in me_data["groups"]
 
 
 def test_google_login_creates_new_student_with_strict_privacy(monkeypatch):

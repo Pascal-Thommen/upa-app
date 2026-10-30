@@ -27,6 +27,8 @@ def get_db():
 # Columnas adicionales que create_all() no agrega en tablas ya creadas: (tabla, columna, tipo SQL).
 # Expresiones compatibles tanto con SQLite como con PostgreSQL (ver migraciones Alembic 004 y 005).
 _COLUMN_UPGRADES: tuple[tuple[str, str, str], ...] = (
+    ("users", "classroom_deadlines_cache", "JSON"),
+    ("users", "classroom_synced_at", "TIMESTAMP"),
     ("posts", "category", "VARCHAR(50)"),
     ("posts", "published_at", "TIMESTAMP"),
     ("posts", "reminders", "JSON"),
