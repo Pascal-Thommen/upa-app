@@ -985,13 +985,18 @@
 
       // Control de IA (Google Gemini)
       getAiConfig: () => request("GET", "/api/ai/config"),
-      saveAiConfig: (apiKeyOrPayload, systemPrompt) => {
-        const json =
-          apiKeyOrPayload && typeof apiKeyOrPayload === "object"
-            ? apiKeyOrPayload
-            : systemPrompt !== undefined
-              ? { api_key: apiKeyOrPayload, system_prompt: systemPrompt }
-              : { api_key: apiKeyOrPayload };
+      saveAiConfig: (apiKeyOrPayload, systemPromptAutocomplete, systemPromptInstagram) => {
+        if (apiKeyOrPayload && typeof apiKeyOrPayload === "object") {
+          return request("POST", "/api/ai/config", { json: apiKeyOrPayload });
+        }
+        const json = { api_key: apiKeyOrPayload };
+        if (systemPromptAutocomplete !== undefined) {
+          json.system_prompt_autocomplete = systemPromptAutocomplete;
+          json.system_prompt = systemPromptAutocomplete;
+        }
+        if (systemPromptInstagram !== undefined) {
+          json.system_prompt_instagram = systemPromptInstagram;
+        }
         return request("POST", "/api/ai/config", { json });
       },
       testAiConnection: (apiKey) =>

@@ -740,15 +740,28 @@
                 </div>
 
                 <div>
-                  <label class="ed-label" for="ai-input-system-prompt">Prompt del sistema (instrucciones para generación de texto con IA)</label>
-                  <textarea id="ai-input-system-prompt" rows="3" maxlength="4000" placeholder="Instrucciones de tono institucional, estilo y formato para Google Gemini Flash..." class="ed-input"></textarea>
-                  <p id="ai-prompt-error" class="ed-field-error hidden" data-error-for="ai-prompt"></p>
+                  <label class="ed-label" for="ai-input-system-prompt-autocomplete">Prompt del sistema: Autocompletado editorial (Publicaciones y Eventos)</label>
+                  <textarea id="ai-input-system-prompt-autocomplete" rows="3" maxlength="4000" placeholder="Instrucciones de redacción, tono institucional y formato para sugerencias en publicaciones y eventos..." class="ed-input"></textarea>
+                  <p id="ai-prompt-autocomplete-error" class="ed-field-error hidden" data-error-for="ai-prompt-autocomplete"></p>
+                  <div class="flex justify-end pt-1.5">
+                    <button id="btn-ai-save-prompt-autocomplete" type="button" class="ed-btn ed-btn-secondary">
+                      Guardar prompt de autocompletado
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="ed-label" for="ai-input-system-prompt-instagram">Prompt del sistema: Extracción multimodal de Instagram (Posts y Flyers)</label>
+                  <textarea id="ai-input-system-prompt-instagram" rows="3" maxlength="4000" placeholder="Instrucciones para el análisis multimodal de publicaciones e imágenes de Instagram..." class="ed-input"></textarea>
+                  <p id="ai-prompt-instagram-error" class="ed-field-error hidden" data-error-for="ai-prompt-instagram"></p>
+                  <div class="flex justify-end pt-1.5">
+                    <button id="btn-ai-save-prompt-instagram" type="button" class="ed-btn ed-btn-secondary">
+                      Guardar prompt de Instagram
+                    </button>
+                  </div>
                 </div>
 
                 <div class="flex flex-wrap items-center justify-end gap-2.5 pt-1">
-                  <button id="btn-ai-save-prompt" type="button" class="ed-btn ed-btn-secondary">
-                    Guardar prompt
-                  </button>
                   <button id="btn-ai-test-connection" type="button" class="ed-btn ed-btn-secondary">
                     Probar conexión
                   </button>

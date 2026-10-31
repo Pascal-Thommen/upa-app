@@ -40,6 +40,8 @@ EDITOR_ID = 2
 EDITOR_EMAIL = "editor.prensa@upa.edu.py"
 STUDENT_ID = 3
 STUDENT_EMAIL = "estudiante.test@upa.edu.py"
+PUB_ONLY_ID = 4
+PUB_ONLY_EMAIL = "redactor.solo@upa.edu.py"
 
 
 def auth(user_id: int, email: str, role: str) -> dict[str, str]:
@@ -60,6 +62,7 @@ def setup_database(monkeypatch):
             User(id=ADMIN_ID, email=ADMIN_EMAIL, full_name="Pascal Thommen", role="admin"),
             User(id=EDITOR_ID, email=EDITOR_EMAIL, full_name="Editor Prensa", role="editor"),
             User(id=STUDENT_ID, email=STUDENT_EMAIL, full_name="Estudiante Test", role="user"),
+            User(id=PUB_ONLY_ID, email=PUB_ONLY_EMAIL, full_name="Redactor Solo", role="admin"),
             UserRole(
                 id=1,
                 email=ADMIN_EMAIL,
@@ -72,6 +75,13 @@ def setup_database(monkeypatch):
                 email=EDITOR_EMAIL,
                 name="Editor Prensa",
                 permissions=["publicaciones", "apis"],
+                is_primary=False,
+            ),
+            UserRole(
+                id=3,
+                email=PUB_ONLY_EMAIL,
+                name="Redactor Solo Publicaciones",
+                permissions=["publicaciones"],
                 is_primary=False,
             ),
         ]
@@ -89,16 +99,40 @@ def test_ai_config_permissions_and_persistence(monkeypatch):
     assert client.get("/api/ai/config").status_code == 401
     assert client.post("/api/ai/config", json={"api_key": "AIzaSyKey1234567890"}).status_code == 401
 
-    # Estudiante regular -> 403
+    # Estudiante regular sin permisos -> 403
     student_headers = auth(STUDENT_ID, STUDENT_EMAIL, "user")
     assert client.get("/api/ai/config", headers=student_headers).status_code == 403
     assert client.post("/api/ai/config", json={"api_key": "AIzaSyKey1234567890"}, headers=student_headers).status_code == 403
 
-    # Editor con permiso 'apis' puede consultar estado (200), pero no modificar ni probar la clave (403)
+    # Cuenta con permiso 'publicaciones' pero SIN 'apis' (incluso con role='admin' en User) -> puede leer GET (200), pero NO modificar ni probar (403)
+    pub_only_headers = auth(PUB_ONLY_ID, PUB_ONLY_EMAIL, "admin")
+    assert client.get("/api/ai/config", headers=pub_only_headers).status_code == 200
+    assert client.post("/api/ai/config", json={"api_key": "AIzaSyKey1234567890"}, headers=pub_only_headers).status_code == 403
+    assert client.post("/api/ai/system-prompt", json={"system_prompt_autocomplete": "Test"}, headers=pub_only_headers).status_code == 403
+    assert client.post("/api/ai/test-connection", headers=pub_only_headers).status_code == 403
+
+    # Editor con permiso 'apis' (role='editor', sin rol admin) PUEDE consultar y gestionar la configuracion de IA (200)
     editor_headers = auth(EDITOR_ID, EDITOR_EMAIL, "editor")
     assert client.get("/api/ai/config", headers=editor_headers).status_code == 200
-    assert client.post("/api/ai/config", json={"api_key": "AIzaSyKey1234567890"}, headers=editor_headers).status_code == 403
-    assert client.post("/api/ai/test-connection", headers=editor_headers).status_code == 403
+    editor_save = client.post(
+        "/api/ai/config",
+        json={
+            "api_key": "AIzaEditorKeyWithApisPerm1",
+            "system_prompt_autocomplete": "Prompt autocomplete guardado por operador con permiso apis.",
+            "system_prompt_instagram": "Prompt instagram guardado por operador con permiso apis.",
+        },
+        headers=editor_headers,
+    )
+    assert editor_save.status_code == 200
+    assert editor_save.json()["masked_key"] == "AIza********erm1"
+    assert editor_save.json()["system_prompt_autocomplete"] == "Prompt autocomplete guardado por operador con permiso apis."
+    assert editor_save.json()["system_prompt_instagram"] == "Prompt instagram guardado por operador con permiso apis."
+
+    # Resetear la base de datos de AppSetting para verificar estado inicial limpio
+    db = TestingSessionLocal()
+    db.query(AppSetting).delete()
+    db.commit()
+    db.close()
 
     admin_headers = auth(ADMIN_ID, ADMIN_EMAIL, "admin")
 
@@ -110,6 +144,8 @@ def test_ai_config_permissions_and_persistence(monkeypatch):
     assert initial["model"] == "gemini-1.5-flash"
     assert initial["quota_rpm"] == 15
     assert "Universidad Paraguayo Alemana" in initial["system_prompt"]
+    assert "Universidad Paraguayo Alemana" in initial["system_prompt_autocomplete"]
+    assert "Instagram" in initial["system_prompt_instagram"]
 
     # Fallback a variable de entorno GEMINI_API_KEY cuando no hay registro en base de datos
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "AIzaEnvFallbackKey9876")
@@ -124,6 +160,33 @@ def test_ai_config_permissions_and_persistence(monkeypatch):
     bad_space = client.post("/api/ai/config", json={"api_key": "AIza con espacios 1234"}, headers=admin_headers)
     assert bad_space.status_code == 422
 
+    # Prompts demasiado largos (>4000 caracteres) -> 422
+    too_long = "X" * 4001
+    assert (
+        client.post(
+            "/api/ai/config",
+            json={"system_prompt_autocomplete": too_long},
+            headers=admin_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/ai/config",
+            json={"system_prompt_instagram": too_long},
+            headers=admin_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/ai/system-prompt",
+            json={"system_prompt_instagram": too_long},
+            headers=admin_headers,
+        ).status_code
+        == 422
+    )
+
     # Guardar clave en base de datos tiene prioridad sobre la variable de entorno
     saved = client.post(
         "/api/ai/config",
@@ -137,28 +200,42 @@ def test_ai_config_permissions_and_persistence(monkeypatch):
     assert body["masked_key"] == "AIza********1234"
     assert body["model"] == "gemini-1.5-flash"
 
-    # Actualizar clave existente y System Prompt personalizado
+    # Actualizar clave existente y ambos System Prompts personalizados de forma independiente
     updated = client.post(
         "/api/ai/config",
         json={
             "api_key": "AIzaUpdatedKeyWXYZ5678",
-            "system_prompt": "Instrucción personalizada UPA: priorizar tono académico formal.",
+            "system_prompt_autocomplete": "Instrucción personalizada UPA: priorizar tono académico formal.",
+            "system_prompt_instagram": "Directriz exclusiva para análisis de flyers de Instagram UPA.",
         },
         headers=admin_headers,
     )
     assert updated.status_code == 200
     assert updated.json()["masked_key"] == "AIza********5678"
     assert updated.json()["system_prompt"] == "Instrucción personalizada UPA: priorizar tono académico formal."
+    assert updated.json()["system_prompt_autocomplete"] == "Instrucción personalizada UPA: priorizar tono académico formal."
+    assert updated.json()["system_prompt_instagram"] == "Directriz exclusiva para análisis de flyers de Instagram UPA."
 
-    # Actualizar únicamente el System Prompt sin reenviar la clave
-    prompt_only = client.post(
+    # Actualizar únicamente system_prompt_autocomplete sin alterar la clave ni system_prompt_instagram
+    prompt_auto_only = client.post(
         "/api/ai/config",
-        json={"system_prompt": "Prompt editorial exclusivo UPA 2026."},
+        json={"system_prompt_autocomplete": "Prompt editorial exclusivo UPA 2026."},
         headers=admin_headers,
     )
-    assert prompt_only.status_code == 200
-    assert prompt_only.json()["masked_key"] == "AIza********5678"
-    assert prompt_only.json()["system_prompt"] == "Prompt editorial exclusivo UPA 2026."
+    assert prompt_auto_only.status_code == 200
+    assert prompt_auto_only.json()["masked_key"] == "AIza********5678"
+    assert prompt_auto_only.json()["system_prompt_autocomplete"] == "Prompt editorial exclusivo UPA 2026."
+    assert prompt_auto_only.json()["system_prompt_instagram"] == "Directriz exclusiva para análisis de flyers de Instagram UPA."
+
+    # Actualizar únicamente system_prompt_instagram sin alterar system_prompt_autocomplete
+    prompt_ig_only = client.post(
+        "/api/ai/config",
+        json={"system_prompt_instagram": "Prompt multimodal Instagram actualizado 2026."},
+        headers=admin_headers,
+    )
+    assert prompt_ig_only.status_code == 200
+    assert prompt_ig_only.json()["system_prompt_autocomplete"] == "Prompt editorial exclusivo UPA 2026."
+    assert prompt_ig_only.json()["system_prompt_instagram"] == "Prompt multimodal Instagram actualizado 2026."
 
 
 def test_ai_live_connection_against_local_gemini_stub(monkeypatch):
@@ -604,3 +681,21 @@ def test_gemini_automatic_latest_free_flash_model_discovery(monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_ai_group_fallbacks_have_no_legacy_all_or_tie():
+    from src.services.ai_extractor import _available_group_tags
+    from src.services.gemini import _build_autocomplete_prompt
+
+    prompt_text = _build_autocomplete_prompt(
+        form_data={"title": "Evento UPA"},
+        empty_fields=["target_groups"],
+        available_groups=[],
+        has_image=False,
+    )
+    assert "ALL:" not in prompt_text
+    assert "TIE:" not in prompt_text
+
+    fallback_tags = _available_group_tags(None)
+    assert "TIE" not in fallback_tags
+    assert "ALL" not in fallback_tags

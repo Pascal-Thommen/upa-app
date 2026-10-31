@@ -203,7 +203,7 @@ def is_ai_extraction_enabled(db: Session | None = None) -> tuple[bool, str]:
 
 def _available_group_tags(db: Session | None) -> list[str]:
     if db is None:
-        return ["estudiantes", "docentes", "staff", "egresados", "TIE", "PI", "TI"]
+        return ["estudiantes", "docentes", "staff", "egresados", "PI", "TI"]
     try:
         rows = db.query(AudienceGroup).all()
         tags = [str(r.id).strip() for r in rows if r.id and str(r.id).strip()]
@@ -220,7 +220,7 @@ def _build_extraction_prompt(
 ) -> str:
     ref_iso = (reference_date or datetime.now(UTC)).isoformat()
     groups_str = ", ".join(group_tags) if group_tags else "estudiantes, docentes, staff, egresados"
-    active_system_prompt = (system_prompt or "").strip() or gemini.DEFAULT_SYSTEM_PROMPT
+    active_system_prompt = (system_prompt or "").strip() or gemini.DEFAULT_SYSTEM_PROMPT_INSTAGRAM
     return (
         f"{active_system_prompt}\n"
         "Analiza esta publicación de Instagram de la Universidad Paraguayo Alemana (UPA) "
@@ -286,7 +286,7 @@ def extract_event_from_instagram_post(
             resolved_bytes, resolved_mime = fetched
 
     group_tags = _available_group_tags(db)
-    resolved_system_prompt = gemini.get_system_prompt(db)
+    resolved_system_prompt = gemini.get_system_prompt_instagram(db)
     prompt = _build_extraction_prompt(
         caption,
         group_tags,
