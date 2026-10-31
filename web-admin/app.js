@@ -1429,7 +1429,7 @@ async function renderAdminsModule() {
 }
 
 // ===========================================================================
-// Módulo 5: Control de IA (Google Gemini API + prueba de conexión en vivo)
+// Módulo 5: IA (Google Gemini Flash + System Prompt + prueba de conexión en vivo)
 // ===========================================================================
 
 function setAiConnectionBanner(type, message) {
@@ -1457,7 +1457,11 @@ function renderAiConfigState(cfg) {
   const badge = document.getElementById("ai-status-badge");
   const maskedEl = document.getElementById("ai-masked-key");
   const sourceEl = document.getElementById("ai-key-source");
+  const modelInfoEl = document.getElementById("ai-model-info");
+  const modelTierEl = document.getElementById("ai-model-tier");
+  const promptInput = document.getElementById("ai-input-system-prompt");
   const configured = Boolean(cfg && cfg.configured);
+  const modelName = (cfg && cfg.model) || "gemini-1.5-flash";
 
   if (badge) {
     badge.textContent = configured ? "Configurado" : "Sin configurar";
@@ -1474,6 +1478,20 @@ function renderAiConfigState(cfg) {
     } else {
       sourceEl.textContent = "Pendiente de configuración";
     }
+  }
+  if (modelInfoEl) {
+    modelInfoEl.textContent = modelName;
+  }
+  if (modelTierEl) {
+    modelTierEl.textContent = configured
+      ? "Nivel gratuito conectado · Solo información"
+      : "Nivel gratuito · Sin clave activa";
+  }
+  if (promptInput && cfg && typeof cfg.system_prompt === "string") {
+    promptInput.value = cfg.system_prompt;
+  }
+  if (window.UpaCockpit && typeof window.UpaCockpit.setAiConfigured === "function") {
+    window.UpaCockpit.setAiConfigured(configured);
   }
 }
 
@@ -1510,11 +1528,25 @@ async function runAiConnectionTest(candidateKey) {
     const body = await res.json().catch(() => ({}));
     if (res.ok && body) {
       if (body.ok) {
+        if (body.model && document.getElementById("ai-model-info")) {
+          document.getElementById("ai-model-info").textContent = body.model;
+        }
+        if (window.UpaCockpit && typeof window.UpaCockpit.setAiConfigured === "function") {
+          window.UpaCockpit.setAiConfigured(true);
+        }
         setAiConnectionBanner(
           "success",
           body.message || "Conexión exitosa con Google Gemini (Modelo gemini-1.5-flash listo)"
         );
       } else {
+        if (
+          !cleanCandidate &&
+          ["NO_KEY", "INVALID_KEY", "FORBIDDEN"].includes(String(body.code || "")) &&
+          window.UpaCockpit &&
+          typeof window.UpaCockpit.setAiConfigured === "function"
+        ) {
+          window.UpaCockpit.setAiConfigured(false);
+        }
         setAiConnectionBanner("error", body.message || "Clave de API inválida o expirada.");
       }
       return body;
@@ -1539,15 +1571,75 @@ async function renderAiModule() {
   await fetchAiConfig();
 }
 
+async function saveAiSystemPromptOnly() {
+  const promptInput = document.getElementById("ai-input-system-prompt");
+  const btnPrompt = document.getElementById("btn-ai-save-prompt");
+  setInlineFieldError("ai-prompt-error", "ai-input-system-prompt", "");
+  const promptVal = promptInput ? promptInput.value.trim() : "";
+  if (promptVal.length > 4000) {
+    const msg = "El prompt del sistema no puede superar los 4000 caracteres.";
+    setInlineFieldError("ai-prompt-error", "ai-input-system-prompt", msg);
+    setAiConnectionBanner("error", msg);
+    return null;
+  }
+  const prevLabel = btnPrompt ? btnPrompt.textContent : "Guardar prompt";
+  if (btnPrompt) {
+    btnPrompt.disabled = true;
+    btnPrompt.textContent = "Guardando...";
+  }
+  try {
+    const res = await apiRequest("/api/ai/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ system_prompt: promptVal }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const detail = err.detail || "No se pudo guardar el prompt del sistema.";
+      setInlineFieldError("ai-prompt-error", "ai-input-system-prompt", detail);
+      setAiConnectionBanner("error", detail);
+      return null;
+    }
+    const saved = await res.json();
+    state.aiConfig = saved;
+    state.aiLoaded = true;
+    renderAiConfigState(saved);
+    setAiConnectionBanner("success", "Prompt del sistema actualizado correctamente.");
+    return saved;
+  } catch (_) {
+    setAiConnectionBanner("error", "Error de red al guardar el prompt del sistema.");
+    return null;
+  } finally {
+    if (btnPrompt) {
+      btnPrompt.disabled = false;
+      btnPrompt.textContent = prevLabel;
+    }
+  }
+}
+
 function setupAiFormHandlers() {
   const form = document.getElementById("form-ai-config");
   const input = document.getElementById("ai-input-api-key");
+  const promptInput = document.getElementById("ai-input-system-prompt");
+  const btnSavePrompt = document.getElementById("btn-ai-save-prompt");
   const btnTest = document.getElementById("btn-ai-test-connection");
   const btnSave = document.getElementById("btn-ai-save-test");
 
   if (input) {
     input.addEventListener("input", () => {
       setInlineFieldError("ai-key-error", "ai-input-api-key", "");
+    });
+  }
+
+  if (promptInput) {
+    promptInput.addEventListener("input", () => {
+      setInlineFieldError("ai-prompt-error", "ai-input-system-prompt", "");
+    });
+  }
+
+  if (btnSavePrompt) {
+    btnSavePrompt.addEventListener("click", async () => {
+      await saveAiSystemPromptOnly();
     });
   }
 
@@ -1563,12 +1655,20 @@ function setupAiFormHandlers() {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       setInlineFieldError("ai-key-error", "ai-input-api-key", "");
+      setInlineFieldError("ai-prompt-error", "ai-input-system-prompt", "");
       const key = input ? input.value.trim() : "";
+      const promptVal = promptInput ? promptInput.value.trim() : undefined;
       if (!key || key.length < 10 || /\s/.test(key)) {
         const msg = "La clave de API no es válida: debe tener al menos 10 caracteres y no contener espacios.";
         setInlineFieldError("ai-key-error", "ai-input-api-key", msg);
         setAiConnectionBanner("error", msg);
         if (input && input.focus) input.focus();
+        return;
+      }
+      if (promptVal !== undefined && promptVal.length > 4000) {
+        const msg = "El prompt del sistema no puede superar los 4000 caracteres.";
+        setInlineFieldError("ai-prompt-error", "ai-input-system-prompt", msg);
+        setAiConnectionBanner("error", msg);
         return;
       }
 
@@ -1578,10 +1678,12 @@ function setupAiFormHandlers() {
         btnSave.textContent = "Guardando...";
       }
       try {
+        const payload = { api_key: key };
+        if (promptVal !== undefined) payload.system_prompt = promptVal;
         const res = await apiRequest("/api/ai/config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ api_key: key }),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));

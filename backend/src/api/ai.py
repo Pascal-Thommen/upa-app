@@ -1,13 +1,14 @@
-"""Control de IA: configuracion de la clave de Google Gemini y prueba de conexion en vivo."""
+"""IA: configuracion de la clave de Google Gemini, prompt del sistema y prueba de conexion en vivo."""
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models import User
-from ..permissions import require_permission
+from ..permissions import effective_permissions, require_permission
 from ..services import gemini
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
@@ -18,10 +19,12 @@ class AiConfigResponse(BaseModel):
     masked_key: str
     source: str
     model: str
+    system_prompt: str
 
 
 class AiConfigUpdate(BaseModel):
-    api_key: str
+    api_key: str | None = None
+    system_prompt: str | None = None
 
 
 class AiTestRequest(BaseModel):
@@ -33,6 +36,19 @@ class AiTestResponse(BaseModel):
     code: str
     message: str
     model: str
+
+
+def require_ai_read(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    perms = effective_permissions(db, current_user)
+    if "apis" not in perms and "publicaciones" not in perms:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: su cuenta no tiene permiso para consultar la configuración de IA.",
+        )
+    return current_user
 
 
 def require_admin(current_user: User = Depends(require_permission("apis"))) -> User:
@@ -47,28 +63,45 @@ def require_admin(current_user: User = Depends(require_permission("apis"))) -> U
 def _config_response(db: Session) -> AiConfigResponse:
     key, source = gemini.resolve_api_key(db)
     return AiConfigResponse(
-        configured=bool(key), masked_key=gemini.mask_key(key), source=source, model=settings.GEMINI_MODEL
+        configured=bool(key),
+        masked_key=gemini.mask_key(key),
+        source=source,
+        model=settings.GEMINI_MODEL,
+        system_prompt=gemini.get_system_prompt(db),
     )
 
 
-@router.get("/config", response_model=AiConfigResponse, summary="Estado de la clave de Gemini")
-def get_ai_config(db: Session = Depends(get_db), _: User = Depends(require_permission("apis"))) -> AiConfigResponse:
+@router.get("/config", response_model=AiConfigResponse, summary="Estado de la clave y configuración de Gemini")
+def get_ai_config(db: Session = Depends(get_db), _: User = Depends(require_ai_read)) -> AiConfigResponse:
     return _config_response(db)
 
 
-@router.post("/config", response_model=AiConfigResponse, summary="Guardar la clave de Gemini (administradores)")
+@router.post("/config", response_model=AiConfigResponse, summary="Guardar clave o prompt de Gemini (administradores)")
 def set_ai_config(
     payload: AiConfigUpdate,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> AiConfigResponse:
-    key = (payload.api_key or "").strip()
-    if len(key) < 10 or any(c.isspace() for c in key):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="La clave de API no es válida: debe tener al menos 10 caracteres y no contener espacios.",
-        )
-    gemini.save_api_key(db, key, admin.email)
+    raw_key = payload.api_key
+    has_key_field = raw_key is not None and bool(raw_key.strip()) or payload.system_prompt is None
+    if has_key_field:
+        key = (raw_key or "").strip()
+        if len(key) < 10 or any(c.isspace() for c in key):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La clave de API no es válida: debe tener al menos 10 caracteres y no contener espacios.",
+            )
+        gemini.save_api_key(db, key, admin.email)
+
+    if payload.system_prompt is not None:
+        clean_prompt = payload.system_prompt.strip()
+        if len(clean_prompt) > 4000:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El prompt del sistema no puede superar los 4000 caracteres.",
+            )
+        gemini.save_system_prompt(db, clean_prompt, admin.email)
+
     return _config_response(db)
 
 

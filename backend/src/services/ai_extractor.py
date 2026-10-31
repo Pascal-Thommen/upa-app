@@ -212,10 +212,17 @@ def _available_group_tags(db: Session | None) -> list[str]:
         return ["estudiantes", "docentes", "staff", "egresados"]
 
 
-def _build_extraction_prompt(caption: str, group_tags: list[str], reference_date: datetime | None = None) -> str:
+def _build_extraction_prompt(
+    caption: str,
+    group_tags: list[str],
+    reference_date: datetime | None = None,
+    system_prompt: str | None = None,
+) -> str:
     ref_iso = (reference_date or datetime.now(UTC)).isoformat()
     groups_str = ", ".join(group_tags) if group_tags else "estudiantes, docentes, staff, egresados"
+    active_system_prompt = (system_prompt or "").strip() or gemini.DEFAULT_SYSTEM_PROMPT
     return (
+        f"{active_system_prompt}\n"
         "Analiza esta publicación de Instagram de la Universidad Paraguayo Alemana (UPA) "
         "combinando el texto del pie de foto y la imagen adjunta (afiche/flyer).\n"
         f"Fecha de referencia de la publicación: {ref_iso}\n"
@@ -279,7 +286,13 @@ def extract_event_from_instagram_post(
             resolved_bytes, resolved_mime = fetched
 
     group_tags = _available_group_tags(db)
-    prompt = _build_extraction_prompt(caption, group_tags, reference_date=reference_date)
+    custom_system_prompt = gemini.get_system_prompt(db)
+    prompt = _build_extraction_prompt(
+        caption,
+        group_tags,
+        reference_date=reference_date,
+        system_prompt=custom_system_prompt,
+    )
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
     if resolved_bytes:

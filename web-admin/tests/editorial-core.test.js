@@ -123,18 +123,79 @@ test("publicationToFormValues: reconstruye campos unificados de noticia y evento
   assert.equal(values.imageUrl, "/uploads/x.png");
   assert.equal(values.isEvent, true);
   assert.equal(values.hasRegistration, true);
-  assert.ok(values.eventStart.endsWith("10:00"));
-  assert.ok(values.eventEnd.endsWith("12:30"));
+  assert.equal(values.eventStart, "15/06/2030 10:00");
+  assert.equal(values.eventEnd, "12:30");
+
+  // Sin event_end definido, el campo Fin del evento queda vacio (sin pre-relleno automatico)
+  const withoutEnd = Core.publicationToFormValues({
+    id: 6,
+    title: "Charla sin hora de fin",
+    is_news: false,
+    is_event: true,
+    event_start: startIso,
+    event_end: null,
+  });
+  assert.equal(withoutEnd.eventStart, "15/06/2030 10:00");
+  assert.equal(withoutEnd.eventEnd, "");
 });
 
-test("fecha y hora locales: ida y vuelta consistente a ISO UTC", () => {
+test("fecha y hora locales: formato paraguayo DD/MM/YYYY, reloj 24h HH:mm y validacion de horas invalidas", () => {
   const iso = Core.localDateTimeToIso("2030-06-15", "14:30");
   assert.equal(iso, new Date(2030, 5, 15, 14, 30).toISOString());
+  assert.equal(Core.localDateTimeToIso("15/06/2030", "14:30"), iso);
   assert.deepEqual(Core.isoToLocalParts(iso), { date: "2030-06-15", time: "14:30" });
+  assert.equal(Core.isoToParaguayDateTime(iso), "15/06/2030 14:30");
+  assert.equal(Core.isoToTime24(iso), "14:30");
+  assert.equal(Core.datetimeLocalToIso("15/06/2030 14:30"), iso);
   assert.equal(Core.localDateTimeToIso("", "14:30"), null);
   assert.equal(Core.localDateTimeToIso("2030-13-45", "14:30"), null);
+  assert.equal(Core.localDateTimeToIso("45/13/2030", "14:30"), null);
   assert.equal(Core.localDateTimeToIso("2030-06-15", "25:99"), null);
   assert.equal(Core.localDateTimeToIso("2030-02-31", "10:00"), null);
+  assert.equal(Core.localDateTimeToIso("31/02/2030", "10:00"), null);
+
+  // Mascaras progresivas de entrada (DD/MM/YYYY HH:mm y HH:mm)
+  assert.equal(Core.maskDateTimeInput("251120261830"), "25/11/2026 18:30");
+  assert.equal(Core.maskTime24Input("1830"), "18:30");
+  assert.equal(Core.isValidTime24("00:00"), true);
+  assert.equal(Core.isValidTime24("23:59"), true);
+  assert.equal(Core.isValidTime24("24:00"), false);
+  assert.equal(Core.isValidTime24("25:99"), false);
+  assert.equal(Core.isValidTime24("10:00 PM"), false);
+
+  // Errores claros de validacion ante fechas u horas invalidas en eventos
+  const invalidStartErrs = Core.validatePublicationValues({
+    title: "Evento",
+    postType: "MANUAL",
+    targetGroups: ["ALL"],
+    isNews: false,
+    isEvent: true,
+    eventStart: "31/02/2026 25:99",
+    eventEnd: "",
+  });
+  assert.equal(invalidStartErrs.eventStart, Core.TEXTS.errEventStartInvalid);
+
+  const invalidEndTimeErrs = Core.validatePublicationValues({
+    title: "Evento",
+    postType: "MANUAL",
+    targetGroups: ["ALL"],
+    isNews: false,
+    isEvent: true,
+    eventStart: "15/08/2030 14:00",
+    eventEnd: "25:99",
+  });
+  assert.equal(invalidEndTimeErrs.eventEnd, Core.TEXTS.errEventEndInvalid);
+
+  const endBeforeStartErrs = Core.validatePublicationValues({
+    title: "Evento",
+    postType: "MANUAL",
+    targetGroups: ["ALL"],
+    isNews: false,
+    isEvent: true,
+    eventStart: "15/08/2030 14:00",
+    eventEnd: "12:30",
+  });
+  assert.equal(endBeforeStartErrs.eventEnd, Core.TEXTS.errEndBeforeStart);
 });
 
 test("safeUrl y renderPublicationRows escapan HTML hostil y descartan URLs peligrosas", () => {
@@ -449,9 +510,11 @@ test("autocompletar con IA: applyAiSuggestionsToFormValues completa solo campos 
     "No se pudo autocompletar: Verifique la clave de IA en Control de IA"
   );
 
-  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20T18:30"), "2026-11-20T18:30");
-  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20 18:30:00"), "2026-11-20T18:30");
-  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20"), "2026-11-20T09:00");
+  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20T18:30"), "20/11/2026 18:30");
+  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20 18:30:00"), "20/11/2026 18:30");
+  assert.equal(Core.normalizeAiDatetimeLocal("2026-11-20"), "20/11/2026 09:00");
+  assert.equal(Core.normalizeAiTime24("2026-11-20T20:00"), "20:00");
+  assert.equal(Core.normalizeAiTime24("20:00"), "20:00");
 
   const currentForm = {
     title: "Título ya escrito por el editor",
@@ -492,8 +555,8 @@ test("autocompletar con IA: applyAiSuggestionsToFormValues completa solo campos 
   );
   assert.equal(merged.caption, "Resumen breve sugerido por IA");
   assert.equal(merged.isEvent, true);
-  assert.equal(merged.eventStart, "2026-11-20T18:30");
-  assert.equal(merged.eventEnd, "2026-11-20T20:00");
+  assert.equal(merged.eventStart, "20/11/2026 18:30");
+  assert.equal(merged.eventEnd, "20:00");
   assert.equal(merged.location, "Auditorio Central");
   assert.deepEqual(merged.targetGroups, ["TIE", "TI"]);
   assert.equal(merged.hasRegistration, true);
@@ -529,6 +592,7 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   const { document } = window;
 
   let autocompleteMode = "success";
+  let aiConfiguredState = false;
   let lastAutocompleteBody = null;
   let busyTextObserved = "";
 
@@ -551,6 +615,18 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
           full_name: "Pascal Thommen",
           role: "admin",
           permissions: ["publicaciones", "grupos", "roles", "apis", "historial"],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (url.includes("/api/ai/config")) {
+      return new Response(
+        JSON.stringify({
+          configured: aiConfiguredState,
+          masked_key: aiConfiguredState ? "AIza********1234" : "",
+          source: aiConfiguredState ? "database" : "none",
+          model: "gemini-1.5-flash",
+          system_prompt: "Eres el asistente editorial inteligente de la UPA.",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
@@ -613,6 +689,20 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   assert.ok(aiBtn, "El botón Autocompletar con IA debe existir en el editor");
   assert.equal(aiBtn.textContent.trim(), "Autocompletar con IA");
 
+  // 1. Sin token de Gemini configurado: botón deshabilitado, gris y con tooltip explicativo
+  assert.equal(aiBtn.disabled, true);
+  assert.equal(aiBtn.getAttribute("aria-disabled"), "true");
+  assert.ok(aiBtn.classList.contains("is-disabled"));
+  assert.ok(aiBtn.getAttribute("title").includes("Configure un token válido de Gemini"));
+  assert.equal(document.getElementById("ed-pub-event-end").value, "");
+
+  // 2. Al configurar token válido de Gemini: botón se habilita
+  aiConfiguredState = true;
+  await window.UpaCockpit.openNewPublication();
+  assert.equal(aiBtn.disabled, false);
+  assert.equal(aiBtn.getAttribute("aria-disabled"), "false");
+  assert.ok(!aiBtn.classList.contains("is-disabled"));
+
   // El usuario ingresa título y contenido, dejando el resto vacío
   document.getElementById("ed-pub-title").value = "Seminario de Robótica (Usuario)";
   document.getElementById("ed-pub-content").value = "El 25 de noviembre a las 18:30 hs en el Auditorio Central para TIE.";
@@ -625,12 +715,12 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   assert.equal(aiBtn.textContent.trim(), "Autocompletar con IA");
   assert.equal(lastAutocompleteBody.title, "Seminario de Robótica (Usuario)");
 
-  // Verificar que los campos del usuario se conservaron y los vacíos se completaron
+  // Verificar que los campos del usuario se conservaron y los vacíos se completaron en DD/MM/YYYY HH:mm y HH:mm
   assert.equal(document.getElementById("ed-pub-title").value, "Seminario de Robótica (Usuario)");
   assert.equal(document.getElementById("ed-pub-caption").value, "Resumen generado por Gemini");
   assert.equal(document.getElementById("ed-pub-is-event").checked, true);
-  assert.equal(document.getElementById("ed-pub-event-start").value, "2026-11-25T18:30");
-  assert.equal(document.getElementById("ed-pub-event-end").value, "2026-11-25T20:00");
+  assert.equal(document.getElementById("ed-pub-event-start").value, "25/11/2026 18:30");
+  assert.equal(document.getElementById("ed-pub-event-end").value, "20:00");
   assert.equal(document.getElementById("ed-pub-location").value, "Auditorio Central");
   assert.equal(document.getElementById("ed-pub-rsvp").checked, true);
   const checkedGroups = Array.from(
@@ -639,7 +729,16 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   assert.deepEqual(checkedGroups, ["TIE"]);
   assert.equal(document.getElementById("ed-notice").textContent, "Campos completados por IA");
 
-  // Caso de error (IA desactivada o clave inválida)
+  // 3. Validación en vivo de horas inválidas en los campos de evento
+  const endInput = document.getElementById("ed-pub-event-end");
+  endInput.value = "25:99";
+  endInput.dispatchEvent(new window.Event("blur"));
+  assert.equal(
+    document.querySelector('[data-error-for="pub-eventEnd"]').textContent,
+    Core.TEXTS.errEventEndInvalid
+  );
+
+  // 4. Caso de error en llamada a IA (cuota agotada o clave revocada)
   autocompleteMode = "error";
   aiBtn.click();
   await new Promise((r) => setTimeout(r, 50));

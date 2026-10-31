@@ -81,12 +81,14 @@
     errDateRequired: "La fecha del evento es obligatoria.",
     errStartRequired: "La hora de inicio es obligatoria.",
     errEventStartRequired: "Indique la fecha y hora de inicio del evento.",
+    errEventStartInvalid: "Fecha u hora de inicio inválida. Use el formato DD/MM/YYYY HH:mm (24h).",
+    errEventEndInvalid: "Hora de finalización inválida. Use el formato de 24 horas HH:mm.",
     errEndBeforeStart: "La hora de finalización no puede ser anterior al inicio.",
     errGroupRequired: "Seleccione al menos un grupo destinatario.",
     errCategoryInvalid: "Categoría no válida.",
     errExpiresRequired: "Indique la fecha y hora de vigencia para fijar la publicación.",
-    errExpiresInvalid: "La fecha de vigencia no es válida.",
-    errPublishedInvalid: "La fecha programada de publicación no es válida.",
+    errExpiresInvalid: "La fecha de vigencia no es válida (use DD/MM/YYYY HH:mm).",
+    errPublishedInvalid: "La fecha programada de publicación no es válida (use DD/MM/YYYY HH:mm).",
     errPublishedPast: "La fecha programada de publicación no puede estar en el pasado.",
     errSectionRequired: "Active al menos una sección: Noticia o Evento.",
     errUrgentNoEvent: "Los avisos urgentes no admiten sección de Evento.",
@@ -94,6 +96,9 @@
     aiAutocompleteBusy: "Analizando contenido e imagen...",
     aiAutocompleteSuccess: "Campos completados por IA",
     aiAutocompleteError: "No se pudo autocompletar: Verifique la clave de IA en Control de IA",
+    aiAutocompleteDisabledTooltip:
+      "Configure un token válido de Gemini en la pestaña IA para habilitar el autocompletado.",
+    aiAutocompleteEnabledTooltip: "Autocompletar campos vacíos con Google Gemini Flash",
   };
 
   // ---------------------------------------------------------------------------
@@ -235,12 +240,37 @@
     return String(n).padStart(2, "0");
   }
 
+  function isValidTime24(timeVal) {
+    const clean = String(timeVal || "").trim();
+    return /^([01]\d|2[0-3]):([0-5]\d)$/.test(clean);
+  }
+
+  function parseParaguayDate(dateStr) {
+    const clean = String(dateStr || "").trim();
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(clean);
+    if (!match) return null;
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+    if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+    const d = new Date(year, month - 1, day);
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+    return { day, month, year, isoDate: `${year}-${pad2(month)}-${pad2(day)}` };
+  }
+
   function localDateTimeToIso(date, time) {
     if (!date || !time) return null;
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-    const timeMatch = /^(\d{2}):(\d{2})$/.exec(time);
-    if (!match || !timeMatch) return null;
-    const [year, month, day, hour, minute] = [match[1], match[2], match[3], timeMatch[1], timeMatch[2]].map(Number);
+    let normalizedDate = String(date).trim();
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(normalizedDate)) {
+      const py = parseParaguayDate(normalizedDate);
+      if (!py) return null;
+      normalizedDate = py.isoDate;
+    }
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalizedDate);
+    const cleanTime = String(time).trim();
+    if (!match || !isValidTime24(cleanTime)) return null;
+    const [hour, minute] = cleanTime.split(":").map(Number);
+    const [year, month, day] = [match[1], match[2], match[3]].map(Number);
     const d = new Date(year, month - 1, day, hour, minute, 0, 0);
     const exact =
       d.getFullYear() === year &&
@@ -261,19 +291,101 @@
     };
   }
 
-  /** Convierte un ISO-8601 a valor `YYYY-MM-DDTHH:MM` para inputs `datetime-local`. */
-  function isoToDatetimeLocal(iso) {
-    const parts = isoToLocalParts(iso);
-    return parts.date && parts.time ? `${parts.date}T${parts.time}` : "";
+  /** Convierte un ISO-8601 a formato paraguayo `DD/MM/YYYY HH:mm` (24 horas). */
+  function isoToParaguayDateTime(iso) {
+    const clean = String(iso || "").trim();
+    if (!clean) return "";
+    const pyMatch = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})$/.exec(clean);
+    if (pyMatch && parseParaguayDate(pyMatch[1]) && isValidTime24(pyMatch[2])) {
+      return `${pyMatch[1]} ${pyMatch[2]}`;
+    }
+    const d = new Date(clean);
+    if (Number.isNaN(d.getTime())) return "";
+    return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(
+      d.getMinutes()
+    )}`;
   }
 
-  /** Convierte un valor `datetime-local` (`YYYY-MM-DDTHH:MM`) a ISO-8601 UTC. */
+  /** Extrae la hora en formato estricto 24h `HH:mm` desde un ISO-8601 o cadena de hora. */
+  function isoToTime24(val) {
+    const clean = String(val || "").trim();
+    if (!clean) return "";
+    if (isValidTime24(clean)) return clean;
+    const pyMatch = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})(?::\d{2})?$/.exec(clean);
+    if (pyMatch && isValidTime24(pyMatch[2])) return pyMatch[2];
+    const isoLocalMatch = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::\d{2})?$/.exec(clean);
+    if (isoLocalMatch && isValidTime24(isoLocalMatch[2])) return isoLocalMatch[2];
+    const d = new Date(clean);
+    if (Number.isNaN(d.getTime())) return "";
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  /** Convierte un ISO-8601 a valor de formulario `DD/MM/YYYY HH:mm` (24h). */
+  function isoToDatetimeLocal(iso) {
+    return isoToParaguayDateTime(iso);
+  }
+
+  /** Convierte un valor `DD/MM/YYYY HH:mm` (o `YYYY-MM-DDTHH:mm`) a ISO-8601 UTC. */
   function datetimeLocalToIso(localVal) {
     const clean = String(localVal || "").trim();
     if (!clean) return null;
-    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(clean);
-    if (!match) return null;
-    return localDateTimeToIso(match[1], match[2]);
+    const pyMatch = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})$/.exec(clean);
+    if (pyMatch) {
+      return localDateTimeToIso(pyMatch[1], pyMatch[2]);
+    }
+    const isoMatch = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::\d{2})?$/.exec(clean);
+    if (isoMatch) {
+      return localDateTimeToIso(isoMatch[1], isoMatch[2]);
+    }
+    return null;
+  }
+
+  /** Resuelve la hora de fin opcional (`HH:mm` o fecha+hora) sobre la fecha de `eventStartVal`. */
+  function resolveEventEndIso(eventStartVal, eventEndVal) {
+    const cleanEnd = String(eventEndVal || "").trim();
+    if (!cleanEnd) return null;
+    if (isValidTime24(cleanEnd)) {
+      const cleanStart = String(eventStartVal || "").trim();
+      const pyStart = /^(\d{2}\/\d{2}\/\d{4})\s+/.exec(cleanStart);
+      if (pyStart) {
+        return localDateTimeToIso(pyStart[1], cleanEnd);
+      }
+      const isoStart = /^(\d{4}-\d{2}-\d{2})[T\s]/.exec(cleanStart);
+      if (isoStart) {
+        return localDateTimeToIso(isoStart[1], cleanEnd);
+      }
+      const startIso = datetimeLocalToIso(cleanStart);
+      if (startIso) {
+        const parts = isoToLocalParts(startIso);
+        return localDateTimeToIso(parts.date, cleanEnd);
+      }
+      return null;
+    }
+    return datetimeLocalToIso(cleanEnd);
+  }
+
+  /** Aplica mascara progresiva `DD/MM/YYYY HH:mm` cuando el usuario escribe digitos. */
+  function maskDateTimeInput(raw) {
+    const val = String(raw || "");
+    if (!/^[\d/\s:]*$/.test(val)) return val;
+    const digits = val.replace(/\D/g, "").slice(0, 12);
+    if (!digits) return "";
+    let out = digits.slice(0, 2);
+    if (digits.length > 2) out += "/" + digits.slice(2, 4);
+    if (digits.length > 4) out += "/" + digits.slice(4, 8);
+    if (digits.length > 8) out += " " + digits.slice(8, 10);
+    if (digits.length > 10) out += ":" + digits.slice(10, 12);
+    return out;
+  }
+
+  /** Aplica mascara progresiva `HH:mm` (24h) cuando el usuario escribe digitos. */
+  function maskTime24Input(raw) {
+    const val = String(raw || "");
+    if (!/^[\d:]*$/.test(val)) return val;
+    const digits = val.replace(/\D/g, "").slice(0, 4);
+    if (!digits) return "";
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
   }
 
   function formatDateTime(iso, options) {
@@ -378,13 +490,25 @@
     }
 
     if (isEvent) {
-      const startIso = datetimeLocalToIso(v.eventStart);
-      if (!startIso) {
+      const rawStart = String(v.eventStart || "").trim();
+      const rawEnd = String(v.eventEnd || "").trim();
+      const startIso = datetimeLocalToIso(rawStart);
+      if (!rawStart) {
         errors.eventStart = TEXTS.errEventStartRequired;
-      } else if (v.eventEnd) {
-        const endIso = datetimeLocalToIso(v.eventEnd);
-        if (!endIso || new Date(endIso) < new Date(startIso)) {
-          errors.eventEnd = TEXTS.errEndBeforeStart;
+      } else if (!startIso) {
+        errors.eventStart = TEXTS.errEventStartInvalid;
+      }
+      if (rawEnd) {
+        const validEndFormat = isValidTime24(rawEnd) || Boolean(datetimeLocalToIso(rawEnd));
+        if (!validEndFormat) {
+          errors.eventEnd = TEXTS.errEventEndInvalid;
+        } else if (startIso) {
+          const endIso = resolveEventEndIso(rawStart, rawEnd);
+          if (!endIso) {
+            errors.eventEnd = TEXTS.errEventEndInvalid;
+          } else if (new Date(endIso) < new Date(startIso)) {
+            errors.eventEnd = TEXTS.errEndBeforeStart;
+          }
         }
       }
       if (String(v.location || "").length > LIMITS.location) {
@@ -428,7 +552,7 @@
       link_url: isNews ? String(v.linkUrl || "").trim() : "",
       is_event: isEvent,
       event_start: isEvent ? datetimeLocalToIso(v.eventStart) : null,
-      event_end: isEvent && v.eventEnd ? datetimeLocalToIso(v.eventEnd) : null,
+      event_end: isEvent && String(v.eventEnd || "").trim() ? resolveEventEndIso(v.eventStart, v.eventEnd) : null,
       location: isEvent ? String(v.location || "").trim() : "",
       event_notify_groups: isEvent ? cleanGroups(v.eventNotifyGroups) : [],
       reminders: isEvent ? cleanReminders(v.reminders) : [],
@@ -485,8 +609,8 @@
       linkLabel,
       linkUrl,
       isEvent,
-      eventStart: isoToDatetimeLocal(p.event_start),
-      eventEnd: isoToDatetimeLocal(p.event_end),
+      eventStart: isoToParaguayDateTime(p.event_start),
+      eventEnd: p.event_end ? isoToTime24(p.event_end) : "",
       location: p.location || "",
       eventNotifyGroups,
       reminders,
@@ -501,14 +625,35 @@
   function normalizeAiDatetimeLocal(raw) {
     const clean = String(raw || "").trim();
     if (!clean) return "";
-    const localMatch = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::\d{2})?$/.exec(clean);
-    if (localMatch) {
-      return `${localMatch[1]}T${localMatch[2]}`;
+    const pyMatch = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})(?::\d{2})?$/.exec(clean);
+    if (pyMatch && parseParaguayDate(pyMatch[1]) && isValidTime24(pyMatch[2])) {
+      return `${pyMatch[1]} ${pyMatch[2]}`;
     }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
-      return `${clean}T09:00`;
+    const localMatch = /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}:\d{2})(?::\d{2})?$/.exec(clean);
+    if (localMatch && isValidTime24(localMatch[4])) {
+      const pyDate = `${localMatch[3]}/${localMatch[2]}/${localMatch[1]}`;
+      if (parseParaguayDate(pyDate)) {
+        return `${pyDate} ${localMatch[4]}`;
+      }
     }
-    return isoToDatetimeLocal(clean);
+    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(clean);
+    if (dateOnlyMatch) {
+      const pyDate = `${dateOnlyMatch[3]}/${dateOnlyMatch[2]}/${dateOnlyMatch[1]}`;
+      if (parseParaguayDate(pyDate)) {
+        return `${pyDate} 09:00`;
+      }
+    }
+    const pyDateOnly = /^(\d{2}\/\d{2}\/\d{4})$/.exec(clean);
+    if (pyDateOnly && parseParaguayDate(pyDateOnly[1])) {
+      return `${pyDateOnly[1]} 09:00`;
+    }
+    return isoToParaguayDateTime(clean);
+  }
+
+  function normalizeAiTime24(raw) {
+    const clean = String(raw || "").trim();
+    if (!clean) return "";
+    return isoToTime24(clean);
   }
 
   function applyAiSuggestionsToFormValues(currentValues, suggestions) {
@@ -558,7 +703,7 @@
 
     const rawEnd = sug.event_end !== undefined ? sug.event_end : sug.eventEnd;
     if (!String(next.eventEnd || "").trim() && typeof rawEnd === "string" && rawEnd.trim()) {
-      const formattedEnd = normalizeAiDatetimeLocal(rawEnd);
+      const formattedEnd = normalizeAiTime24(rawEnd);
       if (formattedEnd) next.eventEnd = formattedEnd;
     }
 
@@ -840,7 +985,15 @@
 
       // Control de IA (Google Gemini)
       getAiConfig: () => request("GET", "/api/ai/config"),
-      saveAiConfig: (apiKey) => request("POST", "/api/ai/config", { json: { api_key: apiKey } }),
+      saveAiConfig: (apiKeyOrPayload, systemPrompt) => {
+        const json =
+          apiKeyOrPayload && typeof apiKeyOrPayload === "object"
+            ? apiKeyOrPayload
+            : systemPrompt !== undefined
+              ? { api_key: apiKeyOrPayload, system_prompt: systemPrompt }
+              : { api_key: apiKeyOrPayload };
+        return request("POST", "/api/ai/config", { json });
+      },
       testAiConnection: (apiKey) =>
         request("POST", "/api/ai/test-connection", apiKey ? { json: { api_key: apiKey } } : {}),
       autocompletePublicationAi(payload, file) {
@@ -895,10 +1048,17 @@
     extractInstagramTeaser,
     reminderToParts,
     partsToReminderMinutes,
+    isValidTime24,
+    parseParaguayDate,
     localDateTimeToIso,
     isoToLocalParts,
+    isoToParaguayDateTime,
+    isoToTime24,
     isoToDatetimeLocal,
     datetimeLocalToIso,
+    resolveEventEndIso,
+    maskDateTimeInput,
+    maskTime24Input,
     formatDateTime,
     categoryLabel,
     cleanGroups,
@@ -907,6 +1067,7 @@
     buildPublicationPayload,
     publicationToFormValues,
     normalizeAiDatetimeLocal,
+    normalizeAiTime24,
     applyAiSuggestionsToFormValues,
     renderPublicationRows,
     renderHistoryEntries,
