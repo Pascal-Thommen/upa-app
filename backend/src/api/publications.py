@@ -18,6 +18,7 @@ from ..models import AudienceGroup, EventRegistration, Post, PostView, User
 from ..permissions import require_permission
 from ..schemas.event import EventRegistrationEntry
 from ..schemas.post import (
+    ASUNCION_TZ,
     DeleteResponse,
     effective_published_at,
     effective_reminders,
@@ -32,6 +33,7 @@ from ..schemas.publication import (
     PublicationRsvpRequest,
     PublicationUpdate,
     PublicationWrite,
+    _resolve_event_datetimes,
     clean_group_codes,
     extract_instagram_teaser,
 )
@@ -228,10 +230,17 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
         event_start = ensure_utc_datetime(payload.event_start)
         if payload.event_end is not None:
             event_end = ensure_utc_datetime(payload.event_end)
-            if event_end < event_start:
+            if event_end <= event_start:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La fecha de finalización del evento no puede ser anterior al inicio.",
+                    detail="La hora de finalización del evento debe ser posterior al inicio.",
+                )
+            start_asuncion = event_start.astimezone(ASUNCION_TZ)
+            end_asuncion = event_end.astimezone(ASUNCION_TZ)
+            if start_asuncion.date() != end_asuncion.date() and event_start.date() != event_end.date():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La finalización del evento debe ser en el mismo día que el inicio.",
                 )
         else:
             event_end = None
@@ -347,6 +356,15 @@ def _normalize_autocomplete_form(raw: dict[str, Any]) -> dict[str, Any]:
             raw.get("event_start") if "event_start" in raw else (raw.get("eventStart") or "")
         ).strip(),
         "event_end": str(raw.get("event_end") if "event_end" in raw else (raw.get("eventEnd") or "")).strip(),
+        "event_date": str(
+            raw.get("event_date") if "event_date" in raw else (raw.get("eventDate") or "")
+        ).strip(),
+        "event_start_time": str(
+            raw.get("event_start_time") if "event_start_time" in raw else (raw.get("eventStartTime") or "")
+        ).strip(),
+        "event_end_time": str(
+            raw.get("event_end_time") if "event_end_time" in raw else (raw.get("eventEndTime") or "")
+        ).strip(),
         "target_groups": clean_group_codes(raw_groups),
         "category": str(raw.get("category") or "").strip(),
         "link_label": str(raw.get("link_label") if "link_label" in raw else (raw.get("linkLabel") or "")).strip(),
@@ -528,6 +546,7 @@ async def autocomplete_publication_ai(
         image_bytes=uploaded_bytes,
         image_mime_type=uploaded_mime,
         system_prompt=gemini.get_system_prompt(db),
+        db=db,
     )
     if not result.ok:
         err_status = (
@@ -612,6 +631,14 @@ def _merge_update_into_write(post: Post, patch: PublicationUpdate) -> tuple[Publ
     """Combina un payload parcial sobre el estado persistido del post para validacion integral."""
     provided = patch.model_fields_set
     reset_publish_to_now = "published_at" in provided and patch.published_at is None
+    has_start_in_patch = any(k in provided for k in ("event_start", "event_date", "event_start_time"))
+    has_end_in_patch = any(k in provided for k in ("event_end", "event_end_time"))
+    effective_start = patch.event_start if has_start_in_patch else post.event_start
+    effective_end = patch.event_end if has_end_in_patch else post.event_end
+    if not has_start_in_patch and "event_end_time" in provided and patch.event_end_time and effective_start is not None:
+        _, effective_end = _resolve_event_datetimes(effective_start, None, None, None, patch.event_end_time)
+    elif has_end_in_patch and patch.event_end is None and patch.event_end_time in (None, ""):
+        effective_end = None
     merged = PublicationWrite(
         title=patch.title if "title" in provided and patch.title is not None else (post.title or ""),
         post_type=patch.post_type if "post_type" in provided and patch.post_type is not None else (post.post_type or "MANUAL"),
@@ -631,8 +658,8 @@ def _merge_update_into_write(post: Post, patch: PublicationUpdate) -> tuple[Publ
         link_url=patch.link_url if "link_url" in provided else post.link_url,
         permalink=patch.permalink if "permalink" in provided else post.permalink,
         is_event=patch.is_event if "is_event" in provided and patch.is_event is not None else bool(post.is_event),
-        event_start=patch.event_start if "event_start" in provided else post.event_start,
-        event_end=patch.event_end if "event_end" in provided else post.event_end,
+        event_start=effective_start,
+        event_end=effective_end,
         location=patch.location if "location" in provided else post.location,
         event_notify_groups=patch.event_notify_groups if "event_notify_groups" in provided and patch.event_notify_groups is not None else list(post.event_notify_groups or []),
         reminders=patch.reminders if "reminders" in provided else (list(post.reminders) if isinstance(post.reminders, list) else None),

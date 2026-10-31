@@ -231,7 +231,7 @@ def _build_extraction_prompt(
         "1. Determina si la publicación anuncia un evento, charla, taller, conferencia o actividad con fecha/hora concreta (is_event).\n"
         "2. Si es un evento, extrae event_title, start_time (ISO-8601), end_time (ISO-8601 o null), location y allow_registration.\n"
         "3. REGLA DE PLAUSIBILIDAD: start_time y end_time DEBEN estar en el mismo día calendario. "
-        "Si la hora de finalización cae en otro día o no se menciona claramente, devuelve end_time como null.\n"
+        "Si la hora de finalización cae en otro día o no se menciona claramente, devuelve end_time como null (NO inventes horas de fin).\n"
         "4. SELECCIÓN CONSERVADORA DE GRUPOS (target_groups): Elige etiquetas de grupo de forma extremadamente conservadora. "
         "Es preferible devolver pocos grupos o una lista vacía [] antes que seleccionar demasiados grupos.\n"
         "5. notify_push: Activa true solo si es un evento institucional importante con fecha próxima confirmada.\n"
@@ -286,12 +286,12 @@ def extract_event_from_instagram_post(
             resolved_bytes, resolved_mime = fetched
 
     group_tags = _available_group_tags(db)
-    custom_system_prompt = gemini.get_system_prompt(db)
+    resolved_system_prompt = gemini.get_system_prompt(db)
     prompt = _build_extraction_prompt(
         caption,
         group_tags,
         reference_date=reference_date,
-        system_prompt=custom_system_prompt,
+        system_prompt=resolved_system_prompt,
     )
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
@@ -312,17 +312,16 @@ def extract_event_from_instagram_post(
             "responseMimeType": "application/json",
         },
     }
+    if resolved_system_prompt:
+        body["systemInstruction"] = {"parts": [{"text": resolved_system_prompt}]}
 
     base_url = settings.GEMINI_API_BASE_URL.rstrip("/")
-    model = settings.GEMINI_MODEL
-    candidate_models = [model]
-    if "generativelanguage.googleapis.com" in base_url:
-        for fallback in ("gemini-2.0-flash", "gemini-2.5-flash"):
-            if fallback not in candidate_models:
-                candidate_models.append(fallback)
+    candidate_models = gemini.build_candidate_flash_models(api_key, db=db)
 
     response: httpx.Response | None = None
+    active_model = candidate_models[0] if candidate_models else settings.GEMINI_MODEL
     for idx, candidate in enumerate(candidate_models):
+        active_model = candidate
         url = f"{base_url}/v1beta/models/{candidate}:generateContent"
         try:
             response = httpx.post(
@@ -352,6 +351,8 @@ def extract_event_from_instagram_post(
                 response.status_code,
             )
         return AIEventExtractionResult(is_event=False)
+
+    gemini.save_active_model(db, active_model)
 
     try:
         payload = response.json()
