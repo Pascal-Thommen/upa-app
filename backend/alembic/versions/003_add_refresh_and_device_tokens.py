@@ -17,31 +17,61 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def upgrade() -> None:
-    op.add_column("users", sa.Column("classroom_refresh_token", sa.Text(), nullable=True))
-    op.add_column("users", sa.Column("device_token", sa.String(length=512), nullable=True))
+def _table_exists(table_name: str) -> bool:
+    return table_name in sa.inspect(op.get_bind()).get_table_names()
 
-    op.create_table(
-        "device_tokens",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("device_token", sa.String(length=512), nullable=False),
-        sa.Column("platform", sa.String(length=50), server_default="android", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id", "device_token", name="uq_user_device_token"),
-    )
-    op.create_index(op.f("ix_device_tokens_id"), "device_tokens", ["id"], unique=False)
-    op.create_index(op.f("ix_device_tokens_user_id"), "device_tokens", ["user_id"], unique=False)
-    op.create_index(op.f("ix_device_tokens_device_token"), "device_tokens", ["device_token"], unique=False)
+
+def _column_exists(table_name: str, column_name: str) -> bool:
+    insp = sa.inspect(op.get_bind())
+    if table_name not in insp.get_table_names():
+        return False
+    return any(col["name"] == column_name for col in insp.get_columns(table_name))
+
+
+def _index_exists(table_name: str, index_name: str) -> bool:
+    insp = sa.inspect(op.get_bind())
+    if table_name not in insp.get_table_names():
+        return False
+    return any(idx["name"] == index_name for idx in insp.get_indexes(table_name))
+
+
+def upgrade() -> None:
+    if not _column_exists("users", "classroom_refresh_token"):
+        op.add_column("users", sa.Column("classroom_refresh_token", sa.Text(), nullable=True))
+    if not _column_exists("users", "device_token"):
+        op.add_column("users", sa.Column("device_token", sa.String(length=512), nullable=True))
+
+    if not _table_exists("device_tokens"):
+        op.create_table(
+            "device_tokens",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("user_id", sa.Integer(), nullable=False),
+            sa.Column("device_token", sa.String(length=512), nullable=False),
+            sa.Column("platform", sa.String(length=50), server_default="android", nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("user_id", "device_token", name="uq_user_device_token"),
+        )
+    if not _index_exists("device_tokens", op.f("ix_device_tokens_id")):
+        op.create_index(op.f("ix_device_tokens_id"), "device_tokens", ["id"], unique=False)
+    if not _index_exists("device_tokens", op.f("ix_device_tokens_user_id")):
+        op.create_index(op.f("ix_device_tokens_user_id"), "device_tokens", ["user_id"], unique=False)
+    if not _index_exists("device_tokens", op.f("ix_device_tokens_device_token")):
+        op.create_index(op.f("ix_device_tokens_device_token"), "device_tokens", ["device_token"], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_device_tokens_device_token"), table_name="device_tokens")
-    op.drop_index(op.f("ix_device_tokens_user_id"), table_name="device_tokens")
-    op.drop_index(op.f("ix_device_tokens_id"), table_name="device_tokens")
-    op.drop_table("device_tokens")
-    op.drop_column("users", "device_token")
-    op.drop_column("users", "classroom_refresh_token")
+    if _table_exists("device_tokens"):
+        if _index_exists("device_tokens", op.f("ix_device_tokens_device_token")):
+            op.drop_index(op.f("ix_device_tokens_device_token"), table_name="device_tokens")
+        if _index_exists("device_tokens", op.f("ix_device_tokens_user_id")):
+            op.drop_index(op.f("ix_device_tokens_user_id"), table_name="device_tokens")
+        if _index_exists("device_tokens", op.f("ix_device_tokens_id")):
+            op.drop_index(op.f("ix_device_tokens_id"), table_name="device_tokens")
+        op.drop_table("device_tokens")
+    if _column_exists("users", "device_token"):
+        op.drop_column("users", "device_token")
+    if _column_exists("users", "classroom_refresh_token"):
+        op.drop_column("users", "classroom_refresh_token")

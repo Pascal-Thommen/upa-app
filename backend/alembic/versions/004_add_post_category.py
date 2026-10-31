@@ -17,9 +17,18 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _column_exists(table_name: str, column_name: str) -> bool:
+    insp = sa.inspect(op.get_bind())
+    if table_name not in insp.get_table_names():
+        return False
+    return any(col["name"] == column_name for col in insp.get_columns(table_name))
+
+
 def upgrade() -> None:
-    op.add_column("posts", sa.Column("category", sa.String(length=50), nullable=True))
+    if not _column_exists("posts", "category"):
+        op.add_column("posts", sa.Column("category", sa.String(length=50), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("posts", "category")
+    if _column_exists("posts", "category"):
+        op.drop_column("posts", "category")
