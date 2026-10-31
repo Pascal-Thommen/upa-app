@@ -204,6 +204,34 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
   assert.equal(Core.safeUrl("/uploads/cartel.png"), "/uploads/cartel.png");
   assert.equal(Core.safeUrl("https://classroom.google.com/c/1"), "https://classroom.google.com/c/1");
 
+  // Origen de publicacion (Instagram vs Campus) y resumen sin duplicar primera linea
+  assert.equal(Core.postOrigin({ post_type: "INSTAGRAM", is_event: true }), "instagram");
+  assert.equal(Core.postOrigin({ post_type: "MANUAL", is_news: true }), "campus");
+  assert.equal(Core.postOrigin({ post_type: "EMERGENCY_BANNER" }), "urgent");
+  assert.equal(Core.originLabel("instagram"), "Instagram");
+  assert.equal(Core.originLabel("campus"), "Campus");
+  assert.equal(
+    Core.postSummary({
+      title: "En el marco del módulo de Comunicación Empresarial...",
+      summary: "En el marco del módulo de Comunicación Empresarial, coordinado por la Prof. Norah Giménez.",
+    }),
+    "",
+  );
+  assert.equal(
+    Core.postSummary({
+      title: "Charla de Comunicación Empresarial",
+      summary: "Charla de Comunicación Empresarial\nInvitada especial: Andrea Ferreira.",
+    }),
+    "Invitada especial: Andrea Ferreira.",
+  );
+  assert.equal(
+    Core.postSummary({
+      title: "Convocatoria Heidelberg",
+      summary: "Postulaciones abiertas hasta noviembre.",
+    }),
+    "Postulaciones abiertas hasta noviembre.",
+  );
+
   // Deduplicacion de botones de accion en el detalle (Instagram y enlaces identicos)
   const dupInsta = Core.resolveDetailLinks({
     kind: "instagram",

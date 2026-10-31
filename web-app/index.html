@@ -21,6 +21,7 @@
         var t = localStorage.getItem("upa_campus_theme");
         if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
         var dark = t === "dark" || (t !== "light" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-resolved-theme", dark ? "dark" : "light");
         document.querySelector('meta[name="theme-color"]').setAttribute("content", dark ? "#0f172a" : "#ffffff");
       } catch (e) { /* almacenamiento no disponible: se usa el tema del sistema */ }
     })();
@@ -33,50 +34,21 @@
   <!-- Landing de escritorio -->
   <div id="landing" class="landing" hidden>
     <header class="landing-header">
-      <img src="/campus/icons/upa-logo.png" alt="Universidad Paraguayo Alemana" class="landing-logo" width="120" height="79">
+      <img src="/campus/icons/upa-logo.png" alt="Universidad Paraguayo Alemana" class="landing-logo logo-light" width="120" height="79">
+      <svg class="upa-signet landing-signet logo-dark" viewBox="0 0 152 58" width="96" height="37" role="img" aria-label="UPA" hidden>
+        <title>UPA</title>
+        <path fill="currentColor" fill-rule="evenodd" d="M2 2H20V35C20 41 21.8 44 25 44C28.2 44 30 41 30 35V2H48V35C48 49.5 39 56 25 56C11 56 2 49.5 2 35ZM56 2H82C93 2 99 8.5 99 20C99 31.5 93 38 82 38H74V55H56ZM74 14V26H80C83.5 26 85.5 23.8 85.5 20C85.5 16.2 83.5 14 80 14ZM116 2H134L150 55H132L129.2 44H120.8L118 55H100ZM125 16L121.8 32H128.2Z"/>
+      </svg>
     </header>
     <main class="landing-main">
-      <div class="phone-mockup" aria-hidden="true">
+      <div class="phone-mockup" aria-label="Vista interactiva de UPA Campus">
         <div class="phone-frame">
-          <div class="phone-notch"></div>
-          <div class="phone-screen">
-            <div class="phone-topbar">
-              <img src="/campus/icons/upa-logo.png" alt="" class="phone-logo" width="34" height="22">
-              <strong>Inicio</strong>
-            </div>
-            <div class="phone-feed">
-              <div class="phone-card">
-                <div class="phone-card-meta">
-                  <span class="badge">Evento</span>
-                  <span>Auditorio UPA</span>
-                </div>
-                <strong>Foro de Ingeniería 2026</strong>
-                <span class="phone-pill">Inscripción en un toque</span>
-              </div>
-              <div class="phone-card">
-                <div class="phone-card-meta">
-                  <span class="badge badge-instagram">
-                    <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="17.5" cy="6.5" r="1.3" fill="currentColor"/></svg>
-                    <span>Instagram</span>
-                  </span>
-                  <span>@upa_py</span>
-                </div>
-                <strong>Vida en el campus y novedades</strong>
-              </div>
-              <div class="phone-card phone-card-agenda">
-                <div class="phone-date"><strong>30</strong><span>OCT</span></div>
-                <div>
-                  <strong>Agenda Classroom</strong>
-                  <span>Tareas y fechas límite</span>
-                </div>
-              </div>
-            </div>
-            <div class="phone-tabbar">
-              <span class="active">Inicio</span>
-              <span>Agenda</span>
-              <span>Perfil</span>
-            </div>
+          <div class="phone-notch" aria-hidden="true">
+            <span class="phone-speaker"></span>
+            <span class="phone-camera"></span>
           </div>
+          <div id="phone-screen" class="phone-screen"></div>
+          <div class="phone-home-bar" aria-hidden="true"></div>
         </div>
       </div>
 
@@ -108,7 +80,11 @@
     <div id="offline-banner" class="offline-banner" role="status" aria-live="polite" hidden></div>
 
     <header class="topbar">
-      <img src="/campus/icons/upa-logo.png" alt="UPA" class="topbar-logo" width="48" height="32">
+      <img src="/campus/icons/upa-logo.png" alt="UPA" class="topbar-logo logo-light" width="48" height="32">
+      <svg class="upa-signet topbar-signet logo-dark" viewBox="0 0 152 58" width="58" height="22" role="img" aria-label="UPA" hidden>
+        <title>UPA</title>
+        <path fill="currentColor" fill-rule="evenodd" d="M2 2H20V35C20 41 21.8 44 25 44C28.2 44 30 41 30 35V2H48V35C48 49.5 39 56 25 56C11 56 2 49.5 2 35ZM56 2H82C93 2 99 8.5 99 20C99 31.5 93 38 82 38H74V55H56ZM74 14V26H80C83.5 26 85.5 23.8 85.5 20C85.5 16.2 83.5 14 80 14ZM116 2H134L150 55H132L129.2 44H120.8L118 55H100ZM125 16L121.8 32H128.2Z"/>
+      </svg>
       <h1 id="view-title" class="topbar-title">Inicio</h1>
       <button id="btn-refresh" class="icon-btn" type="button" aria-label="Actualizar">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
