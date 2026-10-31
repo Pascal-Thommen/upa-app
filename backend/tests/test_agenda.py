@@ -55,7 +55,14 @@ def setup_agenda_database():
         groups=["TIE", "ALL"],
         classroom_token="ya29.valid_cached_token",
     )
-    db.add(student)
+    admin = User(
+        id=1,
+        email="pascal.thommen@upa.edu.py",
+        full_name="Pascal Thommen",
+        role="admin",
+        groups=["ALL"],
+    )
+    db.add_all([student, admin])
     db.commit()
 
     now = datetime.now(UTC)
@@ -92,7 +99,7 @@ def setup_agenda_database():
         target_groups=["TIE"],
     )
 
-    # Evento pasado (hace 3 dias)
+    # Evento pasado (hace 60 dias, fuera de la ventana activa de 35 dias)
     ev_past = Post(
         id=203,
         title="Evento Historico Pasado",
@@ -100,8 +107,8 @@ def setup_agenda_database():
         post_type="MANUAL",
         is_news=False,
         is_event=True,
-        event_start=now - timedelta(days=3),
-        event_end=now - timedelta(days=3, hours=1),
+        event_start=now - timedelta(days=60),
+        event_end=now - timedelta(days=60, hours=1),
         location="Aula 101",
         target_groups=["ALL"],
     )
@@ -215,3 +222,78 @@ def test_agenda_chronological_consolidation_of_events_and_deadlines():
 
 def test_app_state_legacy_endpoint_removed():
     assert client.get("/api/v1/app-state").status_code == 404
+
+
+def test_oct26_event_visible_in_agenda_and_paraguay_24h_optional_end():
+    """
+    Caso real SRV-212: un evento creado para el 26/10/2026 (Lunes 26 de octubre) en formato
+    paraguayo DD/MM/YYYY y 24h HH:mm (15:30 a 16:30 o con fin opcional vacio) es inmediatamente
+    visible en /api/v1/agenda y en el calendario mensual del estudiante.
+    """
+    admin_token = create_access_token({"sub": "1", "email": "pascal.thommen@upa.edu.py", "role": "admin"})
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    student_token = create_access_token({"sub": "10", "email": "estudiante.tie@upa.edu.py", "role": "user"})
+    student_headers = {"Authorization": f"Bearer {student_token}"}
+
+    # 1. Crear evento del 26 de octubre usando DD/MM/YYYY y 24h HH:mm con fin opcional omitido
+    create_oct26 = client.post(
+        "/api/publications",
+        json={
+            "title": "Jornada Académica del 26 de Octubre",
+            "content": "Actividad oficial del campus UPA",
+            "is_news": True,
+            "is_event": True,
+            "event_date": "26/10/2026",
+            "event_start_time": "15:30",
+            "event_end": None,
+            "location": "Auditorio Principal",
+            "target_groups": ["docentes", "egresados", "estudiantes", "staff"],
+        },
+        headers=admin_headers,
+    )
+    assert create_oct26.status_code == 201
+    created_pub = create_oct26.json()
+    assert created_pub["event_date"] == "26/10/2026"
+    assert created_pub["event_start_time"] == "15:30"
+    assert created_pub["event_end"] is None
+    assert created_pub["event_end_time"] == ""
+    assert created_pub["event_start_formatted"] == "26/10/2026 15:30"
+
+    # 2. Verificar que aparece en /api/v1/agenda del estudiante con sort_key en el dia 2026-10-26
+    agenda_res = client.get("/api/v1/agenda", headers=student_headers)
+    assert agenda_res.status_code == 200
+    agenda_data = agenda_res.json()
+    ev_match = next((e for e in agenda_data["events"] if e["id"] == created_pub["id"]), None)
+    assert ev_match is not None, "El evento del 26 de octubre debe ser visible en la agenda"
+    assert ev_match["event_date"] == "26/10/2026"
+    assert ev_match["event_start_time"] == "15:30"
+    assert ev_match["event_end"] is None
+    assert ev_match["event_end_time"] == ""
+
+    item_match = next(
+        (i for i in agenda_data["items"] if i["item_type"] == "EVENT" and i["id"] == str(created_pub["id"])),
+        None,
+    )
+    assert item_match is not None
+    assert item_match["sort_key"] == "2026-10-26 15:30"
+
+    # 3. Actualizar con hora de fin en el mismo dia (16:30 en formato 24h)
+    upd_same_day = client.put(
+        f"/api/publications/{created_pub['id']}",
+        json={"event_end_time": "16:30"},
+        headers=admin_headers,
+    )
+    assert upd_same_day.status_code == 200
+    upd_body = upd_same_day.json()
+    assert upd_body["event_end"] is not None
+    assert upd_body["event_end_time"] == "16:30"
+    assert upd_body["event_end_formatted"] == "26/10/2026 16:30"
+
+    # 4. Rechazar fin de evento en otro dia calendario (mismo dia obligatorio)
+    bad_other_day = client.put(
+        f"/api/publications/{created_pub['id']}",
+        json={"event_end": "27/10/2026 16:30"},
+        headers=admin_headers,
+    )
+    assert bad_other_day.status_code == 400
+    assert "mismo día" in bad_other_day.json()["detail"].lower()

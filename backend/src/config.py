@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # Control de IA: Google Gemini (Google AI Studio). Fallback si no hay clave guardada en la base de datos.
     AI_EVENT_EXTRACTION_ENABLED: bool = True
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     GEMINI_API_BASE_URL: str = "https://generativelanguage.googleapis.com"
     GEMINI_TIMEOUT_SECONDS: float = 15.0
     GEMINI_MAX_IMAGE_BYTES: int = 4 * 1024 * 1024

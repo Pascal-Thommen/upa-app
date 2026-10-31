@@ -1,9 +1,17 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .post import effective_reminders, ensure_utc_datetime, extra_detail_fields, normalize_target_groups
+from .post import (
+    effective_reminders,
+    ensure_utc_datetime,
+    extra_detail_fields,
+    format_paraguay_date,
+    format_paraguay_datetime,
+    format_paraguay_time,
+    normalize_target_groups,
+)
 
 
 class EventResponse(BaseModel):
@@ -17,6 +25,11 @@ class EventResponse(BaseModel):
                 "summary": "holaa 👋 manana tenemos charla de 11 a 12, vayan pues",
                 "event_start": "2026-10-22T11:00:00Z",
                 "event_end": "2026-10-22T12:00:00Z",
+                "event_date": "22/10/2026",
+                "event_start_time": "08:00",
+                "event_end_time": "09:00",
+                "event_start_formatted": "22/10/2026 08:00",
+                "event_end_formatted": "22/10/2026 09:00",
                 "location": "Auditorio Edificio 1, Piso 1",
                 "has_registration": True,
                 "is_pinned": True,
@@ -35,7 +48,12 @@ class EventResponse(BaseModel):
     description: str = Field(default="", description="Descripcion detallada del evento (nunca nulo)")
     summary: str = Field(default="", description="Resumen corto del evento (nunca nulo)")
     event_start: datetime = Field(..., description="Fecha y hora de inicio en formato ISO-8601 UTC")
-    event_end: datetime = Field(..., description="Fecha y hora de finalizacion en formato ISO-8601 UTC")
+    event_end: datetime | None = Field(default=None, description="Fecha y hora de finalizacion opcional en ISO-8601 UTC")
+    event_date: str = Field(default="", description="Fecha del evento en formato paraguayo DD/MM/YYYY")
+    event_start_time: str = Field(default="", description="Hora de inicio en formato 24h HH:mm (America/Asuncion)")
+    event_end_time: str = Field(default="", description="Hora de finalizacion opcional en formato 24h HH:mm")
+    event_start_formatted: str = Field(default="", description="Inicio del evento en formato DD/MM/YYYY HH:mm")
+    event_end_formatted: str = Field(default="", description="Fin del evento en formato DD/MM/YYYY HH:mm (vacio si opcional)")
     location: str = Field(default="Campus UPA", description="Ubicacion del evento (nunca nulo)")
     has_registration: bool = Field(default=False, description="Indica si permite registro de asistencia")
     is_pinned: bool = Field(default=False, description="Indica si el evento esta destacado")
@@ -69,9 +87,9 @@ class EventResponse(BaseModel):
         created = ensure_utc_datetime(getattr(post, "created_at", None))
         start_dt = ensure_utc_datetime(getattr(post, "event_start", None), fallback=created)
         raw_end = getattr(post, "event_end", None)
-        end_dt = ensure_utc_datetime(raw_end, fallback=start_dt + timedelta(hours=1))
-        if end_dt < start_dt:
-            end_dt = start_dt + timedelta(hours=1)
+        end_dt: datetime | None = ensure_utc_datetime(raw_end) if raw_end is not None else None
+        if end_dt is not None and end_dt < start_dt:
+            end_dt = None
         loc = (getattr(post, "location", None) or "").strip() or "Campus UPA"
         img = (getattr(post, "media_url", None) or "").strip()
 
@@ -89,6 +107,11 @@ class EventResponse(BaseModel):
             summary=summary,
             event_start=start_dt,
             event_end=end_dt,
+            event_date=format_paraguay_date(start_dt),
+            event_start_time=format_paraguay_time(start_dt),
+            event_end_time=format_paraguay_time(end_dt) if end_dt is not None else "",
+            event_start_formatted=format_paraguay_datetime(start_dt),
+            event_end_formatted=format_paraguay_datetime(end_dt) if end_dt is not None else "",
             location=loc,
             has_registration=bool(getattr(post, "has_registration", False)),
             is_pinned=bool(getattr(post, "is_pinned", False)),

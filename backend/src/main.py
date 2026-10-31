@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Query
@@ -115,8 +115,8 @@ def _query_upcoming_events(
     db: Session,
     current_user: User | None,
     group: str | None = None,
-    upcoming_only: bool = True,
-    limit: int = 50,
+    upcoming_only: bool = False,
+    limit: int = 100,
 ) -> list[EventResponse]:
     """Consulta eventos reales de la base de datos ordenados cronologicamente con filtrado de acceso."""
     now = datetime.now(UTC)
@@ -127,6 +127,9 @@ def _query_upcoming_events(
     )
     if upcoming_only:
         query = query.filter(Post.event_start >= now)
+    else:
+        # Incluir eventos del mes en curso y ultimos 35 dias para visibilidad completa en calendario y agenda
+        query = query.filter(Post.event_start >= now - timedelta(days=35))
 
     raw_events = query.order_by(asc(Post.event_start), asc(Post.id)).all()
     user_id = current_user.id if current_user is not None else None
@@ -151,8 +154,8 @@ def _query_upcoming_events(
 )
 async def get_agenda(
     group: str | None = Query(None, description="Filtro opcional por carrera o grupo (ej. TIE)"),
-    upcoming_only: bool = Query(True, description="Mostrar unicamente eventos futuros o en curso"),
-    limit: int = Query(50, ge=1, le=200, description="Cantidad maxima de eventos a retornar"),
+    upcoming_only: bool = Query(False, description="Si es True, muestra unicamente eventos futuros; por defecto incluye el calendario completo"),
+    limit: int = Query(100, ge=1, le=300, description="Cantidad maxima de eventos a retornar"),
     current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> AgendaResponse:

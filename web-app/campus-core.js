@@ -464,6 +464,7 @@
     for (const ev of Array.isArray(data.events) ? data.events : []) {
       const start = new Date(ev.event_start);
       if (Number.isNaN(start.getTime())) continue;
+      const endDate = ev.event_end ? new Date(ev.event_end) : null;
       entries.push({
         key: `event:${ev.id}`,
         kind: "event",
@@ -476,7 +477,7 @@
         place: ev.location || "",
         link: "",
         date: start,
-        end: new Date(ev.event_end),
+        end: endDate && !Number.isNaN(endDate.getTime()) ? endDate : null,
         raw: ev,
       });
     }

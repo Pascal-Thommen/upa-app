@@ -104,12 +104,12 @@ def test_ai_config_permissions_and_persistence(monkeypatch):
 
     # Estado inicial sin configurar
     initial = client.get("/api/ai/config", headers=admin_headers).json()
-    assert initial == {
-        "configured": False,
-        "masked_key": "",
-        "source": "none",
-        "model": "gemini-1.5-flash",
-    }
+    assert initial["configured"] is False
+    assert initial["masked_key"] == ""
+    assert initial["source"] == "none"
+    assert initial["model"] == "gemini-1.5-flash"
+    assert initial["quota_rpm"] == 15
+    assert "system_prompt" in initial and len(initial["system_prompt"]) > 10
 
     # Fallback a variable de entorno GEMINI_API_KEY cuando no hay registro en base de datos
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "AIzaEnvFallbackKey9876")
@@ -453,6 +453,132 @@ def test_publication_autocomplete_ai_multimodal_fills_only_empty_fields(monkeypa
         )
         assert err_res.status_code == 400
         assert "No se pudo autocompletar: Verifique la clave de IA en Control de IA" in err_res.json()["detail"]
+
+        # 7. Prompt de sistema configurable: guardar en DB y verificar su uso en Gemini
+        custom_prompt = "Usa tono formal académico y resume en una sola oración."
+        prompt_res = client.post(
+            "/api/ai/system-prompt",
+            json={"system_prompt": custom_prompt},
+            headers=admin_headers,
+        )
+        assert prompt_res.status_code == 200
+        assert prompt_res.json()["system_prompt"] == custom_prompt
+
+        next_response["status"] = 200
+        next_response["body"] = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": json.dumps(
+                                    {
+                                        "title": "Jornada con Prompt Personalizado",
+                                        "event_start": "2026-11-26T10:00",
+                                        "event_end": "2026-11-27T18:00",  # dia distinto -> debe descartarse
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        auto_custom = client.post(
+            "/api/publications/autocomplete-ai",
+            json={"title": "", "content": "Jornada el 26/11"},
+            headers=editor_headers,
+        )
+        assert auto_custom.status_code == 200
+        custom_body = auto_custom.json()
+        assert custom_body["title"] == "Jornada con Prompt Personalizado"
+        assert custom_body["event_date"] == "26/11/2026"
+        assert custom_body["event_start_time"] == "10:00"
+        assert "event_end" not in custom_body
+        assert "event_end_time" not in custom_body
+        assert received_requests[-1]["body"]["systemInstruction"]["parts"][0]["text"] == custom_prompt
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_gemini_automatic_latest_free_flash_model_discovery(monkeypatch):
+    """
+    Verifica que el backend consulta GET /v1beta/models y selecciona automaticamente
+    el modelo Gemini Flash gratuito mas reciente disponible (ej. gemini-2.5-flash),
+    devolviendo su nombre como estado en /api/ai/test-connection y /api/ai/config.
+    """
+    post_paths: list[str] = []
+
+    class DiscoveryStubHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.startswith("/v1beta/models"):
+                catalog = {
+                    "models": [
+                        {
+                            "name": "models/gemini-1.5-flash",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                        {
+                            "name": "models/gemini-2.0-flash",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                        {
+                            "name": "models/gemini-2.5-flash",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                        {
+                            "name": "models/gemini-2.5-pro",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                    ]
+                }
+                payload = json.dumps(catalog).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):
+            post_paths.append(self.path)
+            payload = json.dumps({"candidates": [{"content": {"parts": [{"text": "pong"}]}}]}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), DiscoveryStubHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        monkeypatch.setattr(settings, "GEMINI_API_BASE_URL", f"http://127.0.0.1:{port}")
+        monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-1.5-flash")
+        admin_headers = auth(ADMIN_ID, ADMIN_EMAIL, "admin")
+
+        client.post("/api/ai/config", json={"api_key": "AIzaAutoDiscoveryFlashKey123"}, headers=admin_headers)
+        test_res = client.post("/api/ai/test-connection", headers=admin_headers)
+        assert test_res.status_code == 200
+        body = test_res.json()
+        assert body["ok"] is True
+        assert body["model"] == "gemini-2.5-flash"
+        assert body["quota_rpm"] == 15
+        assert "gemini-2.5-flash" in body["message"]
+        assert post_paths == ["/v1beta/models/gemini-2.5-flash:generateContent"]
+
+        cfg_res = client.get("/api/ai/config", headers=admin_headers).json()
+        assert cfg_res["model"] == "gemini-2.5-flash"
+        assert cfg_res["quota_rpm"] == 15
     finally:
         server.shutdown()
         server.server_close()

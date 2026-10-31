@@ -112,15 +112,17 @@ def test_filter_by_group():
     assert len(data) == 2
 
 
-def _assert_no_null_values(obj, path="root"):
-    """Verifica recursivamente que ningun campo de un payload JSON sea None."""
+def _assert_no_null_values(obj, path="root", nullable_keys=frozenset({"event_end"})):
+    """Verifica recursivamente que ningun campo de un payload JSON sea None (salvo campos explicitamente opcionales)."""
     assert obj is not None, f"Null value found at {path}"
     if isinstance(obj, dict):
         for k, v in obj.items():
-            _assert_no_null_values(v, f"{path}.{k}")
+            if k in nullable_keys and v is None:
+                continue
+            _assert_no_null_values(v, f"{path}.{k}", nullable_keys)
     elif isinstance(obj, list):
         for idx, item in enumerate(obj):
-            _assert_no_null_values(item, f"{path}[{idx}]")
+            _assert_no_null_values(item, f"{path}[{idx}]", nullable_keys)
 
 
 def test_anti_conflict_audit_no_null_values_across_endpoints():

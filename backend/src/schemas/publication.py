@@ -1,17 +1,23 @@
 """Esquemas del modelo unificado de Publicaciones (Noticia, Evento o ambos en un mismo objeto)."""
 
-from datetime import datetime
+from datetime import UTC, datetime, time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .event import EventRegistrationEntry
 from .post import (
+    ASUNCION_TZ,
     effective_published_at,
     effective_reminders,
     ensure_utc_datetime,
     extra_detail_fields,
+    format_paraguay_date,
+    format_paraguay_datetime,
+    format_paraguay_time,
     normalize_target_groups,
+    parse_24h_time,
+    parse_paraguay_datetime,
 )
 
 
@@ -51,6 +57,96 @@ def extract_instagram_teaser(caption: str | None) -> str:
     return teaser[:300]
 
 
+def _resolve_event_datetimes(
+    raw_start: Any,
+    raw_end: Any,
+    raw_date: Any,
+    raw_start_time: Any,
+    raw_end_time: Any,
+) -> tuple[datetime | None, datetime | None]:
+    """
+    Resuelve event_start y event_end aceptando:
+    - ISO-8601 completo en event_start / event_end
+    - Formato paraguayo DD/MM/YYYY [HH:mm] en event_start / event_date
+    - Campos separados event_date (DD/MM/YYYY o YYYY-MM-DD) + event_start_time (HH:mm) + event_end_time (HH:mm)
+    - Hora simple HH:mm en event_end o event_end_time (combinada con el mismo dia de inicio)
+    """
+    start_dt: datetime | None = None
+    if raw_start is not None and str(raw_start).strip() != "":
+        start_dt = parse_paraguay_datetime(raw_start)
+    elif raw_date is not None and str(raw_date).strip() != "":
+        date_str = str(raw_date).strip()
+        time_str = str(raw_start_time).strip() if raw_start_time is not None and str(raw_start_time).strip() else "00:00"
+        t_obj = parse_24h_time(time_str)
+        if t_obj is None:
+            raise ValueError(f"Hora de inicio invalida (use HH:mm en 24h): {time_str}")
+        base_dt = parse_paraguay_datetime(date_str)
+        if base_dt is None:
+            raise ValueError(f"Fecha de evento invalida (use DD/MM/YYYY): {date_str}")
+        local_base = base_dt.astimezone(ASUNCION_TZ)
+        local_start = datetime(
+            local_base.year,
+            local_base.month,
+            local_base.day,
+            t_obj.hour,
+            t_obj.minute,
+            t_obj.second,
+            tzinfo=ASUNCION_TZ,
+        )
+        start_dt = local_start.astimezone(UTC)
+
+    # Si se envio event_start como fecha y aparte event_start_time
+    if start_dt is not None and raw_start_time is not None and str(raw_start_time).strip() != "":
+        t_obj = parse_24h_time(raw_start_time)
+        if t_obj is None:
+            raise ValueError(f"Hora de inicio invalida (use HH:mm en 24h): {raw_start_time}")
+        local_start_base = start_dt.astimezone(ASUNCION_TZ)
+        start_dt = datetime(
+            local_start_base.year,
+            local_start_base.month,
+            local_start_base.day,
+            t_obj.hour,
+            t_obj.minute,
+            t_obj.second,
+            tzinfo=ASUNCION_TZ,
+        ).astimezone(UTC)
+
+    end_candidate = raw_end if (raw_end is not None and str(raw_end).strip() != "") else raw_end_time
+    if end_candidate is None or str(end_candidate).strip() == "":
+        return start_dt, None
+
+    if isinstance(end_candidate, datetime):
+        end_dt = end_candidate.replace(tzinfo=UTC) if end_candidate.tzinfo is None else end_candidate.astimezone(UTC)
+        return start_dt, end_dt
+
+    clean_end = str(end_candidate).strip()
+    # Verificar si es solo una hora HH:mm en 24h
+    end_time_only: time | None = None
+    try:
+        end_time_only = parse_24h_time(clean_end)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+
+    if end_time_only is not None:
+        if start_dt is None:
+            return None, None
+        # Combinar con el mismo dia que start_dt (respetando America/Asuncion)
+        local_start = start_dt.astimezone(ASUNCION_TZ)
+        local_end = datetime(
+            local_start.year,
+            local_start.month,
+            local_start.day,
+            end_time_only.hour,
+            end_time_only.minute,
+            end_time_only.second,
+            tzinfo=ASUNCION_TZ,
+        )
+        return start_dt, local_end.astimezone(UTC)
+
+    end_dt = parse_paraguay_datetime(clean_end)
+    return start_dt, end_dt
+
+
 class PublicationWrite(BaseModel):
     """Carga util unificada para crear o editar una publicacion (Noticia, Evento o ambos)."""
 
@@ -82,8 +178,14 @@ class PublicationWrite(BaseModel):
 
     # Seccion Evento
     is_event: bool = Field(default=False, description="Activa la seccion de Evento en calendario")
-    event_start: datetime | None = Field(default=None, description="Inicio del evento")
-    event_end: datetime | None = Field(default=None, description="Fin del evento")
+    event_start: datetime | None = Field(default=None, description="Inicio del evento (ISO-8601 o DD/MM/YYYY HH:mm)")
+    event_end: datetime | None = Field(
+        default=None,
+        description="Fin del evento opcional (ISO-8601, DD/MM/YYYY HH:mm o HH:mm en el mismo dia)",
+    )
+    event_date: str | None = Field(default=None, description="Fecha del evento opcional en formato DD/MM/YYYY")
+    event_start_time: str | None = Field(default=None, description="Hora de inicio opcional en formato 24h HH:mm")
+    event_end_time: str | None = Field(default=None, description="Hora de fin opcional en formato 24h HH:mm")
     location: str | None = Field(default=None, description="Lugar o enlace del evento")
     event_notify_groups: list[str] = Field(
         default_factory=list,
@@ -93,6 +195,29 @@ class PublicationWrite(BaseModel):
         default=None,
         description="Lista de recordatorios en minutos previos al inicio (por defecto [30] al activar evento)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_dates_and_times(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        for dt_key in ("published_at", "expires_at"):
+            val = out.get(dt_key)
+            if isinstance(val, str):
+                clean = val.strip()
+                out[dt_key] = parse_paraguay_datetime(clean) if clean else None
+        if any(k in out for k in ("event_start", "event_end", "event_date", "event_start_time", "event_end_time")):
+            start_dt, end_dt = _resolve_event_datetimes(
+                out.get("event_start"),
+                out.get("event_end"),
+                out.get("event_date"),
+                out.get("event_start_time"),
+                out.get("event_end_time"),
+            )
+            out["event_start"] = start_dt
+            out["event_end"] = end_dt
+        return out
 
     @field_validator("reminders")
     @classmethod
@@ -127,9 +252,50 @@ class PublicationUpdate(BaseModel):
     is_event: bool | None = None
     event_start: datetime | None = None
     event_end: datetime | None = None
+    event_date: str | None = None
+    event_start_time: str | None = None
+    event_end_time: str | None = None
     location: str | None = None
     event_notify_groups: list[str] | None = None
     reminders: list[int] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_update_dates_and_times(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        for dt_key in ("published_at", "expires_at"):
+            if dt_key in out and isinstance(out[dt_key], str):
+                clean = out[dt_key].strip()
+                out[dt_key] = parse_paraguay_datetime(clean) if clean else None
+
+        has_start_input = any(k in out for k in ("event_start", "event_date", "event_start_time"))
+        has_end_input = any(k in out for k in ("event_end", "event_end_time"))
+        if has_start_input or has_end_input:
+            raw_end_val = out.get("event_end") if "event_end" in out else out.get("event_end_time")
+            # Si event_end viene como hora HH:mm pero no se envio event_start en el patch, conservar en event_end_time
+            if (
+                not has_start_input
+                and isinstance(raw_end_val, str)
+                and raw_end_val.strip()
+                and parse_24h_time(raw_end_val.strip()) is not None
+            ):
+                out["event_end_time"] = raw_end_val.strip()
+                out.pop("event_end", None)
+            else:
+                start_dt, end_dt = _resolve_event_datetimes(
+                    out.get("event_start"),
+                    out.get("event_end"),
+                    out.get("event_date"),
+                    out.get("event_start_time"),
+                    out.get("event_end_time"),
+                )
+                if has_start_input:
+                    out["event_start"] = start_dt
+                if has_end_input:
+                    out["event_end"] = end_dt
+        return out
 
     @field_validator("reminders")
     @classmethod
@@ -178,6 +344,11 @@ class PublicationResponse(BaseModel):
     expires_at: datetime | None = None
     event_start: datetime | None = None
     event_end: datetime | None = None
+    event_date: str = ""
+    event_start_time: str = ""
+    event_end_time: str = ""
+    event_start_formatted: str = ""
+    event_end_formatted: str = ""
     location: str = ""
     reminders: list[int] = Field(default_factory=list)
     instagram_id: str = ""
@@ -249,6 +420,11 @@ class PublicationResponse(BaseModel):
             expires_at=ensure_utc_datetime(raw_expires) if raw_expires else None,
             event_start=ensure_utc_datetime(raw_start) if raw_start else None,
             event_end=ensure_utc_datetime(raw_end) if raw_end else None,
+            event_date=format_paraguay_date(raw_start) if raw_start else "",
+            event_start_time=format_paraguay_time(raw_start) if raw_start else "",
+            event_end_time=format_paraguay_time(raw_end) if raw_end else "",
+            event_start_formatted=format_paraguay_datetime(raw_start) if raw_start else "",
+            event_end_formatted=format_paraguay_datetime(raw_end) if raw_end else "",
             location=(getattr(post, "location", None) or "").strip(),
             reminders=effective_reminders(post),
             instagram_id=(getattr(post, "instagram_id", None) or "").strip(),
