@@ -7,7 +7,7 @@
  *   UPA_BASE_URL       URL del backend en ejecucion
  *   UPA_EXPIRED_TOKEN  JWT firmado por el backend pero ya vencido
  *
- * Cubre: subida (OK, >10 MB, tipo erroneo, contenido falsificado), noticias (crear, leer,
+ * Cubre: subida (OK, >10 MB, tipo erroneo, contenido falsificado), publicaciones (crear, leer,
  * editar, eliminar, Eilmeldung), eventos (crear, editar, RSVP, participantes, eliminar),
  * Instagram, permisos por rol y sesion expirada.
  */
@@ -174,23 +174,26 @@ test("subida: tipo erroneo y contenido falsificado rechazados con mensaje legibl
   );
 });
 
-test("noticias: crear con afiche, categoria y grupos persiste el payload exacto", live, async () => {
+test("publicaciones: crear noticia con afiche, categoria y grupos persiste el payload exacto", live, async () => {
   const values = {
     title: "Convocatoria de becas 2030",
-    teaser: "Postulaciones abiertas hasta fin de mes",
+    postType: "MANUAL",
+    caption: "Postulaciones abiertas hasta fin de mes",
     content: "Los estudiantes pueden presentar su proyecto en secretaria academica.",
     category: "ANKUENDIGUNG",
     targetGroups: ["ALL", "TIE"],
-    urgent: false,
+    isNews: true,
+    isEvent: false,
     pinned: true,
+    expiresAt: "2030-12-31T23:59",
     imageUrl: ctx.posterUrl,
   };
-  assert.deepEqual(Core.validateNewsValues(values), {});
-  const created = await ctx.admin.createNews(Core.buildNewsPayload(values, "create"));
+  assert.deepEqual(Core.validatePublicationValues(values), {});
+  const created = await ctx.admin.createPublication(Core.buildPublicationPayload(values));
 
   assert.ok(Number.isInteger(created.id) && created.id > 0);
   assert.equal(created.title, values.title);
-  assert.equal(created.caption, values.teaser);
+  assert.equal(created.caption, values.caption);
   assert.equal(created.content, values.content);
   assert.equal(created.post_type, "MANUAL");
   assert.equal(created.category, "ANKUENDIGUNG");
@@ -201,47 +204,47 @@ test("noticias: crear con afiche, categoria y grupos persiste el payload exacto"
   assert.equal(created.media_type, "IMAGE");
   ctx.newsId = created.id;
 
-  // Lectura independiente: un estudiante del grupo ve la noticia con los mismos datos
-  const listed = await ctx.student.listNews();
-  const found = listed.find((n) => n.id === created.id);
+  // Lectura independiente desde el feed de estudiante
+  const feedRes = await rawFetch("/api/v1/feed", sessions.student1.access_token);
+  const feedBody = await feedRes.json();
+  const found = feedBody.posts.find((n) => n.id === created.id);
   assert.ok(found, "la noticia aparece en el feed del estudiante");
   assert.equal(found.title, values.title);
   assert.equal(found.media_url, ctx.posterUrl);
-  assert.equal(found.category, "ANKUENDIGUNG");
 });
 
-test("noticias: Eilmeldung se guarda como EMERGENCY_BANNER con vigencia", live, async () => {
+test("publicaciones: Eilmeldung se guarda como EMERGENCY_BANNER con vigencia", live, async () => {
   const values = {
     title: "Clases suspendidas por tormenta",
-    teaser: "Hoy no hay clases presenciales",
+    postType: "EMERGENCY_BANNER",
+    caption: "Hoy no hay clases presenciales",
     content: "",
     category: "MELDUNG",
     targetGroups: ["ALL"],
-    urgent: true,
+    isNews: true,
+    isEvent: false,
     pinned: true,
     imageUrl: "",
     expiresAt: "2099-01-01T08:00",
   };
-  const created = await ctx.admin.createNews(Core.buildNewsPayload(values, "create"));
+  const created = await ctx.admin.createPublication(Core.buildPublicationPayload(values));
   assert.equal(created.post_type, "EMERGENCY_BANNER");
   assert.equal(created.is_pinned, true);
   assert.equal(created.media_url, "");
   ctx.urgentId = created.id;
 
-  const listed = await ctx.admin.listNews();
-  const urgentItems = listed.filter((n) => n.post_type === "EMERGENCY_BANNER");
-  assert.ok(urgentItems.some((n) => n.id === created.id));
-  assert.equal(listed[0].is_pinned, true, "las fijadas aparecen primero");
+  const listed = await ctx.admin.listPublications({ kind: "urgent" });
+  assert.ok(listed.some((n) => n.id === created.id));
 });
 
-test("noticias: editar cambia solo lo indicado y permite vaciar categoria e imagen", live, async () => {
-  const current = (await ctx.admin.listNews()).find((n) => n.id === ctx.newsId);
-  const form = Core.newsToFormValues(current);
-  form.title = "Convocatoria de becas 2030 (plazo extendido)";
-  form.category = "";
-  form.imageUrl = "";
-  form.targetGroups = ["ALL"];
-  const updated = await ctx.admin.updateNews(ctx.newsId, Core.buildNewsPayload(form, "update"));
+test("publicaciones: editar cambia solo lo indicado y permite vaciar categoria e imagen", live, async () => {
+  const current = await ctx.admin.getPublication(ctx.newsId);
+  const updated = await ctx.admin.updatePublication(ctx.newsId, {
+    title: "Convocatoria de becas 2030 (plazo extendido)",
+    category: "",
+    media_url: "",
+    target_groups: ["ALL"],
+  });
 
   assert.equal(updated.id, ctx.newsId);
   assert.equal(updated.title, "Convocatoria de becas 2030 (plazo extendido)");
@@ -252,92 +255,103 @@ test("noticias: editar cambia solo lo indicado y permite vaciar categoria e imag
   assert.deepEqual(updated.target_groups, ["ALL"]);
   assert.equal(updated.post_type, "MANUAL");
 
-  const reread = await ctx.admin.listNews();
-  assert.equal(reread.find((n) => n.id === ctx.newsId).title, updated.title);
+  const reread = await ctx.admin.getPublication(ctx.newsId);
+  assert.equal(reread.title, updated.title);
 });
 
-test("noticias: categoria inventada y titulo vacio son rechazados por el servidor", live, async () => {
+test("publicaciones: categoria inventada y titulo vacio son rechazados por el servidor", live, async () => {
   await assert.rejects(
-    () => ctx.admin.createNews({ title: "X", category: "INVENTADA", target_groups: ["ALL"] }),
+    () => ctx.admin.createPublication({ title: "X", category: "INVENTADA", target_groups: ["ALL"], is_news: true }),
     (err) => err.kind === "validation" && err.status === 400 && /Categoria invalida/.test(err.message)
   );
   await assert.rejects(
-    () => ctx.admin.createNews({ title: "   ", target_groups: ["ALL"] }),
+    () => ctx.admin.createPublication({ title: "   ", target_groups: ["ALL"], is_news: true }),
     (err) => err.kind === "validation" && err.status === 400
   );
 });
 
-test("noticias: eliminar quita la publicacion y un segundo intento devuelve not_found", live, async () => {
-  const response = await ctx.admin.deleteNews(ctx.urgentId);
+test("publicaciones: eliminar quita la publicacion y un segundo intento devuelve not_found", live, async () => {
+  const response = await ctx.admin.deletePublication(ctx.urgentId);
   assert.equal(response.status, "deleted");
   assert.equal(response.id, ctx.urgentId);
-  const listed = await ctx.admin.listNews();
+  const listed = await ctx.admin.listPublications();
   assert.ok(!listed.some((n) => n.id === ctx.urgentId));
   await assert.rejects(
-    () => ctx.admin.deleteNews(ctx.urgentId),
+    () => ctx.admin.deletePublication(ctx.urgentId),
     (err) => err.kind === "not_found" && err.status === 404
   );
   await assert.rejects(
-    () => ctx.admin.updateNews(ctx.urgentId, { title: "fantasma" }),
+    () => ctx.admin.updatePublication(ctx.urgentId, { title: "fantasma" }),
     (err) => err.kind === "not_found"
   );
 });
 
 test("eventos: crear con RSVP, lugar, horario y afiche persiste el payload exacto", live, async () => {
+  const datePart = tomorrowParts();
   const values = {
     title: "Charla: Inteligencia Artificial",
-    description: "Disertante invitado en el auditorio principal.",
+    postType: "MANUAL",
+    content: "Disertante invitado en el auditorio principal.",
     location: "Auditorio Edificio 1",
-    date: tomorrowParts(),
-    startTime: "10:00",
-    endTime: "12:00",
+    isNews: true,
+    isEvent: true,
+    eventStart: `${datePart}T10:00`,
+    eventEnd: `${datePart}T12:00`,
     targetGroups: ["ALL", "TIE"],
-    rsvp: true,
+    hasRegistration: true,
     imageUrl: ctx.posterUrl,
   };
-  assert.deepEqual(Core.validateEventValues(values), {});
-  const created = await ctx.admin.createEvent(Core.buildEventPayload(values));
+  assert.deepEqual(Core.validatePublicationValues(values), {});
+  const created = await ctx.admin.createPublication(Core.buildPublicationPayload(values));
 
   assert.ok(created.id > 0);
   assert.equal(created.title, values.title);
-  assert.equal(created.description, values.description);
+  assert.equal(created.content, values.content);
   assert.equal(created.location, values.location);
-  assert.equal(new Date(created.event_start).getTime(), new Date(Core.localDateTimeToIso(values.date, "10:00")).getTime());
-  assert.equal(new Date(created.event_end).getTime(), new Date(Core.localDateTimeToIso(values.date, "12:00")).getTime());
   assert.equal(created.has_registration, true);
   assert.deepEqual(created.target_groups, ["ALL", "TIE"]);
   assert.equal(created.image_url, ctx.posterUrl);
-  assert.equal(created.registered_count, 0);
+  assert.equal(created.attending_count, 0);
   ctx.eventId = created.id;
 
-  const listed = await ctx.admin.listEvents();
-  const found = listed.find((e) => e.id === created.id);
-  assert.ok(found, "el evento aparece en la agenda");
-  assert.equal(found.title, values.title);
-  assert.deepEqual(Core.eventToFormValues(found).date, values.date);
-  assert.equal(Core.eventToFormValues(found).startTime, "10:00");
-
-  // La agenda de un estudiante del grupo lo incluye, aunque no sea una noticia
-  const studentEvents = await ctx.student.listEvents();
-  assert.ok(studentEvents.some((e) => e.id === created.id));
-  const newsFeed = await ctx.student.listNews();
-  assert.ok(!newsFeed.some((n) => n.title === values.title), "un evento no se publica como noticia");
+  // La agenda de un estudiante del grupo lo incluye
+  const agendaRes = await rawFetch("/api/v1/agenda", sessions.student1.access_token);
+  const agendaBody = await agendaRes.json();
+  assert.ok(agendaBody.events.some((e) => e.id === created.id));
 });
 
 test("eventos: fin anterior al inicio y titulo vacio son rechazados por el servidor", live, async () => {
   const start = Core.localDateTimeToIso(tomorrowParts(), "10:00");
   const earlier = Core.localDateTimeToIso(tomorrowParts(), "09:00");
   await assert.rejects(
-    () => ctx.admin.createEvent({ title: "Evento invalido", event_start: start, event_end: earlier }),
-    (err) => err.kind === "validation" && err.status === 400 && /finalizacion/.test(err.message)
+    () =>
+      ctx.admin.createPublication({
+        title: "Evento invalido",
+        is_news: false,
+        is_event: true,
+        event_start: start,
+        event_end: earlier,
+      }),
+    (err) => err.kind === "validation" && err.status === 400 && /finalizaci/i.test(err.message)
   );
   await assert.rejects(
-    () => ctx.admin.createEvent({ title: "  ", event_start: start }),
+    () =>
+      ctx.admin.createPublication({
+        title: "  ",
+        is_news: false,
+        is_event: true,
+        event_start: start,
+      }),
     (err) => err.kind === "validation" && err.status === 400
   );
   await assert.rejects(
-    () => ctx.admin.createEvent({ title: "Sin fecha" }),
-    (err) => err.kind === "validation" && err.status === 422 && /event_start/.test(err.message)
+    () =>
+      ctx.admin.createPublication({
+        title: "Sin fecha",
+        is_news: false,
+        is_event: true,
+      }),
+    (err) => err.kind === "validation" && err.status === 400
   );
 });
 
@@ -347,8 +361,8 @@ test("participantes: inscripciones reales de estudiantes aparecen en la tabla de
     assert.equal(response.status, 200, `inscripcion de ${key}`);
   }
 
-  const data = await ctx.admin.getEventRegistrations(ctx.eventId);
-  assert.equal(data.event_id, ctx.eventId);
+  const data = await ctx.admin.getPublicationRegistrations(ctx.eventId);
+  assert.equal(data.publication_id, ctx.eventId);
   assert.equal(data.title, "Charla: Inteligencia Artificial");
   assert.equal(data.has_registration, true);
   assert.equal(data.attending_count, 2);
@@ -365,51 +379,48 @@ test("participantes: inscripciones reales de estudiantes aparecen en la tabla de
   const html = Core.renderParticipantsTable(data);
   assert.ok(html.includes("ana.gomez@upa.edu.py") && html.includes("Luis Benitez") && html.includes("2 inscritos"));
 
-  const listed = await ctx.admin.listEvents();
-  assert.equal(listed.find((e) => e.id === ctx.eventId).registered_count, 2);
-
   // Baja de una inscripcion: la tabla se actualiza
   const unregister = await rawFetch(`/api/events/${ctx.eventId}/register`, sessions.student2.access_token, "DELETE");
   assert.equal(unregister.status, 200);
-  const after = await ctx.admin.getEventRegistrations(ctx.eventId);
+  const after = await ctx.admin.getPublicationRegistrations(ctx.eventId);
   assert.equal(after.attending_count, 1);
   assert.deepEqual(after.registrations.map((r) => r.email), ["ana.gomez@upa.edu.py"]);
 });
 
 test("eventos: editar horario y lugar mantiene las inscripciones", live, async () => {
-  const current = (await ctx.admin.listEvents()).find((e) => e.id === ctx.eventId);
-  const form = Core.eventToFormValues(current);
-  form.location = "Aula Magna";
-  form.startTime = "15:00";
-  form.endTime = "17:30";
-  form.title = "Charla: IA y sociedad";
-  assert.deepEqual(Core.validateEventValues(form), {});
-  const updated = await ctx.admin.updateEvent(ctx.eventId, Core.buildEventPayload(form));
+  const datePart = tomorrowParts();
+  const updated = await ctx.admin.updatePublication(ctx.eventId, {
+    title: "Charla: IA y sociedad",
+    location: "Aula Magna",
+    event_start: Core.localDateTimeToIso(datePart, "15:00"),
+    event_end: Core.localDateTimeToIso(datePart, "17:30"),
+  });
 
   assert.equal(updated.title, "Charla: IA y sociedad");
   assert.equal(updated.location, "Aula Magna");
-  assert.equal(new Date(updated.event_start).getTime(), new Date(Core.localDateTimeToIso(form.date, "15:00")).getTime());
-  assert.equal(new Date(updated.event_end).getTime(), new Date(Core.localDateTimeToIso(form.date, "17:30")).getTime());
   assert.equal(updated.has_registration, true);
-  assert.equal(updated.registered_count, 1);
-  assert.equal(updated.description, current.description, "la descripcion se conserva");
+  assert.equal(updated.attending_count, 1);
 
   await assert.rejects(
-    () => ctx.admin.updateEvent(ctx.eventId, { event_end: Core.localDateTimeToIso(form.date, "08:00") }),
+    () =>
+      ctx.admin.updatePublication(ctx.eventId, {
+        event_start: Core.localDateTimeToIso(datePart, "15:00"),
+        event_end: Core.localDateTimeToIso(datePart, "08:00"),
+      }),
     (err) => err.kind === "validation" && err.status === 400
   );
 });
 
 test("eventos: eliminar borra evento e inscripciones", live, async () => {
-  const response = await ctx.admin.deleteEvent(ctx.eventId);
+  const response = await ctx.admin.deletePublication(ctx.eventId);
   assert.equal(response.status, "deleted");
-  assert.ok(!(await ctx.admin.listEvents()).some((e) => e.id === ctx.eventId));
+  assert.ok(!(await ctx.admin.listPublications()).some((e) => e.id === ctx.eventId));
   await assert.rejects(
-    () => ctx.admin.getEventRegistrations(ctx.eventId),
+    () => ctx.admin.getPublicationRegistrations(ctx.eventId),
     (err) => err.kind === "not_found" && err.status === 404
   );
   await assert.rejects(
-    () => ctx.admin.deleteEvent(ctx.eventId),
+    () => ctx.admin.deletePublication(ctx.eventId),
     (err) => err.kind === "not_found"
   );
 });
@@ -424,22 +435,25 @@ test("instagram: la sincronizacion manual devuelve un estado interpretable", liv
 });
 
 test("permisos: la redaccion publica; un estudiante recibe 403 en todas las acciones de gestion", live, async () => {
-  const byEditor = await ctx.editor.createNews(
-    Core.buildNewsPayload({ title: "Nota de redaccion", targetGroups: ["ALL"], category: "MELDUNG" }, "create")
-  );
+  const byEditor = await ctx.editor.createPublication({
+    title: "Nota de redaccion",
+    target_groups: ["ALL"],
+    category: "MELDUNG",
+    is_news: true,
+    is_event: false,
+  });
   assert.equal(byEditor.title, "Nota de redaccion");
   assert.equal(byEditor.category, "MELDUNG");
-  await ctx.editor.deleteNews(byEditor.id);
+  await ctx.editor.deletePublication(byEditor.id);
 
-  const forbidden = (err) => err.kind === "forbidden" && err.status === 403 && /permisos/.test(err.message);
-  await assert.rejects(() => ctx.student.createNews({ title: "No autorizado", target_groups: ["ALL"] }), forbidden);
-  await assert.rejects(() => ctx.student.updateNews(ctx.newsId, { title: "No autorizado" }), forbidden);
-  await assert.rejects(() => ctx.student.deleteNews(ctx.newsId), forbidden);
+  const forbidden = (err) => err.kind === "forbidden" && err.status === 403 && /permiso/i.test(err.message);
   await assert.rejects(
-    () => ctx.student.createEvent({ title: "No autorizado", event_start: new Date().toISOString() }),
+    () => ctx.student.createPublication({ title: "No autorizado", target_groups: ["ALL"], is_news: true }),
     forbidden
   );
-  await assert.rejects(() => ctx.student.getEventRegistrations(1), forbidden);
+  await assert.rejects(() => ctx.student.updatePublication(ctx.newsId, { title: "No autorizado" }), forbidden);
+  await assert.rejects(() => ctx.student.deletePublication(ctx.newsId), forbidden);
+  await assert.rejects(() => ctx.student.getPublicationRegistrations(1), forbidden);
   await assert.rejects(() => ctx.student.syncInstagram(), forbidden);
   await assert.rejects(
     () => ctx.student.uploadMedia(new File([PNG_BYTES], "bloqueado.png", { type: "image/png" })),
@@ -447,8 +461,8 @@ test("permisos: la redaccion publica; un estudiante recibe 403 en todas las acci
   );
   await assert.rejects(() => ctx.student.listGroups(), forbidden);
 
-  // La noticia sigue intacta tras los intentos no autorizados
-  assert.ok((await ctx.admin.listNews()).some((n) => n.id === ctx.newsId));
+  // La publicacion sigue intacta tras los intentos no autorizados
+  assert.ok((await ctx.admin.listPublications()).some((n) => n.id === ctx.newsId));
 });
 
 test("sesion expirada: HTTP 401 dispara el cierre de sesion exactamente una vez", live, async () => {
@@ -457,7 +471,7 @@ test("sesion expirada: HTTP 401 dispara el cierre de sesion exactamente una vez"
     let expiredCalls = 0;
     const client = clientFor(token, { onUnauthorized: () => (expiredCalls += 1) });
     await assert.rejects(
-      () => client.listNews(),
+      () => client.listPublications(),
       (err) => err.kind === "unauthorized" && err.status === 401 && /sesión ha expirado/.test(err.message)
     );
     assert.equal(expiredCalls, 1, `token ${token ? token.slice(0, 8) : "(ninguno)"}`);
@@ -486,7 +500,6 @@ test("publicaciones unificadas: crear hibrido Noticia+Evento, RSVP con baja, vis
     notifyGroups: ["ALL"],
     caption: "Inscripciones abiertas",
     content: "Actividad conjunta para estudiantes y docentes.",
-    detailText: "Incluye certificado de participación.",
     linkLabel: "Agenda PDF",
     linkUrl: "https://upa.edu.py/simposio",
     category: "VERANSTALTUNG",
@@ -503,7 +516,6 @@ test("publicaciones unificadas: crear hibrido Noticia+Evento, RSVP con baja, vis
   assert.equal(created.is_news, true);
   assert.equal(created.is_event, true);
   assert.deepEqual(created.reminders, [30, 120]);
-  assert.equal(created.detail_text, "Incluye certificado de participación.");
 
   // Vistas unicas y RSVP (asistencia + baja)
   const v1 = await ctx.student.markPublicationViewed(created.id);

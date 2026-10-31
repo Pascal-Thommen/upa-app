@@ -1,16 +1,14 @@
 from datetime import UTC, datetime
-from typing import Any
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user_optional, require_admin
+from ..auth import get_current_user_optional
 from ..database import get_db
 from ..models import Post, User
-from ..schemas.feed import ErrorResponse, FeedItemResponse, FeedResponse
+from ..schemas.feed import FeedItemResponse, FeedResponse
 from ..schemas.post import matches_group_filter, user_can_access_post
-from ..services.instagram import instagram_service
 
 router = APIRouter(prefix="/api/v1/feed", tags=["Feed"])
 
@@ -82,24 +80,3 @@ def get_feed(
         urgent_banners=banners,
         posts=paginated_posts,
     )
-
-
-@router.post(
-    "/sync",
-    status_code=status.HTTP_200_OK,
-    summary="Sincronizar feed social de Instagram (Solo Admin)",
-    responses={
-        401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
-        403: {"model": ErrorResponse, "description": "Permisos de administrador requeridos"},
-    },
-)
-async def sync_feed(
-    db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
-) -> dict[str, Any]:
-    """
-    Sincronizacion manual del feed social (@upalemana).
-    Protegido: Solo administradores autorizados.
-    """
-    result = await instagram_service.sync_instagram(db, author_id=admin.id)
-    return result

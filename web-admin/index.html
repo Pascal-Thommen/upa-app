@@ -153,12 +153,6 @@
     <!-- Vista 2: Portal Principal -->
     <section id="view-dashboard" class="hidden space-y-6">
 
-      <!-- Conmutador programático conservado por compatibilidad -->
-      <div id="mode-switch" class="hidden">
-        <button id="mode-btn-editorial" type="button" class="ed-mode-btn is-active">Publicaciones</button>
-        <button id="mode-btn-student" type="button" class="ed-mode-btn">APIs</button>
-      </div>
-
       <div class="flex flex-col lg:flex-row gap-6 items-start">
 
         <!-- Menú Lateral Compacto (4 módulos dinámicos según permisos) -->
@@ -669,7 +663,7 @@
             <!-- Contrato JSON y Telemetría Técnica (colapsable dentro de APIs) -->
             <details id="apis-json-details" class="hidden bg-white rounded-2xl shadow-2xs border border-slate-200/90 overflow-hidden group">
               <summary class="cursor-pointer p-4 flex items-center justify-between text-xs font-bold text-slate-800 hover:bg-slate-50 list-none">
-                <span>Contrato JSON y telemetría del backend (GET /api/system/diagnostics &bull; /api/v1/app-state)</span>
+                <span>Contrato JSON y telemetría del backend (GET /api/system/diagnostics)</span>
                 <span class="text-slate-400 transition group-open:rotate-180">&darr;</span>
               </summary>
               <div class="p-5 border-t border-slate-100 space-y-3">
@@ -745,9 +739,6 @@
               </form>
             </div>
           </section>
-
-          <!-- Contenedor heredado oculto por compatibilidad de selectores -->
-          <section id="view-diagnostic" class="hidden" aria-hidden="true"></section>
 
         </div>
       </div>

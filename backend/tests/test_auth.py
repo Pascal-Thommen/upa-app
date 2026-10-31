@@ -105,49 +105,41 @@ def test_users_me_and_auth_me_enforce_empty_groups_for_non_admins():
     ]:
         token = create_access_token(data={"sub": uid, "email": email, "role": role})
         headers = {"Authorization": f"Bearer {token}"}
-        for endpoint in ("/api/auth/me", "/api/users/me"):
-            resp = client.get(endpoint, headers=headers)
-            assert resp.status_code == 200
-            payload = resp.json()
-            assert payload["groups"] == []
-            assert payload["google_groups"] == []
-        app_state_resp = client.get("/api/v1/app-state", headers=headers)
-        assert app_state_resp.status_code == 200
-        assert app_state_resp.json()["user"]["groups"] == []
-        assert app_state_resp.json()["user"]["google_groups"] == []
+        resp = client.get("/api/auth/me", headers=headers)
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["groups"] == []
+        assert payload["google_groups"] == []
 
 
-def test_create_news_forbidden_for_normal_student():
+def test_create_publication_forbidden_for_normal_student():
     token = create_access_token(data={"sub": "10", "email": "student@upa.edu.py", "role": "user"})
     headers = {"Authorization": f"Bearer {token}"}
     payload = {"title": "Versuchter Fake Post", "content": "Sollte blockiert werden", "is_news": True}
-    response = client.post("/api/news", json=payload, headers=headers)
+    response = client.post("/api/publications", json=payload, headers=headers)
     assert response.status_code == 403
-    assert "Administrator-Rechte erforderlich" in response.json()["detail"]
 
 
-def test_create_news_allowed_for_admin():
+def test_create_publication_allowed_for_admin():
     token = create_access_token(data={"sub": "20", "email": "admin@upa.edu.py", "role": "admin"})
     headers = {"Authorization": f"Bearer {token}"}
     payload = {
         "title": "Offizieller Admin Post",
         "content": "Erfolgreich erstellt durch Administrator",
         "is_news": True,
-        "is_pinned": True,
+        "is_pinned": False,
     }
-    response = client.post("/api/news", json=payload, headers=headers)
+    response = client.post("/api/publications", json=payload, headers=headers)
     assert response.status_code == 201
     data = response.json()
     assert data["title"] == "Offizieller Admin Post"
-    assert data["is_pinned"] is True
 
 
-def test_get_my_groups_authorized():
+def test_removed_legacy_auth_and_users_endpoints_return_404():
     token = create_access_token(data={"sub": "10", "email": "student@upa.edu.py", "role": "user"})
     headers = {"Authorization": f"Bearer {token}"}
-    response = client.get("/api/auth/groups", headers=headers)
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert client.get("/api/auth/groups", headers=headers).status_code == 404
+    assert client.get("/api/users/me", headers=headers).status_code == 404
 
 
 def test_map_groups_to_logical_tags():

@@ -23,7 +23,6 @@ FIELD_LABELS = {
     "title": "título",
     "caption": "resumen",
     "content": "texto principal",
-    "detail_text": "texto en app",
     "post_type": "tipo",
     "category": "categoría",
     "is_news": "noticia",

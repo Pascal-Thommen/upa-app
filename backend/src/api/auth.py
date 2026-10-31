@@ -485,16 +485,3 @@ def update_classroom_token(
     db.refresh(current_user)
     clear_classroom_cache(current_user.email)
     return _build_user_response(current_user, effective_permissions(db, current_user))
-
-
-@router.get(
-    "/groups",
-    response_model=list[GoogleGroupDetail],
-    summary="Obtener grupos de Google Workspace sincronizados",
-    responses={
-        401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
-    },
-)
-def get_my_groups(current_user: User = Depends(get_current_user)) -> list[GoogleGroupDetail]:
-    """Retorna los grupos de Google Workspace sincronizados (exclusivo para administracion autorizada)."""
-    return _filter_google_groups_for_privacy(current_user.email, current_user.google_groups, role=current_user.role)

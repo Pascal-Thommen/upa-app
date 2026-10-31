@@ -1,37 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-from .database import Base, SessionLocal, engine, ensure_schema_upgrades
+from .database import SessionLocal, engine, run_alembic_migrations
 from .models import AudienceGroup, Post, User, UserRole
 from .schemas.user import REDUNDANT_GROUP_TAGS, sanitize_user_groups
 
 
-def ensure_schema_columns(bind_engine=engine) -> None:
-    """Garantiza que las columnas nuevas existan en tablas preexistentes."""
-    try:
-        ensure_schema_upgrades(bind_engine)
-        inspector = inspect(bind_engine)
-        if "users" in inspector.get_table_names():
-            existing_cols = {col["name"] for col in inspector.get_columns("users")}
-            with bind_engine.begin() as conn:
-                if "classroom_refresh_token" not in existing_cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN classroom_refresh_token TEXT"))
-                if "device_token" not in existing_cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN device_token VARCHAR(512)"))
-                if "classroom_deadlines_cache" not in existing_cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN classroom_deadlines_cache JSON"))
-                if "classroom_synced_at" not in existing_cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN classroom_synced_at TIMESTAMP"))
-    except Exception as exc:
-        print(f"[Schema Sync Notice] {exc}")
-
-
 def seed_database():
     """Carga inicial idempotente con datos reales del campus UPA."""
-    Base.metadata.create_all(bind=engine)
-    ensure_schema_columns(engine)
+    run_alembic_migrations(engine)
 
     db: Session = SessionLocal()
     try:
@@ -113,7 +91,6 @@ def seed_database():
                 event_notify_groups=["Informatica"],
                 has_registration=True,
                 send_push_notification=True,
-                reminder_minutes_before=30,
                 reminders=[30],
                 author_id=admin.id,
                 created_at=now_ts,
@@ -132,41 +109,29 @@ def seed_database():
                 "id": "estudiantes",
                 "name": "Estudiantes",
                 "description": "Comunidad estudiantil activa de grado y posgrado.",
-                "badge_class": "bg-blue-100 text-blue-800 border-blue-200",
-                "google_group": "estudiantes@upa.edu.py",
                 "google_groups": ["estudiantes@upa.edu.py", "tie2025@upa.edu.py"],
                 "emails": [],
-                "is_system": False,
             },
             {
                 "id": "docentes",
                 "name": "Docentes",
                 "description": "Claustro docente y profesores de cátedra.",
-                "badge_class": "bg-emerald-100 text-emerald-800 border-emerald-200",
-                "google_group": "docentes@upa.edu.py",
                 "google_groups": ["docentes@upa.edu.py"],
                 "emails": [],
-                "is_system": False,
             },
             {
                 "id": "staff",
                 "name": "Staff",
                 "description": "Personal administrativo, admisiones y soporte operativo.",
-                "badge_class": "bg-amber-100 text-amber-800 border-amber-200",
-                "google_group": "staff@upa.edu.py",
                 "google_groups": ["staff@upa.edu.py"],
                 "emails": ["rectorado@upa.edu.py"],
-                "is_system": False,
             },
             {
                 "id": "egresados",
                 "name": "Egresados",
                 "description": "Red de graduados y exalumnos universitarios.",
-                "badge_class": "bg-purple-100 text-purple-800 border-purple-200",
-                "google_group": "egresados@upa.edu.py",
                 "google_groups": ["egresados@upa.edu.py"],
                 "emails": [],
-                "is_system": False,
             },
         ]
         existing_groups = db.query(AudienceGroup).all()
@@ -177,8 +142,6 @@ def seed_database():
         else:
             default_by_id = {g["id"]: g for g in default_groups}
             for existing_grp in existing_groups:
-                if existing_grp.is_system:
-                    existing_grp.is_system = False
                 grp_defaults = default_by_id.get(existing_grp.id)
                 if grp_defaults and not existing_grp.google_groups and grp_defaults.get("google_groups"):
                     existing_grp.google_groups = list(grp_defaults["google_groups"])
@@ -188,7 +151,6 @@ def seed_database():
             primary_admin_role = UserRole(
                 email="pascal.thommen@upa.edu.py",
                 name="Pascal Thommen",
-                role="admin",
                 permissions=["publicaciones", "grupos", "roles", "apis", "historial"],
                 is_primary=True,
             )

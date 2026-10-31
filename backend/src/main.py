@@ -7,19 +7,12 @@ from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import asc, desc, or_
+from sqlalchemy import asc, or_
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 
 from .api.ai import router as ai_router
-from .api.auth import (
-    _derive_full_name,
-    _filter_google_groups_for_privacy,
-    _filter_user_groups_for_privacy,
-)
-from .api.auth import (
-    router as auth_router,
-)
+from .api.auth import router as auth_router
 from .api.classroom import ASUNCION_TZ, fetch_user_classroom_deadlines
 from .api.classroom import router as classroom_router
 from .api.diagnostics import router as diagnostics_router
@@ -35,16 +28,13 @@ from .api.roles import router as roles_router
 from .api.users import router as users_router
 from .auth import get_current_user_optional
 from .config import settings
-from .database import Base, engine, ensure_schema_upgrades, get_db
+from .database import engine, get_db, run_alembic_migrations
 from .models import Post, User
 from .schemas.classroom import ClassroomDeadlineResponse
 from .schemas.event import EventResponse
 from .schemas.feed import (
     AgendaItemResponse,
     AgendaResponse,
-    AppStateFeedItem,
-    AppStateResponse,
-    AppStateUser,
     HealthResponse,
 )
 from .schemas.post import matches_group_filter, user_can_access_post
@@ -55,8 +45,7 @@ from .services.scheduler import start_feed_sync_scheduler, stop_feed_sync_schedu
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        Base.metadata.create_all(bind=engine)
-        ensure_schema_upgrades(engine)
+        run_alembic_migrations(engine)
         seed_database()
     except Exception as e:
         print(f"[Lifespan Warning] Inicializacion de base de datos: {e}")
@@ -77,7 +66,7 @@ app = FastAPI(
     title="UPA App API",
     description=(
         "API REST oficial para la Plataforma Universitaria de la Universidad Paraguayo Alemana (UPA). "
-        "Incluye autenticacion OAuth 2.0 y Dev-Login JWT, noticias, calendario de eventos, "
+        "Incluye autenticacion OAuth 2.0 JWT, publicaciones unificadas, calendario de eventos, "
         "inscripcion RSVP, sincronizacion con Google Classroom con auto-refresh y notificaciones push."
     ),
     version="1.0.0",
@@ -227,99 +216,12 @@ async def get_agenda(
     )
 
 
-@app.get(
-    "/api/v1/app-state",
-    response_model=AppStateResponse,
-    tags=["Mobile App API"],
-    summary="Obtener estado inicial consolidado para la aplicacion movil",
-)
-async def get_app_state(
-    group: str | None = Query(None, description="Filtro opcional por carrera o grupo (ej. TIE)"),
-    limit: int = Query(20, ge=1, le=100, description="Cantidad maxima de publicaciones en el feed"),
-    current_user: User | None = Depends(get_current_user_optional),
-    db: Session = Depends(get_db),
-) -> AppStateResponse:
-    """
-    Entrega el paquete JSON consolidado para la carga inicial (cold start) de la app movil UPA,
-    incluyendo feed, upcoming_events y upcoming_deadlines en una sola llamada.
-    Garantiza ausencia de valores nulos y aplica filtrado estricto por rol y grupo.
-    """
-    now = datetime.now(UTC)
-
-    query = db.query(Post).filter(
-        or_(Post.published_at.is_(None), Post.published_at <= now),
-        or_(Post.expires_at.is_(None), Post.expires_at > now),
-    )
-    if current_user is None:
-        query = query.filter(Post.post_type == "INSTAGRAM")
-
-    raw_posts = query.order_by(desc(Post.is_pinned), desc(Post.created_at)).all()
-
-    filtered_feed: list[AppStateFeedItem] = []
-    for p in raw_posts:
-        if not user_can_access_post(current_user, p.target_groups):
-            continue
-        if not matches_group_filter(p.target_groups, group):
-            continue
-        filtered_feed.append(AppStateFeedItem.from_orm_post(p))
-        if len(filtered_feed) >= limit:
-            break
-
-    upcoming_events: list[EventResponse] = []
-    upcoming_deadlines: list[ClassroomDeadlineResponse] = []
-    user_data: AppStateUser | None = None
-
-    if current_user is not None:
-        upcoming_events = _query_upcoming_events(
-            db=db,
-            current_user=current_user,
-            group=group,
-            upcoming_only=True,
-            limit=limit,
-        )
-        upcoming_deadlines = await fetch_user_classroom_deadlines(
-            current_user=current_user,
-            db=db,
-        )
-        clean_email = (current_user.email or "").strip().lower()
-        clean_name = (current_user.full_name or "").strip() or _derive_full_name(clean_email)
-        clean_role = (current_user.role or "user").strip() or "user"
-        has_token = bool(
-            (current_user.classroom_token and str(current_user.classroom_token).strip())
-            or (
-                getattr(current_user, "classroom_refresh_token", None)
-                and str(current_user.classroom_refresh_token).strip()
-            )
-        )
-        user_data = AppStateUser(
-            id=int(current_user.id),
-            email=clean_email,
-            full_name=clean_name,
-            role=clean_role,
-            groups=_filter_user_groups_for_privacy(clean_email, current_user.groups, role=clean_role),
-            google_groups=[
-                g.model_dump()
-                for g in _filter_google_groups_for_privacy(clean_email, current_user.google_groups, role=clean_role)
-            ],
-            has_classroom_token=has_token,
-        )
-
-    return AppStateResponse(
-        portal="UPA Mobile Campus Platform",
-        api_version="1.0.0",
-        authenticated=current_user is not None,
-        user=user_data,
-        feed=filtered_feed,
-        upcoming_events=upcoming_events,
-        upcoming_deadlines=upcoming_deadlines,
-    )
-
-
 # Entrega de los medios subidos (carteles, banners, documentos) bajo /uploads
 try:
     app.mount("/uploads", UploadsStaticFiles(directory=str(get_upload_dir())), name="uploads")
 except OSError as upload_dir_error:
     print(f"[Startup Warning] Directorio de subidas no disponible, /uploads no montado: {upload_dir_error}")
+
 
 class SPAStaticFiles(StaticFiles):
     """StaticFiles con soporte SPA: resuelve subrutas sin extension hacia index.html."""

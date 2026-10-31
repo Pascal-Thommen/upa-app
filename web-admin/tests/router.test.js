@@ -144,18 +144,16 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
     "nav-mod-publications",
     "nav-mod-groups",
     "nav-mod-admins",
-    "nav-mod-diagnostic",
     "nav-mod-students",
+    "nav-mod-ai",
     "header-logo-link",
     "view-editorial",
     "view-groups",
     "view-admins",
-    "view-diagnostic",
+    "view-ai",
     "student-workspace",
     "apis-admin-overview",
     "apis-json-details",
-    "mode-btn-editorial",
-    "mode-btn-student",
   ];
 
   elementIds.forEach((id) => {
@@ -300,28 +298,15 @@ test("resolucion: rutas canonicas de los 4 modulos del portal", () => {
   });
 });
 
-test("resolucion: alias de diagnostico, control y estudiantes convergen en /dashboard/apis", () => {
+test("resolucion: normalizacion de mayusculas y barras finales en las 5 rutas canonicas", () => {
   const env = createTestEnvironment();
   const r = env.router;
 
-  assert.equal(r.resolveRoute("/dashboard/noticias").name, "publicaciones");
-  assert.equal(r.resolveRoute("/dashboard/eventos").name, "publicaciones");
-  assert.equal(r.resolveRoute("/dashboard/groups").name, "grupos");
-  assert.equal(r.resolveRoute("/dashboard/admins").name, "roles");
-
-  for (const alias of [
-    "/dashboard/estudiantes",
-    "/dashboard/students",
-    "/dashboard/diagnostico",
-    "/dashboard/diagnostic",
-    "/dashboard/control",
-  ]) {
-    const resolved = r.resolveRoute(alias);
-    assert.equal(resolved.name, "apis", `Alias ${alias} debe resolver al modulo unificado apis`);
-    assert.equal(resolved.path, "/dashboard/apis");
-    assert.equal(resolved.isRedirect, true);
-  }
+  assert.equal(r.resolveRoute("/DASHBOARD/PUBLICACIONES/").name, "publicaciones");
+  assert.equal(r.resolveRoute("/DASHBOARD/GRUPOS/").name, "grupos");
   assert.equal(r.resolveRoute("/DASHBOARD/ROLES/").name, "roles");
+  assert.equal(r.resolveRoute("/DASHBOARD/APIS/").name, "apis");
+  assert.equal(r.resolveRoute("/DASHBOARD/IA/").name, "ia");
 });
 
 test("resolucion: rutas no reconocidas redirigen a /dashboard/publicaciones", () => {
@@ -411,16 +396,16 @@ test("deep linking: carga directa de /dashboard/grupos y /dashboard/roles mantie
   assert.ok(!envR.elements["view-admins"].classList.contains("hidden"));
 });
 
-test("deep linking: carga directa de /dashboard/apis o alias /dashboard/diagnostico activa APIs", () => {
+test("deep linking: carga directa de /dashboard/apis y /dashboard/ia activa sus modulos", () => {
   const envA = createTestEnvironment("/dashboard/apis");
   assert.equal(envA.window.location.pathname, "/dashboard/apis");
   assert.equal(envA.router.getCurrentRoute(), "apis");
   assert.ok(!envA.elements["student-workspace"].classList.contains("hidden"));
 
-  const envAlias = createTestEnvironment("/dashboard/diagnostico");
-  assert.equal(envAlias.window.location.pathname, "/dashboard/apis");
-  assert.equal(envAlias.router.getCurrentRoute(), "apis");
-  assert.ok(!envAlias.elements["student-workspace"].classList.contains("hidden"));
+  const envIa = createTestEnvironment("/dashboard/ia");
+  assert.equal(envIa.window.location.pathname, "/dashboard/ia");
+  assert.equal(envIa.router.getCurrentRoute(), "ia");
+  assert.ok(!envIa.elements["view-ai"].classList.contains("hidden"));
 });
 
 test("deep linking: ruta desconocida redirige a /dashboard/publicaciones", () => {
@@ -567,7 +552,7 @@ test("control de ia: index.html contiene reiter Control de IA, guia en 3 pasos y
   assert.ok(indexHtml.includes("Guardar y Probar"));
   assert.ok(indexHtml.includes("Probar conexión"));
 
-  const env = createTestEnvironment("/dashboard/control-de-ia");
+  const env = createTestEnvironment("/dashboard/ia");
   assert.equal(env.window.location.pathname, "/dashboard/ia");
   assert.equal(env.router.getCurrentRoute(), "ia");
 });

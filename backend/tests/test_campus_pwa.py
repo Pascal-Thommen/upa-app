@@ -32,11 +32,10 @@ WEB_APP = REPO_ROOT / "web-app"
 WEB_TESTS = WEB_APP / "tests"
 
 SEED_SCRIPT = """
-from src.database import Base, SessionLocal, engine, ensure_schema_upgrades
+from src.database import SessionLocal, engine, run_alembic_migrations
 from src.models import User
 
-Base.metadata.create_all(bind=engine)
-ensure_schema_upgrades(engine)
+run_alembic_migrations(engine)
 db = SessionLocal()
 db.add_all(
     [

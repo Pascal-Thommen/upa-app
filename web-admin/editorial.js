@@ -1149,12 +1149,10 @@
     const editorialEl = $("view-editorial");
     if (studentEl) studentEl.classList.toggle("hidden", editorial);
     if (editorialEl) editorialEl.classList.toggle("hidden", !editorial);
-    ["view-groups", "view-admins", "view-diagnostic", "view-ai"].forEach((vid) => {
+    ["view-groups", "view-admins", "view-ai"].forEach((vid) => {
       const v = $(vid);
       if (v) v.classList.add("hidden");
     });
-    if ($("mode-btn-editorial")) $("mode-btn-editorial").classList.toggle("is-active", editorial);
-    if ($("mode-btn-student")) $("mode-btn-student").classList.toggle("is-active", !editorial);
     if (window.UpaRouter && typeof window.UpaRouter.syncNavClasses === "function") {
       window.UpaRouter.syncNavClasses(editorial ? "publicaciones" : "apis");
     }

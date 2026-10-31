@@ -248,20 +248,15 @@ class PushDispatcher:
 def collect_recipient_tokens(db: Session, target_groups: Any) -> list[str]:
     """
     Reune los device tokens de todos los usuarios autorizados para ver una publicacion con los
-    grupos destino indicados (misma regla de acceso que /api/news). Incluye el token legado de User.
+    grupos destino indicados.
     """
-    tokens: list[str] = []
-    users = db.query(User).all()
-    allowed_ids: set[int] = set()
-    for user in users:
-        if user_can_access_post(user, target_groups):
-            allowed_ids.add(int(user.id))
-            if user.device_token:
-                tokens.append(user.device_token)
-    if allowed_ids:
-        rows = db.query(DeviceToken).filter(DeviceToken.user_id.in_(allowed_ids)).all()
-        tokens.extend(row.device_token for row in rows)
-    return list(dict.fromkeys(t for t in tokens if t))
+    allowed_ids = {
+        int(user.id) for user in db.query(User).all() if user_can_access_post(user, target_groups)
+    }
+    if not allowed_ids:
+        return []
+    rows = db.query(DeviceToken).filter(DeviceToken.user_id.in_(allowed_ids)).all()
+    return list(dict.fromkeys(row.device_token for row in rows if row.device_token))
 
 
 def collect_event_reminder_tokens(db: Session, post_id: int, target_groups: Any) -> list[str]:
@@ -275,20 +270,15 @@ def collect_event_reminder_tokens(db: Session, post_id: int, target_groups: Any)
         .filter(EventRegistration.post_id == post_id, EventRegistration.status == "declined")
         .all()
     }
-    tokens: list[str] = []
-    allowed_ids: set[int] = set()
-    for user in db.query(User).all():
-        uid = int(user.id)
-        if uid in declined_user_ids:
-            continue
-        if user_can_access_post(user, target_groups):
-            allowed_ids.add(uid)
-            if user.device_token:
-                tokens.append(user.device_token)
-    if allowed_ids:
-        rows = db.query(DeviceToken).filter(DeviceToken.user_id.in_(allowed_ids)).all()
-        tokens.extend(row.device_token for row in rows)
-    return list(dict.fromkeys(t for t in tokens if t))
+    allowed_ids = {
+        int(user.id)
+        for user in db.query(User).all()
+        if int(user.id) not in declined_user_ids and user_can_access_post(user, target_groups)
+    }
+    if not allowed_ids:
+        return []
+    rows = db.query(DeviceToken).filter(DeviceToken.user_id.in_(allowed_ids)).all()
+    return list(dict.fromkeys(row.device_token for row in rows if row.device_token))
 
 
 def build_emergency_message(post: Post) -> tuple[str, str, dict[str, str]]:

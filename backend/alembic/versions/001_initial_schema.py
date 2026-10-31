@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("full_name", sa.String(length=255), nullable=False),
         sa.Column("role", sa.String(length=50), server_default="user", nullable=False),
         sa.Column("groups", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -58,7 +58,7 @@ def upgrade() -> None:
         sa.Column("media_url", sa.Text(), nullable=True),
         sa.Column("permalink", sa.Text(), nullable=True),
         sa.Column("author_id", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
             ["author_id"],
@@ -76,7 +76,7 @@ def upgrade() -> None:
         sa.Column("post_id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("status", sa.String(length=50), server_default="attending", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["post_id"], ["posts.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
@@ -93,7 +93,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("post_id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("viewed_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("viewed_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(["post_id"], ["posts.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -112,7 +112,7 @@ def upgrade() -> None:
         sa.Column("target_type", sa.String(length=50), nullable=False),
         sa.Column("target_id", sa.Integer(), nullable=True),
         sa.Column("details", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(
             ["admin_id"],
             ["users.id"],
@@ -124,8 +124,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index(op.f("ix_admin_audit_logs_id"), table_name="admin_audit_logs")
+    op.drop_index(op.f("ix_admin_audit_logs_admin_id"), table_name="admin_audit_logs")
     op.drop_table("admin_audit_logs")
+    op.drop_index(op.f("ix_post_views_user_id"), table_name="post_views")
+    op.drop_index(op.f("ix_post_views_post_id"), table_name="post_views")
+    op.drop_index(op.f("ix_post_views_id"), table_name="post_views")
     op.drop_table("post_views")
+    op.drop_index(op.f("ix_event_registrations_user_id"), table_name="event_registrations")
+    op.drop_index(op.f("ix_event_registrations_post_id"), table_name="event_registrations")
+    op.drop_index(op.f("ix_event_registrations_id"), table_name="event_registrations")
     op.drop_table("event_registrations")
+    op.drop_index(op.f("ix_posts_instagram_id"), table_name="posts")
+    op.drop_index(op.f("ix_posts_id"), table_name="posts")
     op.drop_table("posts")
+    op.drop_index(op.f("ix_users_id"), table_name="users")
+    op.drop_index(op.f("ix_users_email"), table_name="users")
     op.drop_table("users")

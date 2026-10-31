@@ -17,7 +17,6 @@ class User(Base):
     classroom_refresh_token = Column(Text, nullable=True)  # Refresh token OAuth para renovacion automatica
     classroom_deadlines_cache = Column(JSON, default=list, nullable=False)  # Cache persistente de entregas Classroom
     classroom_synced_at = Column(DateTime(timezone=True), nullable=True)  # Marca de tiempo de ultima sincronizacion
-    device_token = Column(String(512), nullable=True)  # Token de dispositivo FCM legado
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
@@ -57,14 +56,11 @@ class Post(Base):
 
     # Notificaciones y recordatorios
     send_push_notification = Column(Boolean, default=False, nullable=False)
-    push_notification_sent_at = Column(DateTime(timezone=True), nullable=True)
-    reminder_minutes_before = Column(Integer, default=30, nullable=True)
     reminders = Column(JSON, nullable=True)  # Minutos previos al inicio del evento, ej. [30, 1440]
     notify_groups = Column(JSON, nullable=True)  # Grupos a notificar al publicar o guardar el post
     event_notify_groups = Column(JSON, nullable=True)  # Grupos que reciben recordatorios del evento
 
-    # Contenido adicional exclusivo de la vista de detalle en la aplicacion
-    detail_text = Column(Text, nullable=True)
+    # Boton de enlace opcional
     link_url = Column(Text, nullable=True)
     link_label = Column(String(100), nullable=True)
 
@@ -96,38 +92,6 @@ class Post(Base):
         if bool(getattr(self, "is_edited", False)) or (getattr(self, "post_type", "MANUAL") != "INSTAGRAM"):
             return "edited"
         return "pending"
-
-    @property
-    def event_date(self):
-        return self.event_start
-
-    @event_date.setter
-    def event_date(self, value) -> None:
-        self.event_start = value
-
-    @property
-    def event_end_date(self):
-        return self.event_end
-
-    @event_end_date.setter
-    def event_end_date(self, value) -> None:
-        self.event_end = value
-
-    @property
-    def event_location(self) -> str | None:
-        return self.location
-
-    @event_location.setter
-    def event_location(self, value: str | None) -> None:
-        self.location = value
-
-    @property
-    def notify_push(self) -> bool:
-        return bool(self.send_push_notification)
-
-    @notify_push.setter
-    def notify_push(self, value: bool) -> None:
-        self.send_push_notification = bool(value)
 
 
 class EventRegistration(Base):
@@ -196,11 +160,8 @@ class AudienceGroup(Base):
     id = Column(String(50), primary_key=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    badge_class = Column(String(100), nullable=False, default="bg-slate-100 text-slate-800 border-slate-200")
-    google_group = Column(String(255), nullable=True)
-    google_groups = Column(JSON, nullable=True)  # Lista de correos de grupos de Google Workspace
+    google_groups = Column(JSON, default=list, nullable=True)  # Lista de correos de grupos de Google Workspace
     emails = Column(JSON, default=list, nullable=False)
-    is_system = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
@@ -211,7 +172,6 @@ class UserRole(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
-    role = Column(String(50), default="editor", nullable=False)  # "admin" o "editor"
     permissions = Column(JSON, default=list, nullable=False)
     is_primary = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

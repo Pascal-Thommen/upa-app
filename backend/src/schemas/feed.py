@@ -1,12 +1,11 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from .classroom import ClassroomDeadlineResponse
 from .event import EventResponse
 from .post import effective_published_at, ensure_utc_datetime, extra_detail_fields, normalize_target_groups
-from .user import sanitize_user_groups
 
 
 class ErrorResponse(BaseModel):
@@ -73,7 +72,6 @@ class FeedItemResponse(BaseModel):
     media_url: str = Field(default="", description="URL multimedia (cadena vacia si no aplica)")
     image_url: str = Field(default="", description="URL de imagen (cadena vacia si no aplica)")
     permalink: str = Field(default="", description="Enlace permanente externo (cadena vacia si no aplica)")
-    detail_text: str = Field(default="", description="Texto adicional exclusivo al abrir la publicacion en la app")
     link_url: str = Field(default="", description="URL del boton de enlace opcional (cadena vacia si no aplica)")
     link_label: str = Field(default="", description="Texto del boton de enlace opcional (cadena vacia si no aplica)")
     is_registered: bool = Field(default=False, description="Indica si el usuario autenticado esta inscrito (eventos)")
@@ -173,151 +171,6 @@ class FeedResponse(BaseModel):
     posts: list[FeedItemResponse] = Field(
         default_factory=list,
         description="Lista de publicaciones del campus e Instagram",
-    )
-
-
-class AppStateFeedItem(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "id": 1,
-                "title": "Busqueda Laboral: Recepcionista",
-                "summary": "Estamos buscando Recepcionista. Envia tu CV a rrhh@upa.edu.py",
-                "content": "Principales funciones: Atencion al publico.",
-                "post_type": "INSTAGRAM",
-                "is_pinned": False,
-                "target_groups": ["ALL"],
-                "image_url": "https://upa.edu.py/static/images/recepcionista_post.png",
-                "permalink": "https://www.instagram.com/p/DerQoIzjtYf/",
-                "published_at": "2026-10-20T14:00:00+00:00",
-            }
-        }
-    )
-
-    id: int = Field(..., description="Identificador unico de la publicacion")
-    title: str = Field(..., description="Titulo de la publicacion (nunca nulo)")
-    summary: str = Field(default="", description="Resumen corto (nunca nulo)")
-    content: str = Field(default="", description="Contenido completo (nunca nulo)")
-    post_type: str = Field(default="MANUAL", description="Tipo de publicacion")
-    is_pinned: bool = Field(default=False, description="Indica si esta fijado arriba")
-    target_groups: list[str] = Field(default_factory=lambda: ["ALL"], description="Grupos destinatarios")
-    image_url: str = Field(default="", description="URL de imagen (cadena vacia si no tiene)")
-    permalink: str = Field(default="", description="Enlace permanente (cadena vacia si no tiene)")
-    published_at: str = Field(..., description="Fecha de publicacion en formato ISO-8601 UTC")
-
-    @classmethod
-    def from_orm_post(cls, post: Any) -> "AppStateFeedItem":
-        raw_title = (getattr(post, "title", None) or "").strip() or "Publicacion UPA"
-        raw_caption = (getattr(post, "caption", None) or "").strip()
-        raw_content = (getattr(post, "content", None) or "").strip()
-        summary = raw_caption or raw_content
-        content = raw_content or raw_caption
-        published = effective_published_at(post)
-        return cls(
-            id=int(getattr(post, "id", 0) or 0),
-            title=raw_title,
-            summary=summary,
-            content=content,
-            post_type=(getattr(post, "post_type", None) or "MANUAL").strip() or "MANUAL",
-            is_pinned=bool(getattr(post, "is_pinned", False)),
-            target_groups=normalize_target_groups(getattr(post, "target_groups", None)),
-            image_url=(getattr(post, "media_url", None) or "").strip(),
-            permalink=(getattr(post, "permalink", None) or "").strip(),
-            published_at=published.isoformat(),
-        )
-
-
-class AppStateUser(BaseModel):
-    id: int = Field(..., description="ID unico del usuario")
-    email: str = Field(..., description="Correo institucional")
-    full_name: str = Field(..., description="Nombre completo")
-    role: str = Field(..., description="Rol del usuario: user o admin")
-    groups: list[str] = Field(default_factory=list, description="Grupos visibles segun politica de privacidad")
-    google_groups: list[dict[str, str]] = Field(
-        default_factory=list, description="Detalle de grupos de Google Workspace"
-    )
-    has_classroom_token: bool = Field(default=False, description="Indica si tiene Classroom vinculado")
-
-    @model_validator(mode="after")
-    def _enforce_privacy_and_clean_groups(self) -> "AppStateUser":
-        if (self.role or "").strip().lower() != "admin":
-            self.groups = []
-            self.google_groups = []
-        else:
-            self.groups = sanitize_user_groups(self.groups)
-        return self
-
-
-class AppStateResponse(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "portal": "UPA Mobile Campus Platform",
-                "api_version": "1.0.0",
-                "authenticated": True,
-                "user": {
-                    "id": 1,
-                    "email": "pascal.thommen@upa.edu.py",
-                    "full_name": "Pascal Thommen",
-                    "role": "admin",
-                    "groups": ["ALL", "Semester_4", "TIE"],
-                    "google_groups": [],
-                    "has_classroom_token": False,
-                },
-                "feed": [
-                    {
-                        "id": 1,
-                        "title": "Busqueda Laboral: Recepcionista",
-                        "summary": "Estamos buscando Recepcionista.",
-                        "content": "Principales funciones: Atencion al publico.",
-                        "post_type": "INSTAGRAM",
-                        "is_pinned": False,
-                        "target_groups": ["ALL"],
-                        "image_url": "https://upa.edu.py/static/images/recepcionista_post.png",
-                        "permalink": "https://www.instagram.com/p/DerQoIzjtYf/",
-                        "published_at": "2026-10-20T14:00:00+00:00",
-                    }
-                ],
-                "upcoming_events": [
-                    {
-                        "id": 2,
-                        "title": "¿Que significa seguir siendo humanos en la era de la IA?",
-                        "description": "Inteligencia artificial, decisiones, libertad y responsabilidad.",
-                        "summary": "holaa 👋 manana tenemos charla de 11 a 12, vayan pues",
-                        "event_start": "2026-10-22T11:00:00Z",
-                        "event_end": "2026-10-22T12:00:00Z",
-                        "location": "Auditorio Edificio 1, Piso 1",
-                        "has_registration": True,
-                        "is_pinned": True,
-                        "target_groups": ["ALL", "TIE", "Informatica"],
-                        "image_url": "",
-                        "permalink": "",
-                        "created_at": "2026-10-21T10:00:00Z",
-                        "is_registered": False,
-                        "registered_count": 0,
-                    }
-                ],
-                "upcoming_deadlines": [],
-            }
-        }
-    )
-
-    portal: str = Field(default="UPA Mobile Campus Platform", description="Nombre de la plataforma")
-    api_version: str = Field(default="1.0.0", description="Version actual de la API")
-    authenticated: bool = Field(default=False, description="Indica si la sesion actual esta autenticada")
-    user: AppStateUser | None = Field(
-        default=None, description="Datos del usuario autenticado (nulo si no se envia token)"
-    )
-    feed: list[AppStateFeedItem] = Field(
-        default_factory=list, description="Publicaciones filtradas segun nivel de acceso y rol"
-    )
-    upcoming_events: list[EventResponse] = Field(
-        default_factory=list,
-        description="Proximos eventos del calendario ordenados cronologicamente",
-    )
-    upcoming_deadlines: list[ClassroomDeadlineResponse] = Field(
-        default_factory=list,
-        description="Proximos plazos academicos de Google Classroom ordenados cronologicamente",
     )
 
 

@@ -71,7 +71,6 @@ class PublicationWrite(BaseModel):
     )
     caption: str | None = Field(default=None, description="Resumen breve visible en la tarjeta")
     content: str | None = Field(default=None, description="Texto principal de la publicacion")
-    detail_text: str | None = Field(default=None, description="Texto adicional exclusivo al abrir en la app")
     category: str | None = Field(default=None, description="Categoria opcional")
     is_pinned: bool = Field(default=False, description="Fijar en la parte superior")
     expires_at: datetime | None = Field(default=None, description="Vencimiento opcional")
@@ -116,7 +115,6 @@ class PublicationUpdate(BaseModel):
     notify_groups: list[str] | None = None
     caption: str | None = None
     content: str | None = None
-    detail_text: str | None = None
     category: str | None = None
     is_pinned: bool | None = None
     expires_at: datetime | None = None
@@ -164,7 +162,6 @@ class PublicationResponse(BaseModel):
     summary: str = ""
     caption: str = ""
     content: str = ""
-    detail_text: str = ""
     post_type: str = "MANUAL"
     category: str = ""
     is_news: bool = True

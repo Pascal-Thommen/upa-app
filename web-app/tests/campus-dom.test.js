@@ -126,8 +126,7 @@ test("preparacion: creacion de publicaciones reales (noticia, fijada, urgente y 
     json: {
       title: "Convocatoria de intercambio en Heidelberg",
       caption: "Postulaciones abiertas hasta noviembre.",
-      content: "Presenta tu carpeta académica en Secretaría.",
-      detail_text: "Requisitos: promedio mínimo 4.0 y nivel B2.",
+      content: "Presenta tu carpeta académica en Secretaría. Requisitos: promedio mínimo 4.0 y nivel B2.",
       permalink: "https://upa.edu.py/intercambio",
       is_news: true,
       is_event: false,
@@ -270,20 +269,22 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     await app.click(regBtn);
     const updatedBtn = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
     assert.equal(updatedBtn.textContent, "Cancelar inscripción");
-    const check1 = await api(`/api/events/${seeded.eventId}`, student);
-    assert.equal(check1.body.is_registered, true);
+    const check1 = await api("/api/v1/agenda", student);
+    const ev1 = check1.body.events.find((e) => e.id === seeded.eventId);
+    assert.equal(ev1.is_registered, true);
 
     await app.click(updatedBtn);
     assert.equal(app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent, "Inscripción");
-    const check2 = await api(`/api/events/${seeded.eventId}`, student);
-    assert.equal(check2.body.is_registered, false);
+    const check2 = await api("/api/v1/agenda", student);
+    const ev2 = check2.body.events.find((e) => e.id === seeded.eventId);
+    assert.equal(ev2.is_registered, false);
 
     // Detalle a pantalla completa y enlace a la fuente original
     const openNews = app.document.querySelector(`[data-post-id="${seeded.newsId}"]`);
     await app.click(openNews);
     assert.equal(app.$("detail").hidden, false);
     assert.equal(app.$("detail-title").textContent, "Convocatoria de intercambio en Heidelberg");
-    assert.match(app.$("detail-extra").textContent, /promedio mínimo 4\.0/);
+    assert.match(app.$("detail-text").textContent, /promedio mínimo 4\.0/);
     assert.equal(app.$("detail-source").getAttribute("href"), "https://upa.edu.py/intercambio");
 
     // Boton Atras de Android (popstate) cierra el detalle sin salir de la aplicacion

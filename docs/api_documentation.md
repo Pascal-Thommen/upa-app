@@ -29,7 +29,7 @@ Der Nginx Container liefert alle statischen Oberflaechen direkt aus und leitet d
   * `GET /campus/*`: Liefert CSS, JS, QR Bibliothek und Icons mit 24 Stunden Public Cache (`max-age=86400`) aus.
 * **Web Admin Cockpit (`/dashboard/*`):**
   * `GET /dashboard` leitet per `HTTP 302` auf `/dashboard/publicaciones` weiter.
-  * Alle Subrouten unter `/dashboard/` (`/dashboard/publicaciones`, `/dashboard/grupos`, `/dashboard/roles`, `/dashboard/ia`, `/dashboard/apis`, `/dashboard/historial`) werden per SPA Fallback auf `web-admin/index.html` aufgeloest.
+  * Alle Subrouten unter `/dashboard/` (`/dashboard/publicaciones`, `/dashboard/grupos`, `/dashboard/roles`, `/dashboard/ia`, `/dashboard/apis`) werden per SPA Fallback auf `web-admin/index.html` aufgeloest. Die Audit Historie ist direkt in den Ansichten `Publicaciones`, `Grupos` und `Roles` integriert.
 * **Reverse Proxy Weiterleitungen an FastAPI (`http://backend:8000`):**
   * `/api/` (REST Endpunkte mit `proxy_read_timeout 60s`), `/uploads/` (Medien), `/health`, `/docs` und `/openapi.json`.
 

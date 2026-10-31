@@ -71,27 +71,20 @@ def setup_database():
                 id="estudiantes",
                 name="Estudiantes",
                 description="Comunidad estudiantil.",
-                badge_class="bg-blue-100 text-blue-800",
-                google_group="estudiantes@upa.edu.py",
                 google_groups=["estudiantes@upa.edu.py"],
                 emails=["estudiantes@upa.edu.py"],
-                is_system=True,
             ),
             AudienceGroup(
                 id="robotica",
                 name="Club de Robótica",
                 description="Estudiantes y docentes de robótica.",
-                badge_class="bg-cyan-100 text-cyan-800",
-                google_group="robotica@upa.edu.py",
                 google_groups=["robotica@upa.edu.py"],
                 emails=["robotica@upa.edu.py"],
-                is_system=False,
             ),
             UserRole(
                 id=1,
                 email=ADMIN_EMAIL,
                 name="Pascal Thommen",
-                role="admin",
                 permissions=["publicaciones", "grupos", "roles", "apis", "historial"],
                 is_primary=True,
             ),
@@ -99,7 +92,6 @@ def setup_database():
                 id=2,
                 email=EDITOR_EMAIL,
                 name="Editor Prensa",
-                role="editor",
                 permissions=["publicaciones"],
                 is_primary=False,
             ),
@@ -107,7 +99,6 @@ def setup_database():
                 id=3,
                 email=GROUPS_MGR_EMAIL,
                 name="Coordinación Grupos",
-                role="editor",
                 permissions=["publicaciones", "grupos"],
                 is_primary=False,
             ),
@@ -173,7 +164,7 @@ def test_create_and_update_group_with_groups_permission():
     assert created["name"] == "Ingeniería Biomédica"
     assert created["google_groups"] == ["biomedica@upa.edu.py", "laboratorio.bio@upa.edu.py"]
     assert created["emails"] == ["ana.bio@upa.edu.py"]
-    assert created["is_system"] is False
+    assert "is_system" not in created
 
     upd = client.put(
         "/api/groups/biomedica",
@@ -259,7 +250,6 @@ def test_delete_seeded_group_allowed_and_recreatable():
             "id": "estudiantes",
             "name": "Estudiantes",
             "description": "Comunidad estudiantil.",
-            "google_group": "estudiantes@upa.edu.py",
             "google_groups": ["estudiantes@upa.edu.py"],
             "emails": ["estudiantes@upa.edu.py"],
         },

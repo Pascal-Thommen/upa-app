@@ -14,6 +14,7 @@ from src.main import app
 from src.models import (
     AdminAuditLog,
     AudienceGroup,
+    DeviceToken,
     EventRegistration,
     Post,
     PostView,
@@ -64,6 +65,7 @@ def setup_database():
     db.query(AdminAuditLog).delete()
     db.query(PostView).delete()
     db.query(EventRegistration).delete()
+    db.query(DeviceToken).delete()
     db.query(Post).delete()
     db.query(AudienceGroup).delete()
     db.query(UserRole).delete()
@@ -79,7 +81,6 @@ def setup_database():
                 full_name="Ana Estudiante",
                 role="user",
                 groups=["ALL", "TIE"],
-                device_token="fcm-token-ana-real",
             ),
             User(
                 id=STUDENT_B_ID,
@@ -87,13 +88,13 @@ def setup_database():
                 full_name="Luis Estudiante",
                 role="user",
                 groups=["ALL", "TIE"],
-                device_token="fcm-token-luis-real",
             ),
+            DeviceToken(user_id=STUDENT_A_ID, device_token="fcm-token-ana-real", platform="android"),
+            DeviceToken(user_id=STUDENT_B_ID, device_token="fcm-token-luis-real", platform="android"),
             UserRole(
                 id=1,
                 email=ADMIN_EMAIL,
                 name="Pascal Thommen",
-                role="admin",
                 permissions=["publicaciones", "grupos", "roles", "apis", "historial"],
                 is_primary=True,
             ),
@@ -101,7 +102,6 @@ def setup_database():
                 id=2,
                 email=EDITOR_EMAIL,
                 name="Equipo Redacción",
-                role="editor",
                 permissions=["publicaciones"],
                 is_primary=False,
             ),
@@ -148,7 +148,6 @@ def test_unified_publication_news_event_and_hybrid_lifecycle():
     assert pub["is_news"] is True
     assert pub["is_event"] is True
     assert pub["has_registration"] is True
-    assert pub["detail_text"] == "Traer credencial estudiantil para acreditación."
     assert pub["link_label"] == "Programa completo"
     assert pub["link_url"] == "https://upa.edu.py/foro"
     assert pub["notify_groups"] == ["TIE"]
@@ -157,11 +156,11 @@ def test_unified_publication_news_event_and_hybrid_lifecycle():
     assert pub["is_edited"] is True
     assert pub["published_at"] is not None
 
-    # Aparece tanto en Noticias como en Eventos para los estudiantes
+    # Aparece tanto en Feed como en Agenda para los estudiantes
     student_headers = auth(STUDENT_A_ID, STUDENT_A_EMAIL, "user")
-    news_ids = [n["id"] for n in client.get("/api/news", headers=student_headers).json()]
-    event_ids = [e["id"] for e in client.get("/api/events", headers=student_headers).json()]
-    assert pub["id"] in news_ids
+    feed_ids = [n["id"] for n in client.get("/api/v1/feed", headers=student_headers).json()["posts"]]
+    event_ids = [e["id"] for e in client.get("/api/v1/agenda", headers=student_headers).json()["events"]]
+    assert pub["id"] in feed_ids
     assert pub["id"] in event_ids
 
     # 2. Permitir quitar todos los recordatorios dejando lista vacía []
@@ -300,7 +299,7 @@ def test_scheduled_publication_hidden_from_students_until_publish_time():
     pub_id = created.json()["id"]
 
     # Oculto en el feed público y estudiantil mientras la fecha esté en el futuro
-    assert pub_id not in [n["id"] for n in client.get("/api/news", headers=student_headers).json()]
+    assert pub_id not in [n["id"] for n in client.get("/api/v1/feed", headers=student_headers).json()["posts"]]
     assert pub_id not in [p["id"] for p in client.get("/api/v1/feed").json()["posts"]]
 
     # Visible para redacción en la lista administrativa
@@ -315,7 +314,7 @@ def test_scheduled_publication_hidden_from_students_until_publish_time():
     )
     assert publish_now.status_code == 200
     published_ts = publish_now.json()["published_at"]
-    assert pub_id in [n["id"] for n in client.get("/api/news", headers=student_headers).json()]
+    assert pub_id in [n["id"] for n in client.get("/api/v1/feed", headers=student_headers).json()["posts"]]
 
     # Rechazar fechas programadas en el pasado al crear o reprogramar
     in_the_past = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
@@ -358,7 +357,7 @@ def test_dynamic_audience_groups_grant_student_access():
     )
     assert created.status_code == 201
     pub_id = created.json()["id"]
-    assert pub_id in [n["id"] for n in client.get("/api/news", headers=student_headers).json()]
+    assert pub_id in [n["id"] for n in client.get("/api/v1/feed", headers=student_headers).json()["posts"]]
 
 
 def test_rsvp_works_on_posts_and_events_and_excludes_declined_from_reminders():
@@ -429,10 +428,10 @@ def test_unique_views_tracking_and_admin_only_audit_history():
     # Ana abre dos veces (cuenta como 1 vista única); Luis abre una vez -> total 2 vistas
     v1 = client.post(f"/api/publications/{pub_id}/view", headers=ana_headers)
     v2 = client.post(f"/api/publications/{pub_id}/view", headers=ana_headers)
-    v3 = client.get(f"/api/news/{pub_id}", headers=luis_headers)
+    v3 = client.post(f"/api/publications/{pub_id}/view", headers=luis_headers)
     assert v1.status_code == 200 and v1.json()["views_count"] == 1
     assert v2.status_code == 200 and v2.json()["views_count"] == 1
-    assert v3.status_code == 200
+    assert v3.status_code == 200 and v3.json()["views_count"] == 2
     detail_admin = client.get(f"/api/publications/{pub_id}", headers=editor_headers)
     assert detail_admin.status_code == 200 and detail_admin.json()["views_count"] == 2
 
@@ -578,7 +577,7 @@ def test_web_admin_ux_invariants_clean_labels_and_no_legacy_noise():
         assert forbidden_text not in index_html
         assert forbidden_text not in app_js
 
-    for removed_field in ("ed-pub-type", "ed-pub-category", "ed-pub-detail-text"):
+    for removed_field in ("ed-pub-type", "ed-pub-category", "ed-pub-detail-text", "view-diagnostic", "mode-switch"):
         assert removed_field not in index_html
         assert removed_field not in editorial_js
 
