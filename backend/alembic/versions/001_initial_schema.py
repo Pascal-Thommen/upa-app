@@ -29,6 +29,12 @@ def _index_exists(table_name: str, index_name: str) -> bool:
 
 
 def upgrade() -> None:
+    # Ampliar version_num en PostgreSQL para permitir identificadores descriptivos de mas de 32 caracteres
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(sa.text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(128) NOT NULL)"))
+        op.execute(sa.text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)"))
+
     # 1. users
     if not _table_exists("users"):
         op.create_table(
