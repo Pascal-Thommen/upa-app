@@ -37,6 +37,7 @@ from ..schemas.publication import (
 )
 from ..services import gemini
 from ..services.audit import AUDIT_TARGET_POST, changed_fields, log_audit
+from ..services.instagram import instagram_service
 from ..services.push import (
     EMERGENCY_BANNER,
     build_emergency_message,
@@ -80,7 +81,6 @@ def _snapshot_post(post: Post) -> dict:
         "title": post.title or "",
         "caption": post.caption or "",
         "content": post.content or "",
-        "detail_text": post.detail_text or "",
         "post_type": post.post_type or "MANUAL",
         "category": post.category or "",
         "is_news": bool(post.is_news),
@@ -274,7 +274,6 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
     else:
         post.caption = payload.caption.strip() if payload.caption and payload.caption.strip() else None
         post.content = payload.content.strip() if payload.content and payload.content.strip() else None
-        post.detail_text = payload.detail_text.strip() if payload.detail_text and payload.detail_text.strip() else None
 
     if final_type != "INSTAGRAM" or is_create:
         if payload.media_url is not None:
@@ -290,7 +289,6 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
     post.event_end = event_end
     post.location = location
     post.reminders = reminders
-    post.reminder_minutes_before = reminders[0] if reminders else None
 
 
 @router.get(
@@ -344,7 +342,6 @@ def _normalize_autocomplete_form(raw: dict[str, Any]) -> dict[str, Any]:
         "title": str(raw.get("title") or "").strip(),
         "caption": str(raw.get("caption") or "").strip(),
         "content": str(raw.get("content") or "").strip(),
-        "detail_text": str(raw.get("detail_text") if "detail_text" in raw else (raw.get("detailText") or "")).strip(),
         "location": str(raw.get("location") or "").strip(),
         "event_start": str(
             raw.get("event_start") if "event_start" in raw else (raw.get("eventStart") or "")
@@ -449,8 +446,6 @@ async def autocomplete_publication_ai(
             "title",
             "caption",
             "content",
-            "detail_text",
-            "detailText",
             "location",
             "event_start",
             "eventStart",
@@ -626,7 +621,6 @@ def _merge_update_into_write(post: Post, patch: PublicationUpdate) -> tuple[Publ
         notify_groups=patch.notify_groups if "notify_groups" in provided and patch.notify_groups is not None else list(post.notify_groups or []),
         caption=patch.caption if "caption" in provided else post.caption,
         content=patch.content if "content" in provided else post.content,
-        detail_text=patch.detail_text if "detail_text" in provided else post.detail_text,
         category=patch.category if "category" in provided else post.category,
         is_pinned=patch.is_pinned if "is_pinned" in provided and patch.is_pinned is not None else bool(post.is_pinned),
         expires_at=patch.expires_at if "expires_at" in provided else post.expires_at,
@@ -857,3 +851,16 @@ def mark_publication_viewed(
     record_post_view(db, publication_id, current_user.id)
     db.refresh(post)
     return PublicationResponse.from_orm_post(post)
+
+
+@router.post(
+    "/sync-instagram",
+    status_code=status.HTTP_200_OK,
+    summary="Sincronizar publicaciones de Instagram manualmente",
+)
+async def sync_instagram_publications(
+    db: Session = Depends(get_db),
+    editor: User = Depends(require_permission("publicaciones")),
+) -> dict[str, Any]:
+    """Ejecuta la sincronizacion manual de publicaciones de Instagram (@upalemana)."""
+    return await instagram_service.sync_instagram(db, author_id=editor.id)

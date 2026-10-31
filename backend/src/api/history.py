@@ -14,7 +14,6 @@ router = APIRouter(prefix="/api/history", tags=["History"])
 
 NUMERIC_TARGETS = {AUDIT_TARGET_POST}
 KEYED_TARGETS = {AUDIT_TARGET_GROUP, AUDIT_TARGET_ROLE}
-POST_TARGET_TYPES = (AUDIT_TARGET_POST, "event")
 
 
 class HistoryEntry(BaseModel):
@@ -72,9 +71,7 @@ def get_module_history(
     admin: User = Depends(require_permission("historial")),
 ) -> list[HistoryEntry]:
     query = db.query(AdminAuditLog, User).join(User, User.id == AdminAuditLog.admin_id)
-    if entity_type == AUDIT_TARGET_POST:
-        query = query.filter(AdminAuditLog.target_type.in_(POST_TARGET_TYPES))
-    elif entity_type in KEYED_TARGETS:
+    if entity_type in NUMERIC_TARGETS or entity_type in KEYED_TARGETS:
         query = query.filter(AdminAuditLog.target_type == entity_type)
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de entidad no válido.")
@@ -100,7 +97,7 @@ def get_history(
         if not key.isdigit():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El identificador debe ser numérico.")
         query = query.filter(
-            AdminAuditLog.target_type.in_(POST_TARGET_TYPES),
+            AdminAuditLog.target_type == entity_type,
             AdminAuditLog.target_id == int(key),
         )
     elif entity_type in KEYED_TARGETS:

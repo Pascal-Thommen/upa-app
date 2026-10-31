@@ -1,4 +1,8 @@
-from sqlalchemy import create_engine
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from .config import settings
@@ -24,44 +28,35 @@ def get_db():
         db.close()
 
 
-# Columnas adicionales que create_all() no agrega en tablas ya creadas: (tabla, columna, tipo SQL).
-# Expresiones compatibles tanto con SQLite como con PostgreSQL (ver migraciones Alembic 004 y 005).
-_COLUMN_UPGRADES: tuple[tuple[str, str, str], ...] = (
-    ("users", "classroom_deadlines_cache", "JSON"),
-    ("users", "classroom_synced_at", "TIMESTAMP"),
-    ("posts", "category", "VARCHAR(50)"),
-    ("posts", "published_at", "TIMESTAMP"),
-    ("posts", "reminders", "JSON"),
-    ("posts", "notify_groups", "JSON"),
-    ("posts", "event_notify_groups", "JSON"),
-    ("posts", "detail_text", "TEXT"),
-    ("posts", "link_url", "TEXT"),
-    ("posts", "link_label", "VARCHAR(100)"),
-    ("posts", "is_edited", "BOOLEAN NOT NULL DEFAULT FALSE"),
-    ("posts", "is_ai_generated", "BOOLEAN NOT NULL DEFAULT FALSE"),
-    ("audience_groups", "google_groups", "JSON"),
-    ("admin_audit_logs", "target_key", "VARCHAR(255)"),
-)
+def get_alembic_config(database_url: str | None = None) -> Config:
+    """Construye la configuracion de Alembic apuntando a backend/alembic."""
+    backend_dir = Path(__file__).resolve().parent.parent
+    alembic_cfg = Config(str(backend_dir / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    if database_url:
+        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+    else:
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    return alembic_cfg
 
 
-def ensure_schema_upgrades(bind_engine=None) -> None:
+def run_alembic_migrations(bind_engine=None) -> None:
     """
-    Agrega de forma idempotente las columnas nuevas en bases de datos preexistentes.
-    Las publicaciones editoriales existentes (distintas de Instagram) quedan marcadas como revisadas.
+    Ejecuta las migraciones formales de Alembic hasta head sobre el motor indicado.
+    Corrige revisiones heredadas en bases de datos preexistentes para garantizar idempotencia.
     """
-    from sqlalchemy import inspect, text
-
     target = bind_engine or engine
     inspector = inspect(target)
-    existing_tables = set(inspector.get_table_names())
-
-    for table, column, ddl_type in _COLUMN_UPGRADES:
-        if table not in existing_tables:
-            continue
-        columns = {col["name"] for col in inspector.get_columns(table)}
-        if column in columns:
-            continue
+    tables = set(inspector.get_table_names())
+    if "alembic_version" in tables:
         with target.begin() as conn:
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
-            if table == "posts" and column == "is_edited" and "post_type" in columns:
-                conn.execute(text("UPDATE posts SET is_edited = TRUE WHERE post_type <> 'INSTAGRAM'"))
+            conn.execute(
+                text(
+                    "UPDATE alembic_version SET version_num = '007_add_ai_generated_flag' WHERE version_num = '007'"
+                )
+            )
+
+    cfg = get_alembic_config(str(target.url))
+    with target.begin() as connection:
+        cfg.attributes["connection"] = connection
+        command.upgrade(cfg, "head")

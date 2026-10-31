@@ -137,13 +137,11 @@ def assign_role(
         else (role_record.name if role_record and role_record.name else email.split("@")[0].replace(".", " ").title())
     )
     permissions = _resolve_permissions(payload.role, payload.permissions)
-    derived_role = _derive_role(permissions)
 
     if role_record:
         _ensure_at_least_one_roles_manager(db, email, role_record, permissions)
         before = _snapshot(role_record)
         role_record.name = name
-        role_record.role = derived_role
         role_record.permissions = permissions
         log_audit(
             db,
@@ -157,7 +155,6 @@ def assign_role(
         role_record = UserRole(
             email=email,
             name=name,
-            role=derived_role,
             permissions=permissions,
             is_primary=False,
         )
@@ -195,12 +192,10 @@ def update_role(
 
     permissions = _resolve_permissions(payload.role, payload.permissions)
     _ensure_at_least_one_roles_manager(db, norm_email, role_record, permissions)
-    derived_role = _derive_role(permissions)
 
     before = _snapshot(role_record)
     if payload.name and payload.name.strip():
         role_record.name = payload.name.strip()
-    role_record.role = derived_role
     role_record.permissions = permissions
 
     log_audit(

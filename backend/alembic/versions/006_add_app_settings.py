@@ -18,14 +18,18 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "app_settings",
-        sa.Column("key", sa.String(length=100), primary_key=True),
-        sa.Column("value", sa.Text(), nullable=False, server_default=""),
-        sa.Column("updated_by", sa.String(length=255), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-    )
+    inspector = sa.inspect(op.get_bind())
+    if "app_settings" not in inspector.get_table_names():
+        op.create_table(
+            "app_settings",
+            sa.Column("key", sa.String(length=100), primary_key=True),
+            sa.Column("value", sa.Text(), nullable=False, server_default=""),
+            sa.Column("updated_by", sa.String(length=255), nullable=True),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        )
 
 
 def downgrade() -> None:
-    op.drop_table("app_settings")
+    inspector = sa.inspect(op.get_bind())
+    if "app_settings" in inspector.get_table_names():
+        op.drop_table("app_settings")

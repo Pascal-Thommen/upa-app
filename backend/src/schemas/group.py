@@ -19,8 +19,6 @@ def clean_email_list(values: list[str]) -> list[str]:
 class AudienceGroupBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     description: str | None = Field(None, max_length=500)
-    badge_class: str | None = Field("bg-slate-100 text-slate-800 border-slate-200", max_length=100)
-    google_group: str | None = Field(None, max_length=255)
     google_groups: list[str] = Field(default_factory=list, description="Correos de grupos de Google Workspace")
     emails: list[str] = Field(default_factory=list, description="Direcciones de correo agregadas manualmente")
 
@@ -62,11 +60,8 @@ class AudienceGroupResponse(BaseModel):
     id: str
     name: str
     description: str | None = None
-    badge_class: str | None = None
-    google_group: str | None = None
     google_groups: list[str] = Field(default_factory=list)
     emails: list[str] = Field(default_factory=list)
-    is_system: bool = False
     created_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

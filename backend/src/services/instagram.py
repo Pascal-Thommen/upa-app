@@ -274,7 +274,6 @@ class InstagramSyncService:
                             send_push_notification=notify_push,
                             notify_groups=push_groups,
                             event_notify_groups=push_groups,
-                            reminder_minutes_before=30,
                             reminders=[30],
                             instagram_id=item.instagram_id,
                             media_type=item.media_type,

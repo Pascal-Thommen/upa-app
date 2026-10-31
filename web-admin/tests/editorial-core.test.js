@@ -73,73 +73,58 @@ test("uploadMedia: el cliente rechaza antes de enviar (sin llamada de red)", asy
   assert.equal(calls, 0);
 });
 
-test("validateNewsValues: titulo obligatorio, limites, categoria y grupos", () => {
-  const base = { title: "Titulo", teaser: "", content: "", category: "", targetGroups: ["ALL"] };
-  assert.deepEqual(Core.validateNewsValues(base), {});
-  assert.ok(Core.validateNewsValues({ ...base, title: "   " }).title);
-  assert.ok(Core.validateNewsValues({ ...base, title: "x".repeat(256) }).title);
-  assert.ok(Core.validateNewsValues({ ...base, teaser: "x".repeat(301) }).teaser);
-  assert.ok(Core.validateNewsValues({ ...base, category: "INVENTADA" }).category);
-  assert.ok(Core.validateNewsValues({ ...base, targetGroups: [] }).targetGroups);
-  assert.ok(Core.validateNewsValues({ ...base, expiresAt: "no-es-fecha" }).expiresAt);
-});
-
-test("buildNewsPayload: Eilmeldung, categoria, imagen y vigencia llegan al payload", () => {
-  const values = {
-    title: "  Cierre del campus  ",
-    teaser: "Por tormenta",
-    content: "Texto completo",
-    category: "ANKUENDIGUNG",
-    targetGroups: ["ALL", " TIE "],
-    urgent: true,
-    pinned: true,
-    imageUrl: "https://api.upa.edu.py/uploads/abc.png",
-    expiresAt: "2030-01-02T10:30",
+test("validatePublicationValues: limites de longitud, categorias y tipos de medio", () => {
+  const base = {
+    title: "Titulo",
+    postType: "MANUAL",
+    isNews: true,
+    isEvent: false,
+    caption: "",
+    content: "",
+    category: "",
+    targetGroups: ["ALL"],
   };
-  const create = Core.buildNewsPayload(values, "create");
-  assert.equal(create.title, "Cierre del campus");
-  assert.equal(create.caption, "Por tormenta");
-  assert.equal(create.content, "Texto completo");
-  assert.equal(create.post_type, "EMERGENCY_BANNER");
-  assert.equal(create.category, "ANKUENDIGUNG");
-  assert.deepEqual(create.target_groups, ["ALL", "TIE"]);
-  assert.equal(create.is_pinned, true);
-  assert.equal(create.media_url, "https://api.upa.edu.py/uploads/abc.png");
-  assert.equal(create.media_type, "IMAGE");
-  assert.equal(create.is_news, true);
-  assert.equal(create.is_event, false);
-  assert.equal(create.expires_at, new Date("2030-01-02T10:30").toISOString());
+  assert.deepEqual(Core.validatePublicationValues(base), {});
+  assert.ok(Core.validatePublicationValues({ ...base, title: "   " }).title);
+  assert.ok(Core.validatePublicationValues({ ...base, title: "x".repeat(256) }).title);
+  assert.ok(Core.validatePublicationValues({ ...base, caption: "x".repeat(301) }).caption);
+  assert.ok(Core.validatePublicationValues({ ...base, category: "INVENTADA" }).category);
+  assert.ok(Core.validatePublicationValues({ ...base, targetGroups: [] }).targetGroups);
 
-  const update = Core.buildNewsPayload({ ...values, urgent: false, imageUrl: "", expiresAt: "" }, "update");
-  assert.equal(update.post_type, "MANUAL");
-  assert.equal(update.media_url, "");
-  assert.equal(update.media_type, "");
-  assert.ok(!("is_news" in update) && !("is_event" in update) && !("expires_at" in update));
+  const pdfPayload = Core.buildPublicationPayload({
+    ...base,
+    imageUrl: "http://localhost/uploads/doc.pdf",
+  });
+  assert.equal(pdfPayload.media_type, "");
 });
 
-test("buildNewsPayload: un PDF no se marca como IMAGE", () => {
-  const payload = Core.buildNewsPayload(
-    { title: "Afiche", targetGroups: ["ALL"], imageUrl: "http://localhost/uploads/doc.pdf" },
-    "create"
-  );
-  assert.equal(payload.media_type, "");
-});
-
-test("newsToFormValues: conserva grupos fuera del catalogo y el tipo urgente", () => {
-  const values = Core.newsToFormValues({
-    title: "A",
+test("publicationToFormValues: reconstruye campos unificados de noticia y evento", () => {
+  const startIso = new Date(2030, 5, 15, 10, 0).toISOString();
+  const endIso = new Date(2030, 5, 15, 12, 30).toISOString();
+  const values = Core.publicationToFormValues({
+    id: 5,
+    title: "Charla",
     caption: "B",
     content: "C",
     category: "MELDUNG",
     target_groups: ["ALL", "Semester_4"],
-    post_type: "EMERGENCY_BANNER",
-    is_pinned: true,
+    post_type: "MANUAL",
+    is_news: true,
+    is_event: true,
+    event_start: startIso,
+    event_end: endIso,
+    location: "Auditorio",
+    has_registration: true,
+    is_pinned: false,
     media_url: "/uploads/x.png",
   });
   assert.deepEqual(values.targetGroups, ["ALL", "Semester_4"]);
-  assert.equal(values.urgent, true);
-  assert.equal(values.teaser, "B");
+  assert.equal(values.caption, "B");
   assert.equal(values.imageUrl, "/uploads/x.png");
+  assert.equal(values.isEvent, true);
+  assert.equal(values.hasRegistration, true);
+  assert.ok(values.eventStart.endsWith("10:00"));
+  assert.ok(values.eventEnd.endsWith("12:30"));
 });
 
 test("fecha y hora locales: ida y vuelta consistente a ISO UTC", () => {
@@ -152,75 +137,16 @@ test("fecha y hora locales: ida y vuelta consistente a ISO UTC", () => {
   assert.equal(Core.localDateTimeToIso("2030-02-31", "10:00"), null);
 });
 
-test("validateEventValues: fecha, inicio, fin posterior y grupos", () => {
-  const base = {
-    title: "Charla",
-    description: "",
-    location: "",
-    date: "2030-06-15",
-    startTime: "10:00",
-    endTime: "12:00",
-    targetGroups: ["ALL"],
-  };
-  assert.deepEqual(Core.validateEventValues(base), {});
-  assert.ok(Core.validateEventValues({ ...base, title: "" }).title);
-  assert.ok(Core.validateEventValues({ ...base, date: "" }).date);
-  assert.ok(Core.validateEventValues({ ...base, startTime: "" }).startTime);
-  assert.ok(Core.validateEventValues({ ...base, endTime: "09:59" }).endTime);
-  assert.deepEqual(Core.validateEventValues({ ...base, endTime: "" }), {});
-  assert.ok(Core.validateEventValues({ ...base, targetGroups: [] }).targetGroups);
-});
-
-test("buildEventPayload: instantes UTC, RSVP, grupos e imagen", () => {
-  const payload = Core.buildEventPayload({
-    title: " Charla IA ",
-    description: "Descripcion",
-    location: "Auditorio",
-    date: "2030-06-15",
-    startTime: "10:00",
-    endTime: "12:00",
-    targetGroups: ["TIE"],
-    rsvp: true,
-    imageUrl: "https://x.test/uploads/a.webp",
-  });
-  assert.equal(payload.title, "Charla IA");
-  assert.equal(payload.event_start, new Date(2030, 5, 15, 10, 0).toISOString());
-  assert.equal(payload.event_end, new Date(2030, 5, 15, 12, 0).toISOString());
-  assert.equal(payload.has_registration, true);
-  assert.deepEqual(payload.target_groups, ["TIE"]);
-  assert.equal(payload.image_url, "https://x.test/uploads/a.webp");
-  assert.equal(payload.media_type, "IMAGE");
-
-  const noEnd = Core.buildEventPayload({ title: "x", date: "2030-06-15", startTime: "10:00", targetGroups: ["ALL"] });
-  assert.ok(!("event_end" in noEnd));
-  assert.equal(noEnd.has_registration, false);
-});
-
-test("eventToFormValues: reconstruye fecha y horas locales del evento", () => {
-  const values = Core.eventToFormValues({
-    title: "Charla",
-    description: "D",
-    location: "L",
-    event_start: new Date(2030, 5, 15, 10, 0).toISOString(),
-    event_end: new Date(2030, 5, 15, 12, 30).toISOString(),
-    target_groups: ["ALL"],
-    has_registration: true,
-    image_url: "",
-  });
-  assert.equal(values.date, "2030-06-15");
-  assert.equal(values.startTime, "10:00");
-  assert.equal(values.endTime, "12:30");
-  assert.equal(values.rsvp, true);
-});
-
-test("renderNewsRows escapa HTML hostil y descarta URLs peligrosas", () => {
-  const html = Core.renderNewsRows([
+test("safeUrl y renderPublicationRows escapan HTML hostil y descartan URLs peligrosas", () => {
+  const html = Core.renderPublicationRows([
     {
       id: 7,
       title: "<script>alert('x')</script>",
       caption: '"><img src=x onerror=alert(1)>',
       category: "MELDUNG",
       post_type: "EMERGENCY_BANNER",
+      is_news: true,
+      is_event: false,
       target_groups: ["<b>ALL</b>"],
       media_url: "javascript:alert(1)",
     },
@@ -229,35 +155,15 @@ test("renderNewsRows escapa HTML hostil y descarta URLs peligrosas", () => {
   assert.ok(!html.includes("<img src=x"), "no debe quedar una etiqueta img inyectada");
   assert.ok(!html.includes("javascript:"), "la URL javascript: no debe renderizarse");
   assert.ok(html.includes("&lt;script&gt;"));
-  assert.ok(html.includes("Eilmeldung"));
-  assert.ok(html.includes('data-id="7"'));
+  assert.ok(html.includes("Aviso urgente"));
+  assert.ok(html.includes('data-pub-id="7"'));
   assert.equal(Core.safeUrl("javascript:alert(1)"), "");
   assert.equal(Core.safeUrl("//evil.test/x.png"), "");
   assert.equal(Core.safeUrl("/uploads/a.png"), "/uploads/a.png");
   assert.equal(Core.safeUrl("https://ok.test/a.png"), "https://ok.test/a.png");
 });
 
-test("renderEventRows y renderParticipantsTable muestran datos reales y estados vacios", () => {
-  const events = Core.renderEventRows(
-    [
-      {
-        id: 3,
-        title: "Charla",
-        location: "Auditorio",
-        event_start: "2030-06-15T13:00:00Z",
-        has_registration: true,
-        registered_count: 12,
-        target_groups: ["ALL"],
-      },
-    ],
-    { timeZone: "UTC" }
-  );
-  assert.ok(events.includes("RSVP activo"));
-  assert.ok(events.includes("12"));
-  assert.ok(events.includes("15/06/2030"));
-  assert.ok(events.includes('data-action="participants-event"'));
-  assert.ok(Core.renderEventRows([]).includes("No hay eventos"));
-
+test("renderParticipantsTable muestra datos reales y estados vacios", () => {
   const table = Core.renderParticipantsTable(
     {
       title: "Charla",
@@ -308,7 +214,7 @@ test("timeout: un servidor que no responde cancela la solicitud con ApiError tim
     const client = Core.createClient({ baseUrl: `http://127.0.0.1:${port}`, getToken: () => "t", timeoutMs: 200 });
     const started = Date.now();
     await assert.rejects(
-      () => client.listNews(),
+      () => client.listPublications(),
       (err) => err instanceof Core.ApiError && err.kind === "timeout" && /demasiado/.test(err.message)
     );
     assert.ok(Date.now() - started < 3000, "el timeout debe disparar rapido");
@@ -335,7 +241,7 @@ test("red: un servidor inaccesible produce ApiError network", async () => {
   await new Promise((resolve) => probe.close(resolve)); // el puerto queda cerrado
   const client = Core.createClient({ baseUrl: `http://127.0.0.1:${port}`, getToken: () => "t", timeoutMs: 2000 });
   await assert.rejects(
-    () => client.listEvents(),
+    () => client.listPublications(),
     (err) => err instanceof Core.ApiError && err.kind === "network" && /red/.test(err.message)
   );
 });
@@ -352,7 +258,6 @@ test("modelo unificado: validatePublicationValues y buildPublicationPayload para
     notifyGroups: ["TIE"],
     caption: "Resumen",
     content: "Contenido principal",
-    detailText: "Detalle exclusivo app",
     category: "VERANSTALTUNG",
     pinned: true,
     expiresAt: "2030-08-20T18:00",
@@ -372,7 +277,6 @@ test("modelo unificado: validatePublicationValues y buildPublicationPayload para
   assert.equal(payload.is_news, true);
   assert.equal(payload.is_event, true);
   assert.equal(payload.has_registration, true);
-  assert.equal(payload.detail_text, "Detalle exclusivo app");
   assert.equal(payload.link_label, "Inscribirse");
   assert.equal(payload.link_url, "https://upa.edu.py/jornada");
   assert.deepEqual(payload.reminders, [15, 60]);

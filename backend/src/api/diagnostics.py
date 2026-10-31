@@ -88,7 +88,6 @@ def get_system_diagnostics(
         "endpoints": [
             "/api/classroom/courses",
             "/api/classroom/deadlines",
-            "/api/classroom/sync",
         ],
         "auto_refresh_tokens": True,
         "status": "operational" if oauth_configured else "not_configured",

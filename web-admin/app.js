@@ -37,11 +37,6 @@ const DOM_ELEMENTS = {
   deadlinesCount: document.getElementById("deadlines-count"),
   feedContainer: document.getElementById("feed-container"),
   feedCountBadge: document.getElementById("feed-count-badge"),
-  calendarGrid: document.getElementById("calendar-grid"),
-  calMonthTitle: document.getElementById("cal-month-title"),
-  calPrev: document.getElementById("cal-prev"),
-  calNext: document.getElementById("cal-next"),
-  selectedDateLabel: document.getElementById("selected-date-label"),
   classroomPermissionAlert: document.getElementById("classroom-permission-alert"),
   btnOpenClassroomModal: document.getElementById("btn-open-classroom-modal"),
   modalClassroom: document.getElementById("modal-classroom"),
@@ -65,12 +60,8 @@ const state = {
   aiLoaded: false,
   aiConfig: null,
   diagnostics: null,
-  currentMonth: new Date().getMonth(),
-  currentYear: new Date().getFullYear(),
-  selectedDate: null,
   groupEditor: {
     editingId: "",
-    isSystem: false,
     workspaceOptions: [],
     selectedWorkspaceGroups: [],
     emails: [],
@@ -487,59 +478,11 @@ async function loadClassroomDeadlines() {
       DOM_ELEMENTS.deadlinesCount.textContent = `${state.deadlines.length}`;
     }
 
-    renderCalendar();
     renderDeadlinesList(state.deadlines);
   } catch (error) {
     console.error("Fallo al obtener plazos:", error);
     if (DOM_ELEMENTS.deadlinesCount) DOM_ELEMENTS.deadlinesCount.textContent = "Error";
   }
-}
-
-function renderCalendar() {
-  const grid = DOM_ELEMENTS.calendarGrid;
-  if (!grid || !DOM_ELEMENTS.calMonthTitle) return;
-
-  const monthNames = [
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-  ];
-
-  DOM_ELEMENTS.calMonthTitle.textContent = `${monthNames[state.currentMonth]} ${state.currentYear}`;
-
-  const dayHeaders = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
-  let html = dayHeaders.map((dh) => `<div class="cal-day-header">${dh}</div>`).join("");
-
-  const firstDayIndex = (new Date(state.currentYear, state.currentMonth, 1).getDay() + 6) % 7;
-  const daysInMonth = new Date(state.currentYear, state.currentMonth + 1, 0).getDate();
-
-  for (let i = 0; i < firstDayIndex; i++) {
-    html += `<div class="cal-day is-empty"></div>`;
-  }
-
-  const deadlineDaysMap = {};
-  state.deadlines.forEach((d) => {
-    const formatted = d.due_date_formatted || "";
-    const dateKey = formatted.split(" ")[0];
-    if (dateKey) {
-      deadlineDaysMap[dateKey] = (deadlineDaysMap[dateKey] || 0) + 1;
-    }
-  });
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    const mm = String(state.currentMonth + 1).padStart(2, "0");
-    const dd = String(day).padStart(2, "0");
-    const dateKey = `${state.currentYear}-${mm}-${dd}`;
-    const hasDeadline = Boolean(deadlineDaysMap[dateKey]);
-    const isSelected = state.selectedDate === dateKey;
-
-    const classes = ["cal-day", hasDeadline ? "has-deadline" : "", isSelected ? "is-selected" : ""]
-      .filter(Boolean)
-      .join(" ");
-
-    html += `<div class="${classes}" data-date="${dateKey}">${day}</div>`;
-  }
-
-  grid.innerHTML = html;
 }
 
 function formatDeadlineBadge(item) {
@@ -1178,14 +1121,11 @@ async function openGroupEditor(group) {
 
   const editing = Boolean(group && group.id);
   state.groupEditor.editingId = editing ? group.id : "";
-  state.groupEditor.isSystem = Boolean(group && group.is_system);
 
   const wsList =
     group && Array.isArray(group.google_groups) && group.google_groups.length > 0
       ? group.google_groups.slice()
-      : group && group.google_group
-        ? [group.google_group]
-        : [];
+      : [];
   state.groupEditor.selectedWorkspaceGroups = wsList;
   state.groupEditor.emails = group && Array.isArray(group.emails) ? group.emails.slice() : [];
 
@@ -1255,12 +1195,7 @@ async function deleteGroupById(id, groupName) {
 }
 
 function summarizeGroupMembers(group) {
-  const ws =
-    Array.isArray(group.google_groups) && group.google_groups.length > 0
-      ? group.google_groups
-      : group.google_group
-        ? [group.google_group]
-        : [];
+  const ws = Array.isArray(group.google_groups) ? group.google_groups : [];
   const emails = Array.isArray(group.emails) ? group.emails : [];
   const parts = [];
   if (ws.length > 0) parts.push(`${ws.length} ${ws.length === 1 ? "grupo Workspace" : "grupos Workspace"}`);
@@ -1721,37 +1656,24 @@ function resolveRoute(rawPath) {
   if (!path) path = "/dashboard";
   const lower = path.toLowerCase();
 
-  if (lower === "/dashboard/publicaciones" || lower === "/dashboard/noticias" || lower === "/dashboard/eventos") {
+  if (lower === "/dashboard/publicaciones") {
     return {
       name: "publicaciones",
       path: "/dashboard/publicaciones",
-      isRedirect: lower !== "/dashboard/publicaciones",
+      isRedirect: false,
     };
   }
-  if (lower === "/dashboard/grupos" || lower === "/dashboard/groups") {
-    return { name: "grupos", path: "/dashboard/grupos", isRedirect: lower !== "/dashboard/grupos" };
+  if (lower === "/dashboard/grupos") {
+    return { name: "grupos", path: "/dashboard/grupos", isRedirect: false };
   }
-  if (lower === "/dashboard/roles" || lower === "/dashboard/admins") {
-    return { name: "roles", path: "/dashboard/roles", isRedirect: lower !== "/dashboard/roles" };
+  if (lower === "/dashboard/roles") {
+    return { name: "roles", path: "/dashboard/roles", isRedirect: false };
   }
-  if (
-    lower === "/dashboard/apis" ||
-    lower === "/dashboard/estudiantes" ||
-    lower === "/dashboard/students" ||
-    lower === "/dashboard/diagnostico" ||
-    lower === "/dashboard/diagnostic" ||
-    lower === "/dashboard/control"
-  ) {
-    return { name: "apis", path: "/dashboard/apis", isRedirect: lower !== "/dashboard/apis" };
+  if (lower === "/dashboard/apis") {
+    return { name: "apis", path: "/dashboard/apis", isRedirect: false };
   }
-  if (
-    lower === "/dashboard/ia" ||
-    lower === "/dashboard/ai" ||
-    lower === "/dashboard/control-ia" ||
-    lower === "/dashboard/control-de-ia" ||
-    lower === "/dashboard/inteligencia-artificial"
-  ) {
-    return { name: "ia", path: "/dashboard/ia", isRedirect: lower !== "/dashboard/ia" };
+  if (lower === "/dashboard/ia") {
+    return { name: "ia", path: "/dashboard/ia", isRedirect: false };
   }
 
   return { name: "publicaciones", path: "/dashboard/publicaciones", isRedirect: true };
@@ -1866,42 +1788,27 @@ function applyRoute(routeName, options = {}) {
     const v = document.getElementById(c.viewId);
     if (v) v.classList.add("hidden");
   });
-  const legacyDiag = document.getElementById("view-diagnostic");
-  if (legacyDiag) legacyDiag.classList.add("hidden");
 
   const activeView = document.getElementById(config.viewId);
   if (activeView) activeView.classList.remove("hidden");
 
-  const edBtn = document.getElementById("mode-btn-editorial");
-  const stBtn = document.getElementById("mode-btn-student");
-
   if (effectiveRoute === "publicaciones") {
-    if (edBtn) edBtn.classList.add("is-active");
-    if (stBtn) stBtn.classList.remove("is-active");
     if (!options.skipDataLoad && window.UpaCockpit && typeof window.UpaCockpit.loadPanelData === "function") {
       window.UpaCockpit.loadPanelData();
     }
   } else if (effectiveRoute === "apis") {
-    if (stBtn) stBtn.classList.add("is-active");
-    if (edBtn) edBtn.classList.remove("is-active");
     if (!options.skipDataLoad) {
       updateJsonView();
     }
   } else if (effectiveRoute === "grupos") {
-    if (edBtn) edBtn.classList.remove("is-active");
-    if (stBtn) stBtn.classList.remove("is-active");
     if (!options.skipDataLoad) {
       renderGroupsModule();
     }
   } else if (effectiveRoute === "roles") {
-    if (edBtn) edBtn.classList.remove("is-active");
-    if (stBtn) stBtn.classList.remove("is-active");
     if (!options.skipDataLoad) {
       renderAdminsModule();
     }
   } else if (effectiveRoute === "ia") {
-    if (edBtn) edBtn.classList.remove("is-active");
-    if (stBtn) stBtn.classList.remove("is-active");
     if (!options.skipDataLoad) {
       renderAiModule();
     }
@@ -1926,8 +1833,6 @@ const UpaRouter = {
     ROLES: "/dashboard/roles",
     APIS: "/dashboard/apis",
     IA: "/dashboard/ia",
-    DIAGNOSTICO: "/dashboard/apis",
-    ESTUDIANTES: "/dashboard/apis",
   },
   resolveRoute,
   applyRoute,
@@ -2105,7 +2010,6 @@ function setupGroupsFormHandlers() {
         name,
         description,
         google_groups: wsGroups,
-        google_group: wsGroups[0] || "",
         emails: state.groupEditor.emails.slice(),
       };
 
@@ -2214,7 +2118,6 @@ function setupSidebarNavigation() {
   const btnPubs = document.getElementById("nav-mod-publications");
   const btnGroups = document.getElementById("nav-mod-groups");
   const btnAdmins = document.getElementById("nav-mod-admins");
-  const btnDiag = document.getElementById("nav-mod-diagnostic");
   const btnStudents = document.getElementById("nav-mod-students");
   const btnAi = document.getElementById("nav-mod-ai");
   const headerLogoLink = document.getElementById("header-logo-link");
@@ -2222,7 +2125,6 @@ function setupSidebarNavigation() {
   if (btnPubs) btnPubs.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.PUBLICACIONES));
   if (btnGroups) btnGroups.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.GRUPOS));
   if (btnAdmins) btnAdmins.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.ROLES));
-  if (btnDiag) btnDiag.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.APIS));
   if (btnStudents) btnStudents.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.APIS));
   if (btnAi) btnAi.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.IA));
   if (headerLogoLink) {
@@ -2230,14 +2132,6 @@ function setupSidebarNavigation() {
       e.preventDefault();
       UpaRouter.navigate(UpaRouter.ROUTES.PUBLICACIONES);
     });
-  }
-
-  const modeBtnStudent = document.getElementById("mode-btn-student");
-  if (modeBtnStudent) modeBtnStudent.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.APIS));
-
-  const modeBtnEditorial = document.getElementById("mode-btn-editorial");
-  if (modeBtnEditorial) {
-    modeBtnEditorial.addEventListener("click", () => UpaRouter.navigate(UpaRouter.ROUTES.PUBLICACIONES));
   }
 
   UpaRouter.init();

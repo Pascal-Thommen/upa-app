@@ -125,22 +125,12 @@ def create_group(
             detail=f"El identificador de grupo '{target_id}' ya existe.",
         )
 
-    google_groups = list(payload.google_groups)
-    legacy_single = payload.google_group.strip() if payload.google_group else None
-    if not google_groups and legacy_single and EMAIL_PATTERN.match(legacy_single.lower()):
-        google_groups = [legacy_single.lower()]
-    if not legacy_single and google_groups:
-        legacy_single = google_groups[0]
-
     new_group = AudienceGroup(
         id=target_id,
         name=payload.name.strip(),
         description=payload.description.strip() if payload.description else None,
-        badge_class=payload.badge_class or "bg-slate-100 text-slate-800 border-slate-200",
-        google_group=legacy_single,
-        google_groups=google_groups,
+        google_groups=list(payload.google_groups),
         emails=payload.emails,
-        is_system=False,
     )
     db.add(new_group)
     log_audit(
@@ -182,7 +172,6 @@ def update_group(
     group.name = clean_name
     group.description = payload.description.strip() if payload.description and payload.description.strip() else None
     group.google_groups = payload.google_groups
-    group.google_group = payload.google_groups[0] if payload.google_groups else None
     group.emails = payload.emails
 
     changes = changed_fields(before, _snapshot(group))

@@ -74,21 +74,18 @@ def setup_database(monkeypatch):
                 id=1,
                 email=ADMIN_EMAIL,
                 name="Pascal Thommen",
-                role="admin",
                 permissions=["publicaciones", "grupos", "roles", "apis", "historial"],
                 is_primary=True,
             ),
             AudienceGroup(
                 id="estudiantes",
                 name="Estudiantes",
-                google_group="estudiantes@upa.edu.py",
                 google_groups=["estudiantes@upa.edu.py"],
                 emails=[],
             ),
             AudienceGroup(
                 id="docentes",
                 name="Docentes",
-                google_group="docentes@upa.edu.py",
                 google_groups=["docentes@upa.edu.py"],
                 emails=[],
             ),
@@ -340,11 +337,9 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert ev1.status == "ai"
         assert ev1.title == "Charla Magistral de IA Aplicada"
         assert ev1.location == "Aula Magna UPA"
-        assert ev1.event_location == "Aula Magna UPA"
         assert ev1.has_registration is True
         assert ev1.target_groups == ["estudiantes"]
         assert ev1.send_push_notification is True
-        assert ev1.notify_push is True
         assert ev1.notify_groups == ["estudiantes"]
         assert ev1.event_notify_groups == ["estudiantes"]
         assert ev1.event_start.replace(tzinfo=UTC) == datetime(2026, 11, 20, 18, 0, tzinfo=UTC)
@@ -357,7 +352,6 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert ev2.is_ai_generated is True
         assert ev2.event_start.replace(tzinfo=UTC) == datetime(2026, 11, 25, 14, 0, tzinfo=UTC)
         assert ev2.event_end is None
-        assert ev2.event_end_date is None
         assert ev2.target_groups == ["ALL"]
         assert ev2.send_push_notification is False
         assert ev2.notify_groups == []

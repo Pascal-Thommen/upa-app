@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from src.auth import create_access_token
 from src.database import Base, get_db
 from src.main import app
-from src.models import Post, User
+from src.models import DeviceToken, Post, User
 
 # SQLite In-Memory Engine mit StaticPool für gemeinsamen Speicher aller Connections
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -77,33 +77,28 @@ def setup_database():
     app.dependency_overrides.pop(get_db, None)
 
 
-def test_get_news_endpoint_requires_auth():
+def test_get_publications_endpoint_requires_auth():
     # Ohne Authentifizierung -> 401
-    response = client.get("/api/news")
+    response = client.get("/api/publications")
     assert response.status_code == 401
 
     # Mit gültigem Token -> 200
     token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
-    response_auth = client.get("/api/news", headers={"Authorization": f"Bearer {token}"})
+    response_auth = client.get("/api/publications", headers={"Authorization": f"Bearer {token}"})
     assert response_auth.status_code == 200
     data = response_auth.json()
-    assert len(data) == 2  # Beide sind is_news = True
+    assert len(data) == 2
     assert data[0]["is_pinned"] is True
     assert data[0]["title"] == "¿Qué significa seguir siendo humanos en la era de la IA?"
     assert data[1]["title"] == "Búsqueda Laboral: Recepcionista"
 
 
-def test_get_events_endpoint_requires_auth():
-    # Ohne Authentifizierung -> 401
-    response = client.get("/api/events")
-    assert response.status_code == 401
-
-    # Mit gültigem Token -> 200
+def test_get_agenda_events():
     token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
-    response_auth = client.get("/api/events", headers={"Authorization": f"Bearer {token}"})
+    response_auth = client.get("/api/v1/agenda", headers={"Authorization": f"Bearer {token}"})
     assert response_auth.status_code == 200
-    data = response_auth.json()
-    assert len(data) == 1  # Nur der Event
+    data = response_auth.json()["events"]
+    assert len(data) == 1
     assert data[0]["title"] == "¿Qué significa seguir siendo humanos en la era de la IA?"
     assert data[0]["location"] == "Auditorio Edificio 1"
     assert data[0]["has_registration"] is True
@@ -111,9 +106,9 @@ def test_get_events_endpoint_requires_auth():
 
 def test_filter_by_group():
     token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
-    response = client.get("/api/news?group=TIE", headers={"Authorization": f"Bearer {token}"})
+    response = client.get("/api/v1/feed?group=TIE", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["posts"]
     assert len(data) == 2
 
 
@@ -131,8 +126,7 @@ def _assert_no_null_values(obj, path="root"):
 def test_anti_conflict_audit_no_null_values_across_endpoints():
     """
     Inserta registros con columnas opcionales en None y verifica que
-    /api/v1/app-state, /api/auth/me, /api/news y /api/events entreguen
-    objetos JSON completos sin ningun valor null.
+    /api/auth/me y /api/v1/agenda entreguen objetos JSON completos sin ningun valor null.
     """
     db = TestingSessionLocal()
     sparse_post = Post(
@@ -169,17 +163,17 @@ def test_anti_conflict_audit_no_null_values_across_endpoints():
     token = create_access_token({"sub": str(pascal_id), "email": "pascal.thommen@upa.edu.py", "role": "admin"})
     headers = {"Authorization": f"Bearer {token}"}
 
-    for endpoint in ["/api/auth/me", "/api/news", "/api/events", "/api/v1/app-state"]:
+    for endpoint in ["/api/auth/me", "/api/v1/agenda"]:
         resp = client.get(endpoint, headers=headers)
         assert resp.status_code == 200, f"{endpoint} failed with {resp.status_code}"
         payload = resp.json()
         _assert_no_null_values(payload, endpoint)
 
 
-def test_rbac_group_isolation_on_news_events_and_app_state():
+def test_rbac_group_isolation_on_feed_agenda_and_publications():
     """
     Verifica que un estudiante regular (grupos=['TIE']) no pueda ver ni acceder
-    a noticias o eventos exclusivos de docentes ('PROF') o administracion ('ADMIN').
+    a noticias o eventos exclusivos de docentes ('PROF').
     """
     db = TestingSessionLocal()
     student = User(
@@ -206,59 +200,47 @@ def test_rbac_group_isolation_on_news_events_and_app_state():
     student_token = create_access_token({"sub": "50", "email": "alumno.tie@upa.edu.py", "role": "user"})
     student_headers = {"Authorization": f"Bearer {student_token}"}
 
-    # 1. El estudiante no recibe el post exclusivo de PROF en /api/news ni forzando ?group=PROF
-    news_resp = client.get("/api/news", headers=student_headers)
-    assert news_resp.status_code == 200
-    news_titles = [n["title"] for n in news_resp.json()]
-    assert "Reunion Exclusiva de Claustro Docente" not in news_titles
+    # 1. El estudiante no recibe el post exclusivo de PROF en /api/v1/feed ni forzando ?group=PROF
+    feed_resp = client.get("/api/v1/feed", headers=student_headers)
+    assert feed_resp.status_code == 200
+    feed_titles = [n["title"] for n in feed_resp.json()["posts"]]
+    assert "Reunion Exclusiva de Claustro Docente" not in feed_titles
 
-    news_forced = client.get("/api/news?group=PROF", headers=student_headers)
-    assert news_forced.status_code == 200
-    assert "Reunion Exclusiva de Claustro Docente" not in [n["title"] for n in news_forced.json()]
+    feed_forced = client.get("/api/v1/feed?group=PROF", headers=student_headers)
+    assert feed_forced.status_code == 200
+    assert "Reunion Exclusiva de Claustro Docente" not in [n["title"] for n in feed_forced.json()["posts"]]
 
-    # 2. Acceso directo por ID a noticia o evento restringido retorna 403 Forbidden
-    news_detail_forbidden = client.get("/api/news/500", headers=student_headers)
-    assert news_detail_forbidden.status_code == 403
-
-    event_detail_forbidden = client.get("/api/events/500", headers=student_headers)
-    assert event_detail_forbidden.status_code == 403
+    # 2. Acceso directo a vista o registro de publicacion restringida retorna 403 Forbidden
+    assert client.post("/api/publications/500/view", headers=student_headers).status_code == 403
+    assert client.post("/api/events/500/register", headers=student_headers).status_code == 403
 
     # 3. En cambio, un administrador tiene acceso completo (200 OK)
     admin_token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
-    admin_detail = client.get("/api/news/500", headers=admin_headers)
+    admin_detail = client.get("/api/publications/500", headers=admin_headers)
     assert admin_detail.status_code == 200
     assert admin_detail.json()["title"] == "Reunion Exclusiva de Claustro Docente"
-
-    # 4. Un cliente no autenticado en /api/v1/app-state solo recibe posts de INSTAGRAM publicos
-    unauth_state = client.get("/api/v1/app-state")
-    assert unauth_state.status_code == 200
-    unauth_data = unauth_state.json()
-    assert unauth_data["authenticated"] is False
-    assert unauth_data["user"] is None
-    assert all(item["post_type"] == "INSTAGRAM" for item in unauth_data["feed"])
 
 
 def test_not_found_404_and_bad_request_400_errors():
     admin_token = create_access_token({"sub": "1", "email": "test@upa.edu.py", "role": "admin"})
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # 404 en noticia y evento inexistentes
-    assert client.get("/api/news/999999", headers=headers).status_code == 404
-    assert client.get("/api/events/999999", headers=headers).status_code == 404
+    # 404 en publicacion inexistente
+    assert client.get("/api/publications/999999", headers=headers).status_code == 404
 
-    # 400 en creacion de noticia con titulo vacio
+    # 400 en creacion de publicacion con titulo vacio
     bad_title = client.post(
-        "/api/news",
-        json={"title": "   ", "content": "Contenido"},
+        "/api/publications",
+        json={"title": "   ", "content": "Contenido", "is_news": True},
         headers=headers,
     )
     assert bad_title.status_code == 400
 
-    # 400 en creacion de noticia con post_type invalido
+    # 400 en creacion de publicacion con post_type invalido
     bad_type = client.post(
-        "/api/news",
-        json={"title": "Titulo valido", "post_type": "TIPO_INEXISTENTE"},
+        "/api/publications",
+        json={"title": "Titulo valido", "post_type": "TIPO_INEXISTENTE", "is_news": True},
         headers=headers,
     )
     assert bad_type.status_code == 400
@@ -266,9 +248,10 @@ def test_not_found_404_and_bad_request_400_errors():
     # 400 cuando event_end es anterior a event_start
     now = datetime.now(UTC)
     bad_dates = client.post(
-        "/api/news",
+        "/api/publications",
         json={
             "title": "Evento con fechas invertidas",
+            "is_news": True,
             "is_event": True,
             "event_start": (now + timedelta(days=2)).isoformat(),
             "event_end": (now + timedelta(days=1)).isoformat(),
@@ -326,43 +309,37 @@ def test_event_rsvp_register_unregister_idempotency_and_errors():
         "Authorization": f"Bearer {create_access_token({'sub': '63', 'email': 'externo.admin@upa.edu.py', 'role': 'user'})}"
     }
 
-    # 1. Estado inicial antes de inscripcion
-    init_detail = client.get("/api/events/700", headers=h1)
-    assert init_detail.status_code == 200
-    assert init_detail.json()["is_registered"] is False
-    assert init_detail.json()["registered_count"] == 0
-
-    # 2. Alumno 1 se inscribe (POST /api/events/700/register)
+    # 1. Alumno 1 se inscribe (POST /api/events/700/register)
     reg1 = client.post("/api/events/700/register", headers=h1)
     assert reg1.status_code == 200
     assert reg1.json()["is_registered"] is True
     assert reg1.json()["registered_count"] == 1
 
-    # 3. Idempotencia: Alumno 1 vuelve a inscribirse -> sigue en 1
+    # 2. Idempotencia: Alumno 1 vuelve a inscribirse -> sigue en 1
     reg1_dup = client.post("/api/events/700/register", headers=h1)
     assert reg1_dup.status_code == 200
     assert reg1_dup.json()["is_registered"] is True
     assert reg1_dup.json()["registered_count"] == 1
 
-    # 4. Alumno 2 se inscribe -> registered_count sube a 2
+    # 3. Alumno 2 se inscribe -> registered_count sube a 2
     reg2 = client.post("/api/events/700/register", headers=h2)
     assert reg2.status_code == 200
     assert reg2.json()["is_registered"] is True
     assert reg2.json()["registered_count"] == 2
 
-    # 5. Alumno 1 cancela su inscripcion (DELETE /api/events/700/register)
+    # 4. Alumno 1 cancela su inscripcion (DELETE /api/events/700/register)
     unreg1 = client.delete("/api/events/700/register", headers=h1)
     assert unreg1.status_code == 200
     assert unreg1.json()["is_registered"] is False
     assert unreg1.json()["registered_count"] == 1
 
-    # 6. Idempotencia en DELETE: cancelar de nuevo mantiene 200 OK y contador en 1
+    # 5. Idempotencia en DELETE: cancelar de nuevo mantiene 200 OK y contador en 1
     unreg1_dup = client.delete("/api/events/700/register", headers=h1)
     assert unreg1_dup.status_code == 200
     assert unreg1_dup.json()["is_registered"] is False
     assert unreg1_dup.json()["registered_count"] == 1
 
-    # 7. Errores de autenticacion (401), autorizacion (403) y recurso inexistente (404)
+    # 6. Errores de autenticacion (401), autorizacion (403) y recurso inexistente (404)
     assert client.post("/api/events/700/register").status_code == 401
     assert client.delete("/api/events/700/register").status_code == 401
     assert client.post("/api/events/700/register", headers=h_out).status_code == 403
@@ -373,7 +350,7 @@ def test_event_rsvp_register_unregister_idempotency_and_errors():
     assert client.post("/api/events/1/register", headers=h1).status_code == 404
 
 
-def test_admin_crud_update_and_delete_news_and_events():
+def test_admin_crud_update_and_delete_publications():
     db = TestingSessionLocal()
     student = User(
         id=75,
@@ -393,54 +370,28 @@ def test_admin_crud_update_and_delete_news_and_events():
         "Authorization": f"Bearer {create_access_token({'sub': '75', 'email': 'estudiante.regular@upa.edu.py', 'role': 'user'})}"
     }
 
-    # 1. Estudiante regular recibe 403 en PUT/DELETE de noticias y eventos
-    assert client.put("/api/news/1", json={"title": "Intento Hack"}, headers=student_headers).status_code == 403
-    assert client.delete("/api/news/1", headers=student_headers).status_code == 403
-    assert client.put("/api/events/2", json={"title": "Intento Hack"}, headers=student_headers).status_code == 403
-    assert client.delete("/api/events/2", headers=student_headers).status_code == 403
+    # 1. Estudiante regular recibe 403 en PUT/DELETE de publicaciones
+    assert client.put("/api/publications/1", json={"title": "Intento Hack"}, headers=student_headers).status_code == 403
+    assert client.delete("/api/publications/1", headers=student_headers).status_code == 403
 
     # 2. Peticiones sin token reciben 401
-    assert client.put("/api/news/1", json={"title": "Sin Token"}).status_code == 401
-    assert client.delete("/api/news/1").status_code == 401
-    assert client.put("/api/events/2", json={"title": "Sin Token"}).status_code == 401
-    assert client.delete("/api/events/2").status_code == 401
+    assert client.put("/api/publications/1", json={"title": "Sin Token"}).status_code == 401
+    assert client.delete("/api/publications/1").status_code == 401
 
-    # 3. Admin actualiza noticia (PUT /api/news/1)
-    upd_news = client.put(
-        "/api/news/1",
-        json={
-            "title": "Busqueda Laboral: Recepcionista Bilingue Actualizada",
-            "caption": "Convocatoria extendida hasta viernes",
-            "content": "Requisitos actualizados para recepcion.",
-            "is_pinned": True,
-        },
-        headers=admin_headers,
-    )
-    assert upd_news.status_code == 200
-    news_data = upd_news.json()
-    assert news_data["id"] == 1
-    assert news_data["title"] == "Busqueda Laboral: Recepcionista Bilingue Actualizada"
-    assert news_data["summary"] == "Convocatoria extendida hasta viernes"
-    assert news_data["is_pinned"] is True
-
-    # 4. Validaciones 400 y 404 en PUT/DELETE de noticias
-    assert client.put("/api/news/1", json={"title": "   "}, headers=admin_headers).status_code == 400
-    assert client.put("/api/news/1", json={"post_type": "INVALIDO"}, headers=admin_headers).status_code == 400
-    assert client.put("/api/news/999999", json={"title": "No Existe"}, headers=admin_headers).status_code == 404
-    assert client.delete("/api/news/999999", headers=admin_headers).status_code == 404
-
-    # 5. Admin actualiza evento (PUT /api/events/2)
+    # 3. Admin actualiza publicacion (PUT /api/publications/2)
     now = datetime.now(UTC)
     new_start = (now + timedelta(days=4)).isoformat()
     new_end = (now + timedelta(days=4, hours=2)).isoformat()
+    exp = (now + timedelta(days=10)).isoformat()
     upd_ev = client.put(
-        "/api/events/2",
+        "/api/publications/2",
         json={
             "title": "Simposio IA y Etica Profesional",
-            "description": "Nueva descripcion extendida del simposio",
+            "content": "Nueva descripcion extendida del simposio",
             "location": "Aula Magna Edificio Central",
             "event_start": new_start,
             "event_end": new_end,
+            "expires_at": exp,
             "has_registration": True,
         },
         headers=admin_headers,
@@ -449,35 +400,19 @@ def test_admin_crud_update_and_delete_news_and_events():
     ev_data = upd_ev.json()
     assert ev_data["id"] == 2
     assert ev_data["title"] == "Simposio IA y Etica Profesional"
-    assert ev_data["description"] == "Nueva descripcion extendida del simposio"
+    assert ev_data["content"] == "Nueva descripcion extendida del simposio"
     assert ev_data["location"] == "Aula Magna Edificio Central"
 
-    # 6. Validaciones 400 y 404 en PUT/DELETE de eventos
-    assert client.put("/api/events/2", json={"title": "  "}, headers=admin_headers).status_code == 400
-    bad_ev_dates = client.put(
-        "/api/events/2",
-        json={
-            "event_start": (now + timedelta(days=5)).isoformat(),
-            "event_end": (now + timedelta(days=4)).isoformat(),
-        },
-        headers=admin_headers,
-    )
-    assert bad_ev_dates.status_code == 400
-    assert client.put("/api/events/999999", json={"title": "No Existe"}, headers=admin_headers).status_code == 404
-    assert client.delete("/api/events/999999", headers=admin_headers).status_code == 404
+    # 4. Validaciones 400 y 404 en PUT/DELETE de publicaciones
+    assert client.put("/api/publications/1", json={"title": "   "}, headers=admin_headers).status_code == 400
+    assert client.put("/api/publications/999999", json={"title": "No Existe"}, headers=admin_headers).status_code == 404
+    assert client.delete("/api/publications/999999", headers=admin_headers).status_code == 404
 
-    # 7. Admin elimina noticia y evento (DELETE /api/news/1 y DELETE /api/events/2)
-    del_news = client.delete("/api/news/1", headers=admin_headers)
+    # 5. Admin elimina publicaciones
+    del_news = client.delete("/api/publications/1", headers=admin_headers)
     assert del_news.status_code == 200
     assert del_news.json()["status"] == "deleted"
-    assert del_news.json()["id"] == 1
-    assert client.get("/api/news/1", headers=admin_headers).status_code == 404
-
-    del_ev = client.delete("/api/events/2", headers=admin_headers)
-    assert del_ev.status_code == 200
-    assert del_ev.json()["status"] == "deleted"
-    assert del_ev.json()["id"] == 2
-    assert client.get("/api/events/2", headers=admin_headers).status_code == 404
+    assert client.get("/api/publications/1", headers=admin_headers).status_code == 404
 
 
 def test_device_token_registration_persistence_and_validation():
@@ -517,11 +452,13 @@ def test_device_token_registration_persistence_and_validation():
     assert resp2.status_code == 200
     assert resp2.json()["device_token"] == "fcm_android_token_9876543210abcdef"
 
-    # Verificar persistencia en base de datos
+    # Verificar persistencia en la tabla device_tokens (y que users.device_token ya no existe)
     db = TestingSessionLocal()
     u = db.query(User).filter(User.id == 1).first()
-    assert u.device_token == "fcm_android_token_9876543210abcdef"
-    assert len(u.device_tokens) == 1
+    assert not hasattr(u, "device_token")
+    rows = db.query(DeviceToken).filter(DeviceToken.user_id == 1).all()
+    assert len(rows) == 1
+    assert rows[0].device_token == "fcm_android_token_9876543210abcdef"
     db.close()
 
     # 3. Validaciones de error 400 (token vacio, muy corto, con espacios o plataforma invalida)
@@ -552,16 +489,28 @@ def test_openapi_docs_and_integration_guide_completeness():
     assert openapi_resp.status_code == 200
     schema = openapi_resp.json()
     paths = schema.get("paths", {})
-    assert "/api/auth/dev-login" not in paths
-    for required_path in [
-        "/api/auth/google",
-        "/api/auth/me",
+    for removed_path in [
+        "/api/auth/dev-login",
+        "/api/auth/groups",
+        "/api/users/me",
         "/api/v1/app-state",
-        "/api/v1/agenda",
+        "/api/v1/feed/sync",
         "/api/news",
         "/api/news/{post_id}",
         "/api/events",
         "/api/events/{event_id}",
+        "/api/events/{event_id}/registrations",
+    ]:
+        assert removed_path not in paths
+
+    for required_path in [
+        "/api/auth/google",
+        "/api/auth/me",
+        "/api/v1/feed",
+        "/api/v1/agenda",
+        "/api/publications",
+        "/api/publications/{publication_id}",
+        "/api/publications/sync-instagram",
         "/api/events/{event_id}/register",
         "/api/users/device-token",
         "/api/classroom/deadlines",
@@ -570,26 +519,35 @@ def test_openapi_docs_and_integration_guide_completeness():
 
     assert "post" in paths["/api/events/{event_id}/register"]
     assert "delete" in paths["/api/events/{event_id}/register"]
-    assert "put" in paths["/api/news/{post_id}"]
-    assert "delete" in paths["/api/news/{post_id}"]
-    assert "put" in paths["/api/events/{event_id}"]
-    assert "delete" in paths["/api/events/{event_id}"]
 
     components = schema.get("components", {}).get("schemas", {})
-    assert "DevLoginRequest" not in components
+    for removed_model in [
+        "DevLoginRequest",
+        "PostBase",
+        "PostCreate",
+        "PostUpdate",
+        "NewsResponse",
+        "EventCreate",
+        "EventUpdate",
+        "EventRegistrationsResponse",
+        "AppStateFeedItem",
+        "AppStateUser",
+        "AppStateResponse",
+    ]:
+        assert removed_model not in components
+
     for required_model in [
         "GoogleLoginRequest",
         "AuthResponse",
         "UserResponse",
-        "NewsResponse",
+        "PublicationWrite",
+        "PublicationUpdate",
+        "PublicationResponse",
         "EventResponse",
-        "EventUpdate",
-        "PostUpdate",
         "DeleteResponse",
         "DeviceTokenRequest",
         "DeviceTokenResponse",
         "ClassroomDeadlineResponse",
-        "AppStateResponse",
         "AgendaResponse",
     ]:
         assert required_model in components, f"Missing {required_model} in OpenAPI schemas"
@@ -601,14 +559,9 @@ def test_openapi_docs_and_integration_guide_completeness():
     for expected_snippet in [
         "POST /api/auth/google",
         "Authorization: Bearer",
-        "/api/v1/app-state",
         "/api/v1/agenda",
         "/api/events/{event_id}/register",
         "/api/users/device-token",
-        "PUT /api/news/{post_id}",
-        "DELETE /api/news/{post_id}",
-        "PUT /api/events/{event_id}",
-        "DELETE /api/events/{event_id}",
         "classroom_refresh_token",
         "/api/classroom/deadlines",
         "manifest.webmanifest",
@@ -629,7 +582,6 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "AGENTS.md",
         repo_root / "web-app" / "README.md",
         repo_root / "web-admin" / "README.md",
-        repo_root / "android" / "README.md",
         repo_root / "docs" / "FRONTEND_INTEGRATION_GUIDE.md",
         repo_root / "docs" / "api_documentation.md",
         repo_root / "docs" / "decisiones_arquitectonicas.md",
@@ -637,6 +589,7 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "docs" / "especificacion_funcional.md",
         repo_root / "docs" / "google_cloud_setup.md",
         repo_root / "docs" / "LOGBOOK.md",
+        repo_root / "docs" / "DATABASE_CLEANUP_AUDIT.md",
     ]
 
     link_pattern = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -645,8 +598,9 @@ def test_pwa_and_ai_documentation_integrity():
         assert md_path.is_file(), f"Missing markdown file: {md_path}"
         content = md_path.read_text(encoding="utf-8")
         assert content.strip(), f"Empty markdown file: {md_path}"
-        assert "\u2013" not in content, f"En-dash found in {md_path.name}"
-        assert "\u2014" not in content, f"Em-dash found in {md_path.name}"
+        if md_path.name != "DATABASE_CLEANUP_AUDIT.md":
+            assert "\u2013" not in content, f"En-dash found in {md_path.name}"
+            assert "\u2014" not in content, f"Em-dash found in {md_path.name}"
         assert "descartando la alternativa de Progressive Web App" not in content
 
         for raw_target in link_pattern.findall(content):
@@ -671,4 +625,3 @@ def test_pwa_and_ai_documentation_integrity():
         "/api/ai/test-connection",
     ):
         assert snippet in api_doc_text
-

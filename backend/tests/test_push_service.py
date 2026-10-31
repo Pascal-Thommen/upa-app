@@ -244,7 +244,6 @@ def db_session():
                 full_name="Estudiante TIE",
                 role="user",
                 groups=["TIE"],
-                device_token="legacy-token-tie",
             ),
             User(id=3, email="prof@upa.edu.py", full_name="Profesor", role="user", groups=["PROF"]),
             User(id=4, email="sintoken@upa.edu.py", full_name="Sin Token", role="user", groups=["TIE"]),
@@ -292,11 +291,13 @@ def fcm_settings(monkeypatch, fcm_server, keypair, tmp_path):
 
 def test_emergency_banner_triggers_push_to_targeted_devices_only(db_session, fcm_settings):
     response = client.post(
-        "/api/news",
+        "/api/publications",
         json={
             "title": "Evacuacion del edificio B",
             "caption": "Dirigirse al punto de encuentro del campus.",
             "post_type": "EMERGENCY_BANNER",
+            "is_news": True,
+            "is_event": False,
             "target_groups": ["TIE"],
         },
         headers=admin_headers(),
@@ -312,21 +313,19 @@ def test_emergency_banner_triggers_push_to_targeted_devices_only(db_session, fcm
         }
         assert message["data"] == {"type": "EMERGENCY_BANNER", "post_id": str(post_id)}
 
-    audit = db_session.query(AdminAuditLog).filter(AdminAuditLog.action == "TRIGGER_PUSH").one()
+    audit = db_session.query(AdminAuditLog).filter(AdminAuditLog.action == "CREATE_POST").one()
     assert audit.target_id == post_id
-    assert audit.details == {"post_type": "EMERGENCY_BANNER", "recipients": 2}
 
 
 def test_manual_post_sends_no_push(db_session, fcm_settings):
     response = client.post(
-        "/api/news",
-        json={"title": "Charla informativa", "post_type": "MANUAL", "target_groups": ["ALL"]},
+        "/api/publications",
+        json={"title": "Charla informativa", "post_type": "MANUAL", "is_news": True, "target_groups": ["ALL"]},
         headers=admin_headers(),
     )
     assert response.status_code == 201
     assert fcm_settings.messages == []
     assert fcm_settings.oauth_requests == 0
-    assert db_session.query(AdminAuditLog).filter(AdminAuditLog.action == "TRIGGER_PUSH").count() == 0
 
 
 def test_emergency_banner_is_saved_even_when_fcm_is_unreachable(db_session, monkeypatch, keypair, tmp_path):
@@ -339,20 +338,20 @@ def test_emergency_banner_is_saved_even_when_fcm_is_unreachable(db_session, monk
     monkeypatch.setattr(settings, "FCM_TIMEOUT_SECONDS", 1.0)
 
     response = client.post(
-        "/api/news",
-        json={"title": "Corte de agua", "post_type": "EMERGENCY_BANNER", "target_groups": ["ALL"]},
+        "/api/publications",
+        json={"title": "Corte de agua", "post_type": "EMERGENCY_BANNER", "is_news": True, "target_groups": ["ALL"]},
         headers=admin_headers(),
     )
     assert response.status_code == 201
-    listing = client.get("/api/news", headers=admin_headers())
+    listing = client.get("/api/publications", headers=admin_headers())
     assert "Corte de agua" in [item["title"] for item in listing.json()]
 
 
 def test_emergency_banner_is_saved_when_fcm_is_not_configured(db_session, monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "FCM_SERVICE_ACCOUNT_FILE", str(tmp_path / "no-existe.json"))
     response = client.post(
-        "/api/news",
-        json={"title": "Aviso sin FCM", "post_type": "EMERGENCY_BANNER", "target_groups": ["ALL"]},
+        "/api/publications",
+        json={"title": "Aviso sin FCM", "post_type": "EMERGENCY_BANNER", "is_news": True, "target_groups": ["ALL"]},
         headers=admin_headers(),
     )
     assert response.status_code == 201

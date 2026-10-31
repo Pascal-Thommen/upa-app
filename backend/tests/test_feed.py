@@ -214,19 +214,6 @@ def test_feed_pagination():
     assert data_page2["posts"][0]["title"] == "Búsqueda Laboral: Recepcionista"
 
 
-def test_feed_sync_requires_admin_auth():
-    # Unauthentifiziert
-    res_unauth = client.post("/api/v1/feed/sync")
-    assert res_unauth.status_code == 401
-
-    # Als normaler Student
-    student_token = create_access_token({"sub": "2", "email": "student@upa.edu.py", "role": "user"})
-    res_forbidden = client.post("/api/v1/feed/sync", headers={"Authorization": f"Bearer {student_token}"})
-    assert res_forbidden.status_code == 403
-
-    # Als Admin
-    admin_token = create_access_token({"sub": "1", "email": "admin@upa.edu.py", "role": "admin"})
-    res_admin = client.post("/api/v1/feed/sync", headers={"Authorization": f"Bearer {admin_token}"})
-    assert res_admin.status_code == 200
-    data = res_admin.json()
-    assert "status" in data
+def test_feed_sync_endpoint_removed():
+    # El endpoint redundante /api/v1/feed/sync fue consolidado en /api/publications/sync-instagram
+    assert client.post("/api/v1/feed/sync").status_code in (404, 405)

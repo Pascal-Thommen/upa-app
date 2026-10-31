@@ -365,9 +365,6 @@
       if (String(v.content || "").length > LIMITS.content) {
         errors.content = `El texto principal no puede superar ${LIMITS.content} caracteres.`;
       }
-      if (String(v.detailText || "").length > LIMITS.detailText) {
-        errors.detailText = `El texto adicional no puede superar ${LIMITS.detailText} caracteres.`;
-      }
       if (v.category && !CATEGORIES.some((c) => c.value === v.category)) {
         errors.category = TEXTS.errCategoryInvalid;
       }
@@ -422,7 +419,6 @@
       notify_groups: isNews ? cleanGroups(v.notifyGroups) : [],
       caption: rawCaption,
       content: isNews ? String(v.content || "").trim() : "",
-      detail_text: isNews ? String(v.detailText || "").trim() : "",
       category: isNews ? String(v.category || "").trim() : "",
       is_pinned: isNews ? Boolean(v.pinned) : false,
       expires_at: isNews && v.expiresAt ? datetimeLocalToIso(v.expiresAt) : null,
@@ -481,7 +477,6 @@
       notifyGroups: Array.isArray(p.notify_groups) ? p.notify_groups.slice() : [],
       caption,
       content: p.content || "",
-      detailText: p.detail_text || "",
       category: p.category || "",
       pinned: Boolean(p.is_pinned),
       expiresAt: isoToDatetimeLocal(p.expires_at),
@@ -535,10 +530,6 @@
     }
     if (!String(next.content || "").trim() && typeof sug.content === "string" && sug.content.trim()) {
       next.content = sug.content.trim().slice(0, LIMITS.content);
-    }
-    const rawDetail = sug.detail_text !== undefined ? sug.detail_text : sug.detailText;
-    if (!String(next.detailText || "").trim() && typeof rawDetail === "string" && rawDetail.trim()) {
-      next.detailText = rawDetail.trim().slice(0, LIMITS.detailText);
     }
     if (
       !String(next.category || "").trim() &&
@@ -684,199 +675,6 @@
       return `<tr class="ed-audit-row"><td class="ed-audit-time">${when}</td><td class="ed-audit-who">${who}</td><td class="ed-audit-action">${verb}${target}${changes}${detail}</td></tr>`;
     });
     return `<div class="ed-audit-trail"><div class="ed-audit-heading">Historial:</div><table class="ed-audit-table"><tbody>${rows.join("")}</tbody></table></div>`;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Compatibilidad con formularios individuales (/api/news y /api/events)
-  // ---------------------------------------------------------------------------
-
-  function validateNewsValues(v) {
-    const errors = {};
-    const title = String(v.title || "").trim();
-    if (!title) errors.title = TEXTS.errTitleRequired;
-    else if (title.length > LIMITS.title) errors.title = `El título no puede superar ${LIMITS.title} caracteres.`;
-    if (String(v.teaser || "").length > LIMITS.teaser) {
-      errors.teaser = `El teaser no puede superar ${LIMITS.teaser} caracteres.`;
-    }
-    if (String(v.content || "").length > LIMITS.content) {
-      errors.content = `El texto no puede superar ${LIMITS.content} caracteres.`;
-    }
-    if (v.category && !CATEGORIES.some((c) => c.value === v.category)) {
-      errors.category = TEXTS.errCategoryInvalid;
-    }
-    if (cleanGroups(v.targetGroups).length === 0) errors.targetGroups = TEXTS.errGroupRequired;
-    if (v.expiresAt) {
-      const t = new Date(v.expiresAt).getTime();
-      if (Number.isNaN(t)) errors.expiresAt = TEXTS.errExpiresInvalid;
-    }
-    return errors;
-  }
-
-  function buildNewsPayload(v, mode) {
-    const isUpdate = mode === "update";
-    const imageUrl = String(v.imageUrl || "").trim();
-    const payload = {
-      title: String(v.title || "").trim(),
-      caption: String(v.teaser || "").trim(),
-      content: String(v.content || "").trim(),
-      post_type: v.urgent ? POST_TYPE_URGENT : POST_TYPE_NORMAL,
-      category: v.category || "",
-      is_pinned: Boolean(v.pinned),
-      target_groups: cleanGroups(v.targetGroups),
-      media_url: imageUrl,
-      media_type: mediaTypeForUrl(imageUrl),
-    };
-    if (!isUpdate) {
-      payload.is_news = true;
-      payload.is_event = false;
-    }
-    if (v.expiresAt) {
-      payload.expires_at = new Date(v.expiresAt).toISOString();
-    }
-    return payload;
-  }
-
-  function newsToFormValues(news) {
-    return {
-      title: news.title || "",
-      teaser: news.caption || "",
-      content: news.content || "",
-      category: news.category || "",
-      targetGroups: Array.isArray(news.target_groups) ? news.target_groups.slice() : ["ALL"],
-      urgent: news.post_type === POST_TYPE_URGENT,
-      pinned: Boolean(news.is_pinned),
-      imageUrl: news.media_url || news.image_url || "",
-      expiresAt: "",
-    };
-  }
-
-  function validateEventValues(v) {
-    const errors = {};
-    const title = String(v.title || "").trim();
-    if (!title) errors.title = TEXTS.errTitleRequired;
-    else if (title.length > LIMITS.title) errors.title = `El título no puede superar ${LIMITS.title} caracteres.`;
-    if (String(v.description || "").length > LIMITS.description) {
-      errors.description = `La descripción no puede superar ${LIMITS.description} caracteres.`;
-    }
-    if (String(v.location || "").length > LIMITS.location) {
-      errors.location = `El lugar no puede superar ${LIMITS.location} caracteres.`;
-    }
-    if (!v.date || !localDateTimeToIso(v.date, "00:00")) errors.date = TEXTS.errDateRequired;
-    if (!v.startTime || !/^\d{2}:\d{2}$/.test(v.startTime)) errors.startTime = TEXTS.errStartRequired;
-    if (!errors.date && !errors.startTime && v.endTime) {
-      const start = localDateTimeToIso(v.date, v.startTime);
-      const end = localDateTimeToIso(v.date, v.endTime);
-      if (!end || new Date(end) < new Date(start)) errors.endTime = TEXTS.errEndBeforeStart;
-    }
-    if (cleanGroups(v.targetGroups).length === 0) errors.targetGroups = TEXTS.errGroupRequired;
-    return errors;
-  }
-
-  function buildEventPayload(v) {
-    const imageUrl = String(v.imageUrl || "").trim();
-    const payload = {
-      title: String(v.title || "").trim(),
-      description: String(v.description || "").trim(),
-      location: String(v.location || "").trim(),
-      event_start: localDateTimeToIso(v.date, v.startTime),
-      has_registration: Boolean(v.rsvp),
-      target_groups: cleanGroups(v.targetGroups),
-      image_url: imageUrl,
-      media_type: mediaTypeForUrl(imageUrl),
-    };
-    if (v.endTime) payload.event_end = localDateTimeToIso(v.date, v.endTime);
-    return payload;
-  }
-
-  function eventToFormValues(event) {
-    const start = isoToLocalParts(event.event_start);
-    const end = isoToLocalParts(event.event_end);
-    return {
-      title: event.title || "",
-      description: event.description || "",
-      location: event.location || "",
-      date: start.date,
-      startTime: start.time,
-      endTime: end.date === start.date ? end.time : "",
-      targetGroups: Array.isArray(event.target_groups) ? event.target_groups.slice() : ["ALL"],
-      rsvp: Boolean(event.has_registration),
-      imageUrl: event.image_url || "",
-    };
-  }
-
-  function groupBadges(groups) {
-    return (Array.isArray(groups) ? groups : [])
-      .map((g) => `<span class="ed-badge ed-badge-info">${escapeHtml(g)}</span>`)
-      .join(" ");
-  }
-
-  function renderNewsRows(items) {
-    if (!items || items.length === 0) {
-      return `<tr><td colspan="5" class="ed-empty">Aún no hay noticias publicadas.</td></tr>`;
-    }
-    return items
-      .map((n) => {
-        const urgent = n.post_type === POST_TYPE_URGENT;
-        const isInstagram = n.post_type === "INSTAGRAM";
-        const typeBadge = urgent
-          ? `<span class="ed-badge ed-badge-urgent">Eilmeldung</span>`
-          : isInstagram
-            ? `<span class="ed-badge ed-badge-social">Instagram</span>`
-            : `<span class="ed-badge ed-badge-neutral">Normal</span>`;
-        const img = safeUrl(n.media_url || n.image_url);
-        const thumb = img && isImageUrl(img) ? `<a href="${escapeHtml(img)}" target="_blank" rel="noopener noreferrer" class="ed-thumb-link" title="Abrir original"><img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy"></a>` : "";
-        return `<tr data-news-id="${escapeHtml(n.id)}">
-          <td class="ed-cell-title">${thumb}<div><div class="ed-title">${escapeHtml(n.title)}</div><div class="ed-subtle">${escapeHtml(
-            n.caption
-          )}</div></div></td>
-          <td>${escapeHtml(categoryLabel(n.category)) || "&mdash;"}</td>
-          <td>${typeBadge}</td>
-          <td>${groupBadges(n.target_groups)}</td>
-          <td class="ed-actions">
-            <button type="button" class="ed-btn ed-btn-secondary ed-btn-sm" data-action="edit-news" data-id="${escapeHtml(
-              n.id
-            )}">Editar</button>
-            <button type="button" class="ed-btn ed-btn-danger ed-btn-sm" data-action="delete-news" data-id="${escapeHtml(
-              n.id
-            )}">Eliminar</button>
-          </td>
-        </tr>`;
-      })
-      .join("");
-  }
-
-  function renderEventRows(items, options) {
-    const opts = options || {};
-    if (!items || items.length === 0) {
-      return `<tr><td colspan="5" class="ed-empty">No hay eventos para mostrar.</td></tr>`;
-    }
-    return items
-      .map((e) => {
-        const when = formatDateTime(e.event_start, opts);
-        const rsvp = e.has_registration
-          ? `<span class="ed-badge ed-badge-ok">RSVP activo &bull; ${escapeHtml(e.registered_count)}</span>`
-          : `<span class="ed-badge ed-badge-neutral">Sin RSVP</span>`;
-        return `<tr data-event-id="${escapeHtml(e.id)}">
-          <td class="ed-cell-title"><div><div class="ed-title">${escapeHtml(e.title)}</div><div class="ed-subtle">${escapeHtml(
-            e.location
-          )}</div></div></td>
-          <td>${escapeHtml(when)}</td>
-          <td>${rsvp}</td>
-          <td>${groupBadges(e.target_groups)}</td>
-          <td class="ed-actions">
-            <button type="button" class="ed-btn ed-btn-secondary ed-btn-sm" data-action="participants-event" data-id="${escapeHtml(
-              e.id
-            )}">Participantes</button>
-            <button type="button" class="ed-btn ed-btn-secondary ed-btn-sm" data-action="edit-event" data-id="${escapeHtml(
-              e.id
-            )}">Editar</button>
-            <button type="button" class="ed-btn ed-btn-danger ed-btn-sm" data-action="delete-event" data-id="${escapeHtml(
-              e.id
-            )}">Eliminar</button>
-          </td>
-        </tr>`;
-      })
-      .join("");
   }
 
   function renderParticipantsTable(response, options) {
@@ -1058,19 +856,7 @@
         });
       },
 
-      // Compatibilidad con endpoints de noticias y eventos
-      listNews: (params) => request("GET", `/api/news${qs({ limit: 100, ...params })}`),
-      createNews: (payload) => request("POST", "/api/news", { json: payload }),
-      updateNews: (id, payload) => request("PUT", `/api/news/${encodeURIComponent(id)}`, { json: payload }),
-      deleteNews: (id) => request("DELETE", `/api/news/${encodeURIComponent(id)}`),
-
-      listEvents: (params) => request("GET", `/api/events${qs({ upcoming_only: true, limit: 100, ...params })}`),
-      createEvent: (payload) => request("POST", "/api/events", { json: payload }),
-      updateEvent: (id, payload) => request("PUT", `/api/events/${encodeURIComponent(id)}`, { json: payload }),
-      deleteEvent: (id) => request("DELETE", `/api/events/${encodeURIComponent(id)}`),
-      getEventRegistrations: (id) => request("GET", `/api/events/${encodeURIComponent(id)}/registrations`),
-
-      syncInstagram: () => request("POST", "/api/news/sync-instagram", { timeoutMs: uploadTimeoutMs }),
+      syncInstagram: () => request("POST", "/api/publications/sync-instagram", { timeoutMs: uploadTimeoutMs }),
 
       async uploadMedia(file, uploadOptions) {
         const skip = uploadOptions && uploadOptions.skipClientValidation;
@@ -1124,14 +910,6 @@
     applyAiSuggestionsToFormValues,
     renderPublicationRows,
     renderHistoryEntries,
-    validateNewsValues,
-    buildNewsPayload,
-    newsToFormValues,
-    validateEventValues,
-    buildEventPayload,
-    eventToFormValues,
-    renderNewsRows,
-    renderEventRows,
     renderParticipantsTable,
     describeSyncResult,
     createClient,

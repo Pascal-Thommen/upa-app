@@ -213,44 +213,5 @@ def test_agenda_chronological_consolidation_of_events_and_deadlines():
     assert [i["item_type"] for i in items] == ["EVENT", "DEADLINE", "EVENT"]
 
 
-def test_app_state_returns_feed_upcoming_events_and_upcoming_deadlines_on_cold_start():
-    now = datetime.now(UTC)
-    dl_dt = now + timedelta(days=2)
-    formatted_dl = f"{dl_dt.year:04d}-{dl_dt.month:02d}-{dl_dt.day:02d} 18:00"
-
-    _DEADLINES_CACHE["estudiante.tie@upa.edu.py"] = (
-        time.time(),
-        [
-            ClassroomDeadlineResponse(
-                id="hw_401",
-                assignment_id="hw_401",
-                course_id="course_2",
-                course="Bases de Datos II",
-                course_name="Bases de Datos II",
-                title="Laboratorio de Transacciones ACID",
-                description="Scripts SQL y pruebas",
-                due_date=ClassroomDueDate(year=dl_dt.year, month=dl_dt.month, day=dl_dt.day),
-                due_time=ClassroomDueTime(hours=18, minutes=0),
-                due_date_formatted=formatted_dl,
-                alternate_link="https://classroom.google.com/c/course_2/a/hw_401",
-                max_points=50.0,
-            )
-        ],
-    )
-
-    token = create_access_token({"sub": "10", "email": "estudiante.tie@upa.edu.py", "role": "user"})
-    headers = {"Authorization": f"Bearer {token}"}
-
-    resp = client.get("/api/v1/app-state", headers=headers)
-    assert resp.status_code == 200
-    payload = resp.json()
-
-    assert payload["authenticated"] is True
-    assert payload["user"]["email"] == "estudiante.tie@upa.edu.py"
-    assert len(payload["feed"]) >= 2
-    assert len(payload["upcoming_events"]) == 2
-    assert payload["upcoming_events"][0]["title"] == "Charla de Ciberseguridad Bancaria"
-    assert payload["upcoming_events"][0]["is_registered"] is True
-    assert payload["upcoming_events"][0]["registered_count"] == 1
-    assert len(payload["upcoming_deadlines"]) == 1
-    assert payload["upcoming_deadlines"][0]["title"] == "Laboratorio de Transacciones ACID"
+def test_app_state_legacy_endpoint_removed():
+    assert client.get("/api/v1/app-state").status_code == 404

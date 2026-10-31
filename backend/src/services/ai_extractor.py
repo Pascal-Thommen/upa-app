@@ -128,11 +128,6 @@ class AIEventExtractionResult(BaseModel):
         return self
 
 
-# Alias compatibles para importaciones externas
-ExtractedEventData = AIEventExtractionResult
-GeminiEventSchema = AIEventExtractionResult
-
-
 def _detect_image_mime_type(data: bytes, content_type_header: str = "", url: str = "") -> str:
     header_clean = (content_type_header or "").split(";")[0].strip().lower()
     if header_clean in ("image/jpeg", "image/png", "image/webp"):
