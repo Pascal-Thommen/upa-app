@@ -157,15 +157,33 @@
     return svg;
   }
 
-  function kindBadge(kind, labelText) {
-    const label = labelText || Core.kindLabel(kind);
+  function upaIcon(size) {
+    const px = String(size || 13);
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", px);
+    svg.setAttribute("height", px);
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("class", "upa-u-glyph");
+    const path = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M4 3h5v10.2c0 2.2 1.2 3.5 3 3.5s3-1.3 3-3.5V3h5v10.2C20 18.5 16.8 21 12 21S4 18.5 4 13.2V3z");
+    path.setAttribute("fill", "currentColor");
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function kindBadge(kind, labelText, floating) {
+    const floatCls = floating ? " badge-floating" : "";
     if (kind === "instagram") {
-      return h("span", { class: "badge badge-instagram" }, instagramIcon(13), h("span", { text: label }));
+      return h("span", { class: `badge badge-instagram${floatCls}` }, instagramIcon(13), h("span", { text: labelText || "Instagram" }));
+    }
+    if (kind === "campus" || kind === "news" || kind === "event") {
+      return h("span", { class: `badge badge-campus${floatCls}` }, upaIcon(13), h("span", { text: labelText || "Campus" }));
     }
     if (kind === "urgent") {
-      return h("span", { class: "badge badge-urgent", text: label });
+      return h("span", { class: `badge badge-urgent${floatCls}`, text: labelText || Core.kindLabel(kind) });
     }
-    return h("span", { class: "badge", text: label });
+    return h("span", { class: `badge${floatCls}`, text: labelText || Core.kindLabel(kind) });
   }
 
   /* ------------------------------------------------------------------ entorno y sesion */
@@ -443,29 +461,33 @@
 
   function feedCard(post, urgent) {
     const kind = urgent ? "urgent" : Core.postKind(post);
+    const origin = urgent ? "urgent" : Core.postOrigin(post);
     const media = urgent ? null : mediaNode(post, "card-media");
+    const badge = kindBadge(origin, Core.originLabel(origin), Boolean(media));
+    const mediaWrap = media ? h("div", { class: "card-media-wrap" }, media, badge) : null;
+    const summaryText = Core.postSummary(post);
     const open = h(
       "button",
       { class: "card-open", type: "button", "data-post-id": String(post.id) },
-      media,
+      mediaWrap,
       h(
         "div",
         { class: "card-body" },
         h(
           "div",
           { class: "card-meta" },
-          kindBadge(kind),
+          !media ? badge : null,
           post.is_pinned ? h("span", { class: "pin", text: "Fijado" }) : null,
-          h("span", { text: postTimeLine(post) }),
+          h("span", { class: "card-time", text: postTimeLine(post) }),
         ),
         h("h3", { class: "card-title", text: post.title }),
-        h("p", { class: "card-summary", text: post.summary || post.content || "" }),
+        summaryText ? h("p", { class: "card-summary", text: summaryText }) : null,
       ),
     );
     open.addEventListener("click", () => openDetail(detailFromPost(post)));
 
     const actions = urgent ? null : registrationButton(post);
-    const article = h("article", { class: `card ${urgent ? "card-urgent" : ""}`, "data-kind": kind }, open);
+    const article = h("article", { class: `card ${urgent ? "card-urgent" : ""}`.trim(), "data-kind": kind, "data-origin": origin }, open);
     if (actions) {
       article.append(
         h("div", { class: "card-actions" }, actions, post.registered_count > 0 ? h("span", { class: "count", text: `${post.registered_count} inscritos` }) : null),
@@ -493,10 +515,12 @@
 
   function detailFromPost(post) {
     const kind = Core.postKind(post);
+    const origin = Core.postOrigin(post);
     return {
       kind,
+      origin,
       postType: post.post_type || "",
-      kindLabel: Core.kindLabel(kind),
+      kindLabel: Core.originLabel(origin),
       title: post.title,
       meta: postTimeLine(post) || "",
       text: post.content || post.summary || "",
@@ -519,6 +543,7 @@
       const when = entry.timeLabel ? `${Core.formatDayLong(entry.dayKey)} · ${entry.timeLabel}` : Core.formatDayLong(entry.dayKey);
       return {
         kind: "deadline",
+        origin: "deadline",
         postType: "",
         kindLabel: "Tarea de Google Classroom",
         title: entry.title,
@@ -537,17 +562,19 @@
       };
     }
     const when = `${Core.formatDayLong(entry.dayKey)} · ${entry.timeLabel}`;
+    const isInsta = Boolean(raw && raw.post_type === "INSTAGRAM");
     return {
       kind: "event",
+      origin: isInsta ? "instagram" : "campus",
       postType: (raw && raw.post_type) || "",
-      kindLabel: "Evento",
+      kindLabel: isInsta ? "Instagram" : "Campus",
       title: entry.title,
       meta: [when, entry.place].filter(Boolean).join(" · "),
       text: raw.description || raw.summary || "",
       extra: "",
       media: { media_url: raw.image_url, media_type: "" },
       source: Core.safeUrl(raw.permalink),
-      sourceLabel: raw.post_type === "INSTAGRAM" ? "Ver en Instagram" : "Ver fuente original",
+      sourceLabel: isInsta ? "Ver en Instagram" : "Ver fuente original",
       linkUrl: Core.safeUrl(raw.link_url),
       linkLabel: raw.link_label || "Abrir enlace",
       eventId: raw.has_registration ? raw.id : null,
@@ -597,10 +624,26 @@
     state.detail = detail;
     const kindEl = $("detail-kind");
     clear(kindEl);
-    kindEl.className = `badge ${detail.kind === "instagram" ? "badge-instagram" : detail.kind === "urgent" ? "badge-urgent" : ""}`.trim();
-    if (detail.kind === "instagram") {
-      kindEl.append(instagramIcon(13), h("span", { text: detail.kindLabel }));
+    const origin =
+      detail.origin ||
+      (detail.postType === "INSTAGRAM" || detail.kind === "instagram"
+        ? "instagram"
+        : detail.kind === "urgent"
+          ? "urgent"
+          : detail.kind === "deadline"
+            ? "deadline"
+            : "campus");
+    if (origin === "instagram") {
+      kindEl.className = "badge badge-instagram";
+      kindEl.append(instagramIcon(13), h("span", { text: detail.kindLabel || "Instagram" }));
+    } else if (origin === "campus") {
+      kindEl.className = "badge badge-campus";
+      kindEl.append(upaIcon(13), h("span", { text: detail.kindLabel || "Campus" }));
+    } else if (origin === "urgent") {
+      kindEl.className = "badge badge-urgent";
+      kindEl.textContent = detail.kindLabel || "Aviso urgente";
     } else {
+      kindEl.className = "badge";
       kindEl.textContent = detail.kindLabel;
     }
     $("detail-title").textContent = detail.title;
@@ -731,8 +774,17 @@
     if (theme === "system") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", theme);
     const prefersDark = typeof win.matchMedia === "function" && win.matchMedia("(prefers-color-scheme: dark)").matches;
+    const resolved = Core.resolveTheme(theme, prefersDark);
+    root.setAttribute("data-resolved-theme", resolved);
     const meta = doc.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", Core.THEME_COLORS[Core.resolveTheme(theme, prefersDark)]);
+    if (meta) meta.setAttribute("content", Core.THEME_COLORS[resolved]);
+    const isDark = resolved === "dark";
+    doc.querySelectorAll(".logo-light").forEach((el) => {
+      el.hidden = isDark;
+    });
+    doc.querySelectorAll(".logo-dark").forEach((el) => {
+      el.hidden = !isDark;
+    });
     doc.querySelectorAll("[data-theme-option]").forEach((btn) => {
       btn.setAttribute("aria-checked", btn.getAttribute("data-theme-option") === theme ? "true" : "false");
     });
@@ -904,13 +956,11 @@
     if (bar) bar.hidden = !isDesktopWebPreview();
   }
 
-  function showLanding() {
-    $("landing").hidden = false;
-    $("app").hidden = true;
-    if ($("desktop-return-bar")) $("desktop-return-bar").hidden = true;
+  function renderQrCode() {
     const url = `${win.location.origin}/`;
-    $("qr-url").textContent = url;
+    if ($("qr-url")) $("qr-url").textContent = url;
     const box = $("qr-box");
+    if (!box) return;
     clear(box);
     try {
       const qr = Core.buildQr(url, win.qrcode, { margin: 2 });
@@ -918,6 +968,29 @@
     } catch (_) {
       box.textContent = url;
     }
+  }
+
+  function mountAppLayout(framed) {
+    const appEl = $("app");
+    const screen = $("phone-screen");
+    if (framed && screen) {
+      if (appEl.parentElement !== screen) screen.appendChild(appEl);
+      appEl.classList.add("app-framed");
+      $("landing").hidden = false;
+      appEl.hidden = false;
+      if ($("desktop-return-bar")) $("desktop-return-bar").hidden = true;
+      renderQrCode();
+    } else {
+      if (appEl.parentElement !== doc.body) doc.body.appendChild(appEl);
+      appEl.classList.remove("app-framed");
+      $("landing").hidden = true;
+      appEl.hidden = false;
+      updateDesktopReturnBar();
+    }
+  }
+
+  function showLanding() {
+    mountAppLayout(true);
   }
 
   function returnToLanding() {
@@ -1009,16 +1082,20 @@
     doc.addEventListener("visibilitychange", () => {
       if (doc.visibilityState === "visible" && state.token && Date.now() - state.lastRefresh > REFRESH_AFTER_MS) track(refreshAll());
     });
+    win.addEventListener("resize", () => {
+      const env = readEnvironment();
+      mountAppLayout(!Core.isMobileEnvironment(env));
+    });
     if (typeof win.matchMedia === "function") {
       const query = win.matchMedia("(prefers-color-scheme: dark)");
       if (query.addEventListener) query.addEventListener("change", () => applyTheme(local.getItem(THEME_KEY)));
     }
   }
 
-  async function enterApp(auth) {
-    $("landing").hidden = true;
-    $("app").hidden = false;
-    updateDesktopReturnBar();
+  async function enterApp(auth, options) {
+    const opts = options || {};
+    const framed = Boolean(opts.framed);
+    mountAppLayout(framed);
     if (!api) {
       api = Core.createApi({
         baseUrl: "",
@@ -1045,14 +1122,11 @@
     state.token = loadStoredToken();
     bindEvents();
 
-    const env = readEnvironment();
-    if (!Core.isMobileEnvironment(env)) {
-      showLanding();
-      return;
-    }
     if (/(^|[?&])app=1(&|$)/.test(String(win.location.search || ""))) session.setItem(FORCE_APP_KEY, "1");
+    const env = readEnvironment();
+    const isMobile = Core.isMobileEnvironment(env);
 
-    await enterApp(auth);
+    await enterApp(auth, { framed: !isMobile });
   }
 
   let bootPromise = null;
