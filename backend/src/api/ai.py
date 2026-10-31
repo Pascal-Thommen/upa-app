@@ -1,12 +1,13 @@
-"""Control de IA: configuracion de la clave de Google Gemini, prompt de sistema y prueba de conexion en vivo."""
+"""IA: configuracion de la clave de Google Gemini, prompt del sistema y prueba de conexion en vivo."""
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..auth import get_current_user
 from ..database import get_db
 from ..models import User
-from ..permissions import require_permission
+from ..permissions import effective_permissions, require_permission
 from ..services import gemini
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
@@ -42,6 +43,19 @@ class AiTestResponse(BaseModel):
     quota_rpm: int = gemini.FREE_TIER_QUOTA_RPM
 
 
+def require_ai_read(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    perms = effective_permissions(db, current_user)
+    if "apis" not in perms and "publicaciones" not in perms:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: su cuenta no tiene permiso para consultar la configuración de IA.",
+        )
+    return current_user
+
+
 def require_admin(current_user: User = Depends(require_permission("apis"))) -> User:
     if (current_user.role or "").strip() != "admin":
         raise HTTPException(
@@ -65,29 +79,21 @@ def _config_response(db: Session) -> AiConfigResponse:
     )
 
 
-@router.get("/config", response_model=AiConfigResponse, summary="Estado de la clave, modelo Flash y prompt de Gemini")
-def get_ai_config(db: Session = Depends(get_db), _: User = Depends(require_permission("apis"))) -> AiConfigResponse:
+@router.get("/config", response_model=AiConfigResponse, summary="Estado de la clave y configuración de Gemini")
+def get_ai_config(db: Session = Depends(get_db), _: User = Depends(require_ai_read)) -> AiConfigResponse:
     return _config_response(db)
 
 
-@router.post("/config", response_model=AiConfigResponse, summary="Guardar clave de Gemini y/o prompt de sistema (administradores)")
+@router.post("/config", response_model=AiConfigResponse, summary="Guardar clave o prompt de Gemini (administradores)")
 def set_ai_config(
     payload: AiConfigUpdate,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> AiConfigResponse:
-    provided = payload.model_fields_set
-    has_key = "api_key" in provided and payload.api_key is not None
-    has_prompt = "system_prompt" in provided and payload.system_prompt is not None
-
-    if not has_key and not has_prompt:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Indique al menos la clave de API (api_key) o el prompt de sistema (system_prompt).",
-        )
-
-    if has_key:
-        key = (payload.api_key or "").strip()
+    raw_key = payload.api_key
+    has_key_field = (raw_key is not None and bool(raw_key.strip())) or payload.system_prompt is None
+    if has_key_field:
+        key = (raw_key or "").strip()
         if len(key) < 10 or any(c.isspace() for c in key):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -95,14 +101,14 @@ def set_ai_config(
             )
         gemini.save_api_key(db, key, admin.email)
 
-    if has_prompt:
-        prompt_text = str(payload.system_prompt or "")
-        if len(prompt_text) > 8000:
+    if payload.system_prompt is not None:
+        clean_prompt = payload.system_prompt.strip()
+        if len(clean_prompt) > 4000:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="El prompt del sistema no puede superar los 8000 caracteres.",
+                detail="El prompt del sistema no puede superar los 4000 caracteres.",
             )
-        gemini.save_system_prompt(db, prompt_text, admin.email)
+        gemini.save_system_prompt(db, clean_prompt, admin.email)
 
     return _config_response(db)
 
@@ -114,11 +120,11 @@ def update_ai_system_prompt(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> AiConfigResponse:
-    prompt_text = str(payload.system_prompt or "")
-    if len(prompt_text) > 8000:
+    prompt_text = str(payload.system_prompt or "").strip()
+    if len(prompt_text) > 4000:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="El prompt del sistema no puede superar los 8000 caracteres.",
+            detail="El prompt del sistema no puede superar los 4000 caracteres.",
         )
     gemini.save_system_prompt(db, prompt_text, admin.email)
     return _config_response(db)

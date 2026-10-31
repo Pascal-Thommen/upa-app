@@ -127,6 +127,8 @@ test("preparacion: creacion de publicaciones reales (noticia, fijada, urgente y 
       title: "Convocatoria de intercambio en Heidelberg",
       caption: "Postulaciones abiertas hasta noviembre.",
       content: "Presenta tu carpeta académica en Secretaría. Requisitos: promedio mínimo 4.0 y nivel B2.",
+      media_url: "/campus/icons/icon-512.png",
+      media_type: "IMAGE",
       permalink: "https://upa.edu.py/intercambio",
       is_news: true,
       is_event: false,
@@ -163,17 +165,37 @@ test("preparacion: creacion de publicaciones reales (noticia, fijada, urgente y 
   seeded.eventId = event.body.id;
 });
 
-test("Escritorio: muestra landing con telefono visual, codigo QR dinamico y navegacion ida/vuelta a la version web", live, async () => {
+test("Escritorio: muestra landing con telefono interactivo real en marco negro junto al codigo QR dinamico", live, async () => {
   const app = await openCampus({ userAgent: DESKTOP_UA });
   try {
     assert.equal(app.$("landing").hidden, false);
-    assert.equal(app.$("app").hidden, true);
+    assert.equal(app.$("app").hidden, false);
+    assert.equal(app.$("app").classList.contains("app-framed"), true);
+    assert.equal(app.document.querySelector(".phone-mockup .phone-frame #phone-screen #app"), app.$("app"), "La app interactiva real debe vivir dentro del marco de smartphone en escritorio");
     assert.match(app.$("landing").textContent, /Escanea con tu celular para abrir la app/);
-    assert.ok(app.document.querySelector(".phone-mockup .phone-frame"), "Debe mostrar el marco visual de smartphone");
+    assert.ok(app.document.querySelector(".phone-mockup .phone-frame"), "Debe mostrar el marco negro realista de smartphone");
     assert.equal(app.document.querySelector(".landing-points"), null, "No debe mostrar la lista larga de texto en escritorio");
     assert.equal(app.$("admin-link").getAttribute("href"), "/dashboard/");
     assert.equal(app.$("admin-link").textContent.trim(), "Acceso Administrativo");
     assert.equal(app.$("qr-url").textContent, `${BASE_URL}/`);
+
+    // La app dentro del telefono en escritorio es la PWA interactiva real (no un mockup estatico)
+    await app.click(app.document.querySelector('[data-tab="perfil"]'));
+    assert.equal(app.$("view-perfil").hidden, false);
+    const landingDarkSignet = app.document.querySelector(".landing-header .upa-signet.logo-dark");
+    const landingLightLogo = app.document.querySelector(".landing-header .logo-light");
+    await app.click(app.document.querySelector('[data-theme-option="dark"]'));
+    assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "dark");
+    assert.equal(landingDarkSignet.hidden, false);
+    assert.equal(landingLightLogo.hidden, true);
+    await app.click(app.document.querySelector('[data-theme-option="light"]'));
+    assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "light");
+    assert.equal(landingDarkSignet.hidden, true);
+    assert.equal(landingLightLogo.hidden, false);
+    await app.click(app.document.querySelector('[data-tab="inicio"]'));
+    assert.equal(app.$("view-inicio").hidden, false);
+    app.window.dispatchEvent(new app.window.Event("resize"));
+    assert.equal(app.$("app").classList.contains("app-framed"), true);
 
     const svg = app.$("qr-box").querySelector("svg");
     assert.ok(svg, "El contenedor QR debe incluir un SVG generado dinamicamente");
@@ -196,16 +218,18 @@ test("Escritorio: muestra landing con telefono visual, codigo QR dinamico y nave
     }
     assert.equal(jsQR(rgba, side, side).data, `${BASE_URL}/`);
 
-    // Probar la version web desde escritorio muestra barra de retorno y permite volver al QR
+    // Probar la version web a pantalla completa desde escritorio muestra barra de retorno y permite volver al marco con QR
     await app.click(app.$("try-web-link"));
     assert.equal(app.$("landing").hidden, true);
     assert.equal(app.$("app").hidden, false);
+    assert.equal(app.$("app").classList.contains("app-framed"), false);
     assert.equal(app.$("desktop-return-bar").hidden, false);
     assert.match(app.$("btn-back-landing").textContent, /Volver al código QR/);
 
     await app.click(app.$("btn-back-landing"));
     assert.equal(app.$("landing").hidden, false);
-    assert.equal(app.$("app").hidden, true);
+    assert.equal(app.$("app").hidden, false);
+    assert.equal(app.$("app").classList.contains("app-framed"), true);
     assert.equal(app.$("desktop-return-bar").hidden, true);
   } finally {
     app.close();
@@ -279,10 +303,19 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     const ev2 = check2.body.events.find((e) => e.id === seeded.eventId);
     assert.equal(ev2.is_registered, false);
 
-    // Detalle a pantalla completa y enlace a la fuente original
+    // Detalle a pantalla completa, badge Campus flotante con "U" verde y enlace a la fuente original
     const openNews = app.document.querySelector(`[data-post-id="${seeded.newsId}"]`);
+    const newsFloatingBadge = openNews.querySelector(".card-media-wrap > .badge.badge-campus.badge-floating");
+    assert.ok(newsFloatingBadge, "La publicacion interna con imagen debe tener el badge Campus flotando arriba a la izquierda sobre la imagen");
+    assert.ok(newsFloatingBadge.querySelector("svg.upa-u-glyph"), "El badge Campus debe incluir la U verde de la UPA");
+    assert.equal(newsFloatingBadge.textContent.trim(), "Campus");
+    assert.equal(openNews.querySelector(".card-meta .badge"), null, "El badge no debe duplicarse debajo de la imagen");
+
     await app.click(openNews);
     assert.equal(app.$("detail").hidden, false);
+    assert.equal(app.$("detail-kind").classList.contains("badge-campus"), true);
+    assert.ok(app.$("detail-kind").querySelector("svg.upa-u-glyph"));
+    assert.equal(app.$("detail-kind").textContent.trim(), "Campus");
     assert.equal(app.$("detail-title").textContent, "Convocatoria de intercambio en Heidelberg");
     assert.match(app.$("detail-text").textContent, /promedio mínimo 4\.0/);
     assert.equal(app.$("detail-source").getAttribute("href"), "https://upa.edu.py/intercambio");
@@ -293,12 +326,14 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.equal(app.$("detail").hidden, true);
     assert.equal(app.$("app").hidden, false);
 
-    // Publicacion de Instagram: insignia con icono oficial de camara y un unico boton "Ver en Instagram"
+    // Publicacion de Instagram: insignia flotante arriba a la izquierda con icono oficial de camara y un unico boton "Ver en Instagram"
     const igCard = app.document.querySelector('.card[data-kind="instagram"]');
     assert.ok(igCard, "Debe existir la tarjeta de Instagram en el feed");
-    const igBadge = igCard.querySelector(".badge.badge-instagram");
-    assert.ok(igBadge, "La tarjeta de Instagram debe tener la clase badge-instagram");
+    const igBadge = igCard.querySelector(".card-media-wrap > .badge.badge-instagram.badge-floating");
+    assert.ok(igBadge, "La tarjeta de Instagram debe tener el badge-instagram flotando sobre la imagen");
     assert.ok(igBadge.querySelector("svg.ig-glyph"), "El badge de Instagram debe incluir el icono de camara");
+    assert.equal(igBadge.textContent.trim(), "Instagram");
+    assert.equal(igCard.querySelector(".card-meta .badge"), null, "El badge de Instagram no debe duplicarse en card-meta");
 
     await app.click(igCard.querySelector(".card-open"));
     assert.equal(app.$("detail").hidden, false);
@@ -380,17 +415,30 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(app.$("profile-groups"), null, "El contenedor #profile-groups no debe existir en el perfil");
 
     const meta = app.document.querySelector('meta[name="theme-color"]');
+    const topbarLightLogo = app.document.querySelector(".topbar .logo-light");
+    const topbarDarkSignet = app.document.querySelector(".topbar .upa-signet.logo-dark");
+    assert.ok(topbarLightLogo && topbarDarkSignet, "Deben existir las variantes clara y oscura (signet blanco UPA) en la barra superior");
+
     await app.click(app.document.querySelector('[data-theme-option="dark"]'));
     assert.equal(app.document.documentElement.getAttribute("data-theme"), "dark");
+    assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "dark");
     assert.equal(meta.getAttribute("content"), "#0f172a");
+    assert.equal(topbarDarkSignet.hidden, false, "En modo oscuro debe mostrarse el signet blanco monocromo UPA");
+    assert.equal(topbarLightLogo.hidden, true, "En modo oscuro debe ocultarse el logo con recuadro blanco");
 
     await app.click(app.document.querySelector('[data-theme-option="light"]'));
     assert.equal(app.document.documentElement.getAttribute("data-theme"), "light");
+    assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "light");
     assert.equal(meta.getAttribute("content"), "#ffffff");
+    assert.equal(topbarDarkSignet.hidden, true);
+    assert.equal(topbarLightLogo.hidden, false);
 
     await app.click(app.document.querySelector('[data-theme-option="system"]'));
     assert.equal(app.document.documentElement.hasAttribute("data-theme"), false);
+    assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "dark");
     assert.equal(meta.getAttribute("content"), "#0f172a");
+    assert.equal(topbarDarkSignet.hidden, false);
+    assert.equal(topbarLightLogo.hidden, true);
 
     const swEvents = app.document.querySelector('[data-notify="events"]');
     swEvents.checked = false;

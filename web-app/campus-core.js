@@ -364,8 +364,32 @@
     return "news";
   }
 
+  function postOrigin(post) {
+    if (!post) return "campus";
+    if (post.post_type === "EMERGENCY_BANNER") return "urgent";
+    if (post.post_type === "INSTAGRAM") return "instagram";
+    return "campus";
+  }
+
+  function originLabel(origin) {
+    return { urgent: "Aviso urgente", instagram: "Instagram", campus: "Campus" }[origin] || "Campus";
+  }
+
   function kindLabel(kind) {
-    return { urgent: "Aviso urgente", event: "Evento", instagram: "Instagram", news: "Noticia", deadline: "Tarea" }[kind] || "";
+    return { urgent: "Aviso urgente", event: "Evento", instagram: "Instagram", campus: "Campus", news: "Campus", deadline: "Tarea" }[kind] || "";
+  }
+
+  function postSummary(post) {
+    if (!post) return "";
+    const raw = String(post.summary || post.content || "").trim();
+    if (!raw) return "";
+    const title = String(post.title || "").trim();
+    const prefix = title.replace(/(?:\.\.\.|…)+$/, "").trim();
+    if (prefix && raw.startsWith(prefix)) {
+      const nl = raw.indexOf("\n");
+      return nl === -1 ? "" : raw.slice(nl + 1).trim();
+    }
+    return raw;
   }
 
   function resolveDetailLinks(detail) {
@@ -711,7 +735,10 @@
     safeUrl,
     isVideoMedia,
     postKind,
+    postOrigin,
+    originLabel,
     kindLabel,
+    postSummary,
     resolveDetailLinks,
     sortFeed,
     normalizeFeed,

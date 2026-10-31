@@ -148,9 +148,18 @@
   border-color: var(--ed-primary);
 }
 
-.ed-btn-ai:hover:not(:disabled) {
+.ed-btn-ai:hover:not(:disabled):not(.is-disabled) {
   background: var(--ed-primary);
   color: var(--ed-primary-contrast);
+}
+
+.ed-btn-ai:disabled,
+.ed-btn-ai.is-disabled {
+  background: var(--ed-surface-subtle);
+  color: var(--ed-text-faint);
+  border-color: var(--ed-border);
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .ed-ai-spinner {

@@ -176,7 +176,7 @@
             </button>
             <button id="nav-mod-ai" data-perm="apis" type="button" class="sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100">
               <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
-              <span class="flex-1">Control de IA</span>
+              <span class="flex-1">IA</span>
             </button>
           </nav>
         </aside>
@@ -267,7 +267,7 @@
                         <input type="checkbox" id="ed-pub-scheduled">
                         <span>Programar publicación diferida</span>
                       </label>
-                      <input id="ed-pub-published-at" type="datetime-local" class="ed-input mt-2 hidden">
+                      <input id="ed-pub-published-at" type="text" inputmode="numeric" maxlength="16" placeholder="DD/MM/YYYY HH:mm" data-mask="datetime" class="ed-input font-mono mt-2 hidden">
                       <p id="ed-pub-published-hint" class="ed-subtle mt-1">Se registrará la fecha al guardar.</p>
                       <p class="ed-field-error" data-error-for="pub-publishedAt"></p>
                     </div>
@@ -359,7 +359,7 @@
                       </div>
                       <div id="ed-pub-expires-wrap" class="hidden">
                         <label class="ed-label" for="ed-pub-expires">Vigente hasta *</label>
-                        <input id="ed-pub-expires" type="datetime-local" class="ed-input">
+                        <input id="ed-pub-expires" type="text" inputmode="numeric" maxlength="16" placeholder="DD/MM/YYYY HH:mm" data-mask="datetime" class="ed-input font-mono">
                         <p class="ed-field-error" data-error-for="pub-expiresAt"></p>
                       </div>
                     </div>
@@ -379,13 +379,13 @@
                   <div id="ed-event-fields" class="ed-section-body hidden space-y-4">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
-                        <label class="ed-label" for="ed-pub-event-start">Inicio del evento *</label>
-                        <input id="ed-pub-event-start" type="datetime-local" class="ed-input">
+                        <label class="ed-label" for="ed-pub-event-start">Inicio del evento (DD/MM/YYYY HH:mm) *</label>
+                        <input id="ed-pub-event-start" type="text" inputmode="numeric" maxlength="16" placeholder="DD/MM/YYYY HH:mm" data-mask="datetime" class="ed-input font-mono">
                         <p class="ed-field-error" data-error-for="pub-eventStart"></p>
                       </div>
                       <div>
-                        <label class="ed-label" for="ed-pub-event-end">Fin del evento (opcional)</label>
-                        <input id="ed-pub-event-end" type="datetime-local" class="ed-input">
+                        <label class="ed-label" for="ed-pub-event-end">Fin del evento (HH:mm opcional)</label>
+                        <input id="ed-pub-event-end" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" data-mask="time" class="ed-input font-mono">
                         <p class="ed-field-error" data-error-for="pub-eventEnd"></p>
                       </div>
                       <div>
@@ -412,10 +412,12 @@
                 </div>
 
                 <div class="flex flex-wrap items-center justify-end gap-2.5 pt-2">
-                  <button id="ed-pub-autocomplete-ai" type="button" class="ed-btn ed-btn-ai">
-                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
-                    <span>Autocompletar con IA</span>
-                  </button>
+                  <span id="ed-pub-autocomplete-ai-wrap" class="inline-block" title="Configure un token válido de Gemini en la pestaña IA para habilitar el autocompletado.">
+                    <button id="ed-pub-autocomplete-ai" type="button" class="ed-btn ed-btn-ai is-disabled" disabled aria-disabled="true" title="Configure un token válido de Gemini en la pestaña IA para habilitar el autocompletado.">
+                      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+                      <span>Autocompletar con IA</span>
+                    </button>
+                  </span>
                   <button id="ed-pub-cancel" type="button" class="ed-btn ed-btn-secondary">Cancelar</button>
                   <button id="ed-pub-submit" type="submit" class="ed-btn ed-btn-primary">Guardar</button>
                 </div>
@@ -681,9 +683,9 @@
           </div>
 
           <!-- =============================================================== -->
-          <!-- MÓDULO 5: CONTROL DE IA (Google Gemini API + Prueba en vivo)     -->
+          <!-- MÓDULO 5: IA (Google Gemini Flash + System Prompt + Estado)     -->
           <!-- =============================================================== -->
-          <section id="view-ai" class="hidden space-y-5" aria-label="Control de IA">
+          <section id="view-ai" class="hidden space-y-5" aria-label="IA">
             <div class="bg-white rounded-2xl p-6 shadow-2xs border border-slate-200/90 space-y-6">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center gap-2.5">
@@ -691,20 +693,29 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
                   </span>
                   <div>
-                    <h3 class="font-bold text-slate-900 text-base">Control de IA &bull; Inteligencia Artificial</h3>
+                    <h3 class="font-bold text-slate-900 text-base">IA &bull; Inteligencia Artificial</h3>
                     <p class="text-xs text-slate-500 mt-0.5">Conector directo con Google Gemini (Google AI Studio) para redacción y asistencia inteligente del campus.</p>
                   </div>
                 </div>
                 <span id="ai-status-badge" class="ed-badge ed-badge-neutral">Sin configurar</span>
               </div>
 
-              <!-- Estado actual de la clave -->
-              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div class="space-y-0.5">
-                  <div class="font-semibold text-slate-700">Clave actual configurada</div>
-                  <div id="ai-key-source" class="text-[11px] text-slate-500">Pendiente de configuración</div>
+              <!-- Estado actual de la clave y modelo conectado (solo información) -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="space-y-0.5">
+                    <div class="font-semibold text-slate-700">Clave actual configurada</div>
+                    <div id="ai-key-source" class="text-[11px] text-slate-500">Pendiente de configuración</div>
+                  </div>
+                  <code id="ai-masked-key" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 font-mono text-xs text-slate-800">Sin clave guardada</code>
                 </div>
-                <code id="ai-masked-key" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 font-mono text-xs text-slate-800">Sin clave guardada</code>
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="space-y-0.5">
+                    <div class="font-semibold text-slate-700">Modelo Gemini Flash conectado</div>
+                    <div id="ai-model-tier" class="text-[11px] text-slate-500">Nivel gratuito &bull; Solo información</div>
+                  </div>
+                  <code id="ai-model-info" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 font-mono text-xs text-emerald-800">gemini-1.5-flash</code>
+                </div>
               </div>
 
               <!-- Guía paso a paso minimalista -->
@@ -728,7 +739,16 @@
                   <p id="ai-key-error" class="ed-field-error hidden" data-error-for="ai-key"></p>
                 </div>
 
+                <div>
+                  <label class="ed-label" for="ai-input-system-prompt">Prompt del sistema (instrucciones para generación de texto con IA)</label>
+                  <textarea id="ai-input-system-prompt" rows="3" maxlength="4000" placeholder="Instrucciones de tono institucional, estilo y formato para Google Gemini Flash..." class="ed-input"></textarea>
+                  <p id="ai-prompt-error" class="ed-field-error hidden" data-error-for="ai-prompt"></p>
+                </div>
+
                 <div class="flex flex-wrap items-center justify-end gap-2.5 pt-1">
+                  <button id="btn-ai-save-prompt" type="button" class="ed-btn ed-btn-secondary">
+                    Guardar prompt
+                  </button>
                   <button id="btn-ai-test-connection" type="button" class="ed-btn ed-btn-secondary">
                     Probar conexión
                   </button>

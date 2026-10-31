@@ -19,9 +19,8 @@ AUTOCOMPLETE_ERROR_PREFIX = "No se pudo autocompletar: Verifique la clave de IA 
 
 DEFAULT_SYSTEM_PROMPT = (
     "Eres el asistente editorial inteligente de la Universidad Paraguayo Alemana (UPA). "
-    "Redacta siempre en español claro, institucional y conciso, utilizando formato de fecha "
-    "paraguayo (DD/MM/YYYY) y sistema horario de 24 horas (HH:mm). No inventes fechas ni "
-    "horas de finalización si no están explícitamente indicadas."
+    "Redacta en español formal institucional, claro y conciso, respetando estrictamente "
+    "los datos confirmados, el horario en formato de 24 horas (HH:mm) y la fecha en formato DD/MM/YYYY."
 )
 
 FREE_TIER_QUOTA_RPM = 15
@@ -408,9 +407,10 @@ def _build_autocomplete_prompt(
         and v not in (None, "", [])
     }
 
-    custom_instruction = (system_prompt or DEFAULT_SYSTEM_PROMPT).strip()
+    active_system_prompt = (system_prompt or "").strip() or DEFAULT_SYSTEM_PROMPT
+
     return (
-        f"Instrucciones editoriales del sistema:\n{custom_instruction}\n\n"
+        f"{active_system_prompt}\n"
         "Analiza los datos actuales del formulario"
         + (" y la imagen adjunta" if has_image else "")
         + " para sugerir valores ÚNICAMENTE para los campos que están vacíos.\n"
@@ -424,7 +424,7 @@ def _build_autocomplete_prompt(
         "Devuelve exclusivamente un objeto JSON válido con las claves de los campos vacíos que puedas inferir "
         "(por ejemplo: title, caption, content, is_event, event_start en formato YYYY-MM-DDTHH:MM, "
         "event_date en formato DD/MM/YYYY, event_start_time en formato 24h HH:MM, "
-        "event_end en formato YYYY-MM-DDTHH:MM o event_end_time en formato 24h HH:MM solo si existe explícitamente, "
+        "event_end en formato YYYY-MM-DDTHH:MM o event_end_time en formato 24h HH:MM solo si se menciona explícitamente la hora de finalización, "
         "location, target_groups como lista de códigos, category, has_registration, link_label, link_url)."
     )
 

@@ -545,6 +545,7 @@ async def autocomplete_publication_ai(
         available_groups=available_groups,
         image_bytes=uploaded_bytes,
         image_mime_type=uploaded_mime,
+        system_prompt=gemini.get_system_prompt(db),
         db=db,
     )
     if not result.ok:

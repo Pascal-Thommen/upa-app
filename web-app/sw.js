@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
 const SHELL_FILES = [
   "/",
@@ -78,13 +78,13 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
         const cached = await cache.match(request);
-        const network = fetch(request)
-          .then((response) => {
-            if (response.ok) cache.put(request, response.clone());
-            return response;
-          })
-          .catch(() => cached);
-        return cached || network;
+        try {
+          const response = await fetch(request);
+          if (response.ok) cache.put(request, response.clone());
+          return response;
+        } catch (_) {
+          return cached;
+        }
       }),
     );
   }

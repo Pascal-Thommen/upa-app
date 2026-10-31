@@ -119,6 +119,11 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert "100dvh" in css
     assert ':root[data-theme="dark"]' in css
     assert ".badge-instagram" in css
+    assert ".badge-campus" in css
+    assert ".badge-floating" in css
+    assert ".card-media-wrap" in css
+    assert ".upa-signet" in css
+    assert ".app.app-framed" in css
     assert "grid-auto-rows: 30px" in css
 
     nginx = (REPO_ROOT / "web-admin" / "nginx.conf").read_text(encoding="utf-8")

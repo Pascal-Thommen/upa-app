@@ -220,9 +220,9 @@ def _build_extraction_prompt(
 ) -> str:
     ref_iso = (reference_date or datetime.now(UTC)).isoformat()
     groups_str = ", ".join(group_tags) if group_tags else "estudiantes, docentes, staff, egresados"
-    custom_instruction = (system_prompt or gemini.DEFAULT_SYSTEM_PROMPT).strip()
+    active_system_prompt = (system_prompt or "").strip() or gemini.DEFAULT_SYSTEM_PROMPT
     return (
-        f"Instrucciones editoriales del sistema:\n{custom_instruction}\n\n"
+        f"{active_system_prompt}\n"
         "Analiza esta publicación de Instagram de la Universidad Paraguayo Alemana (UPA) "
         "combinando el texto del pie de foto y la imagen adjunta (afiche/flyer).\n"
         f"Fecha de referencia de la publicación: {ref_iso}\n"

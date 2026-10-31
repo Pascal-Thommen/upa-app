@@ -109,7 +109,7 @@ def test_ai_config_permissions_and_persistence(monkeypatch):
     assert initial["source"] == "none"
     assert initial["model"] == "gemini-1.5-flash"
     assert initial["quota_rpm"] == 15
-    assert "system_prompt" in initial and len(initial["system_prompt"]) > 10
+    assert "Universidad Paraguayo Alemana" in initial["system_prompt"]
 
     # Fallback a variable de entorno GEMINI_API_KEY cuando no hay registro en base de datos
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "AIzaEnvFallbackKey9876")
@@ -137,14 +137,28 @@ def test_ai_config_permissions_and_persistence(monkeypatch):
     assert body["masked_key"] == "AIza********1234"
     assert body["model"] == "gemini-1.5-flash"
 
-    # Actualizar clave existente
+    # Actualizar clave existente y System Prompt personalizado
     updated = client.post(
         "/api/ai/config",
-        json={"api_key": "AIzaUpdatedKeyWXYZ5678"},
+        json={
+            "api_key": "AIzaUpdatedKeyWXYZ5678",
+            "system_prompt": "Instrucción personalizada UPA: priorizar tono académico formal.",
+        },
         headers=admin_headers,
     )
     assert updated.status_code == 200
     assert updated.json()["masked_key"] == "AIza********5678"
+    assert updated.json()["system_prompt"] == "Instrucción personalizada UPA: priorizar tono académico formal."
+
+    # Actualizar únicamente el System Prompt sin reenviar la clave
+    prompt_only = client.post(
+        "/api/ai/config",
+        json={"system_prompt": "Prompt editorial exclusivo UPA 2026."},
+        headers=admin_headers,
+    )
+    assert prompt_only.status_code == 200
+    assert prompt_only.json()["masked_key"] == "AIza********5678"
+    assert prompt_only.json()["system_prompt"] == "Prompt editorial exclusivo UPA 2026."
 
 
 def test_ai_live_connection_against_local_gemini_stub(monkeypatch):
@@ -371,8 +385,15 @@ def test_publication_autocomplete_ai_multimodal_fills_only_empty_fields(monkeypa
             "No se pudo autocompletar: Verifique la clave de IA en Control de IA" in no_key_res.json()["detail"]
         )
 
-        # 3. Configurar clave de IA y subir imagen real a /api/media/upload
-        client.post("/api/ai/config", json={"api_key": "AIzaValidAutocompleteKey99"}, headers=admin_headers)
+        # 3. Configurar clave de IA y prompt personalizado, y subir imagen real a /api/media/upload
+        client.post(
+            "/api/ai/config",
+            json={
+                "api_key": "AIzaValidAutocompleteKey99",
+                "system_prompt": "Directriz editorial personalizada de prueba UPA.",
+            },
+            headers=admin_headers,
+        )
         upload_res = client.post(
             "/api/media/upload",
             files={"file": ("flyer.png", PNG_1X1, "image/png")},
@@ -412,10 +433,11 @@ def test_publication_autocomplete_ai_multimodal_fills_only_empty_fields(monkeypa
         assert suggestions["target_groups"] == ["TIE", "TI"]
         assert suggestions["has_registration"] is True
 
-        # Verificar que Gemini recibió tanto el prompt de texto como la imagen inline_data en base64
+        # Verificar que Gemini recibió tanto el prompt personalizado como la imagen inline_data en base64
         assert len(received_requests) == 1
         parts = received_requests[0]["body"]["contents"][0]["parts"]
         assert len(parts) == 2
+        assert "Directriz editorial personalizada de prueba UPA." in parts[0]["text"]
         assert "Foro Anual de Ingeniería" in parts[0]["text"]
         assert parts[1]["inline_data"]["mime_type"] == "image/png"
         assert len(parts[1]["inline_data"]["data"]) > 10
