@@ -50,9 +50,20 @@ def run_alembic_migrations(bind_engine=None) -> None:
     tables = set(inspector.get_table_names())
     if "alembic_version" in tables:
         with target.begin() as conn:
+            if target.dialect.name == "postgresql":
+                conn.execute(text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)"))
             conn.execute(
                 text(
                     "UPDATE alembic_version SET version_num = '007_add_ai_generated_flag' WHERE version_num = '007'"
+                )
+            )
+    elif target.dialect.name == "postgresql":
+        with target.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS alembic_version ("
+                    "version_num VARCHAR(128) NOT NULL, "
+                    "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"
                 )
             )
 
