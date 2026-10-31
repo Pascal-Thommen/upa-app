@@ -189,7 +189,11 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         monkeypatch.setattr(settings, "GEMINI_API_BASE_URL", base_url)
         client.post(
             "/api/ai/config",
-            json={"api_key": "AIzaMultimodalLiveKey9999"},
+            json={
+                "api_key": "AIzaMultimodalLiveKey9999",
+                "system_prompt_autocomplete": "Prompt exclusivo de autocompletado que NO debe ir a Instagram.",
+                "system_prompt_instagram": "Directriz personalizada de extracción de eventos en Instagram UPA.",
+            },
             headers=auth_headers(),
         )
 
@@ -320,10 +324,16 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert result["created_count"] == 3
         assert result["ai_events_count"] == 2
 
-        # Verificar que Gemini recibio tanto el texto (caption) como los bytes de la imagen (inline_data)
+        # Verificar que Gemini recibio el system_prompt_instagram personalizado, el texto y los bytes de la imagen
         assert len(captured_gemini_calls) == 3
         first_parts = captured_gemini_calls[0]["body"]["contents"][0]["parts"]
         assert len(first_parts) == 2
+        assert "Directriz personalizada de extracción de eventos en Instagram UPA." in first_parts[0]["text"]
+        assert "Prompt exclusivo de autocompletado" not in first_parts[0]["text"]
+        assert (
+            captured_gemini_calls[0]["body"]["systemInstruction"]["parts"][0]["text"]
+            == "Directriz personalizada de extracción de eventos en Instagram UPA."
+        )
         assert "Aula Magna" in first_parts[0]["text"]
         assert first_parts[1]["inline_data"]["mime_type"] == "image/png"
         assert base64.b64decode(first_parts[1]["inline_data"]["data"]) == SAMPLE_PNG_BYTES

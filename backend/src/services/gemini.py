@@ -15,13 +15,21 @@ from ..models import AppSetting
 GEMINI_KEY_SETTING = "GEMINI_API_KEY"
 GEMINI_MODEL_SETTING = "GEMINI_ACTIVE_MODEL"
 GEMINI_SYSTEM_PROMPT_SETTING = "GEMINI_SYSTEM_PROMPT"
+GEMINI_SYSTEM_PROMPT_AUTOCOMPLETE_SETTING = "GEMINI_SYSTEM_PROMPT_AUTOCOMPLETE"
+GEMINI_SYSTEM_PROMPT_INSTAGRAM_SETTING = "GEMINI_SYSTEM_PROMPT_INSTAGRAM"
 AUTOCOMPLETE_ERROR_PREFIX = "No se pudo autocompletar: Verifique la clave de IA en Control de IA"
 
-DEFAULT_SYSTEM_PROMPT = (
+DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE = (
     "Eres el asistente editorial inteligente de la Universidad Paraguayo Alemana (UPA). "
     "Redacta en español formal institucional, claro y conciso, respetando estrictamente "
     "los datos confirmados, el horario en formato de 24 horas (HH:mm) y la fecha en formato DD/MM/YYYY."
 )
+DEFAULT_SYSTEM_PROMPT_INSTAGRAM = (
+    "Eres el analizador multimodal de eventos de la Universidad Paraguayo Alemana (UPA) para publicaciones e imágenes de Instagram. "
+    "Extrae únicamente eventos confirmados del texto y afiche, respetando horarios del mismo día calendario "
+    "y seleccionando grupos destinatarios de forma conservadora."
+)
+DEFAULT_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
 
 FREE_TIER_QUOTA_RPM = 15
 
@@ -77,28 +85,66 @@ def save_active_model(db: Session | None, model_name: str, updated_by: str = "sy
     db.commit()
 
 
-def get_system_prompt(db: Session | None) -> str:
-    """Devuelve el prompt de sistema configurado o el prompt institucional por defecto."""
+def get_system_prompt_autocomplete(db: Session | None) -> str:
+    """Devuelve el prompt de sistema de autocompletado configurado o el prompt institucional por defecto."""
     if db is None:
-        return DEFAULT_SYSTEM_PROMPT
-    row = db.get(AppSetting, GEMINI_SYSTEM_PROMPT_SETTING)
+        return DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
+    row = db.get(AppSetting, GEMINI_SYSTEM_PROMPT_AUTOCOMPLETE_SETTING)
     if row is not None and (row.value or "").strip():
         return row.value.strip()
-    return DEFAULT_SYSTEM_PROMPT
+    legacy_row = db.get(AppSetting, GEMINI_SYSTEM_PROMPT_SETTING)
+    if legacy_row is not None and (legacy_row.value or "").strip():
+        return legacy_row.value.strip()
+    return DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
 
 
-def save_system_prompt(db: Session, prompt_text: str, updated_by: str) -> str:
-    """Guarda el prompt de sistema personalizado (o restaura el predeterminado si se envia vacio)."""
+def save_system_prompt_autocomplete(db: Session, prompt_text: str, updated_by: str) -> str:
+    """Guarda el prompt de sistema de autocompletado (o restaura el predeterminado si se envia vacio)."""
     clean = (prompt_text or "").strip()
-    effective = clean if clean else DEFAULT_SYSTEM_PROMPT
-    row = db.get(AppSetting, GEMINI_SYSTEM_PROMPT_SETTING)
+    effective = clean if clean else DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
+    for key in (GEMINI_SYSTEM_PROMPT_AUTOCOMPLETE_SETTING, GEMINI_SYSTEM_PROMPT_SETTING):
+        row = db.get(AppSetting, key)
+        if row is None:
+            db.add(AppSetting(key=key, value=effective, updated_by=updated_by))
+        else:
+            row.value = effective
+            row.updated_by = updated_by
+    db.commit()
+    return effective
+
+
+def get_system_prompt_instagram(db: Session | None) -> str:
+    """Devuelve el prompt de sistema para analisis multimodal de Instagram o el prompt institucional por defecto."""
+    if db is None:
+        return DEFAULT_SYSTEM_PROMPT_INSTAGRAM
+    row = db.get(AppSetting, GEMINI_SYSTEM_PROMPT_INSTAGRAM_SETTING)
+    if row is not None and (row.value or "").strip():
+        return row.value.strip()
+    return DEFAULT_SYSTEM_PROMPT_INSTAGRAM
+
+
+def save_system_prompt_instagram(db: Session, prompt_text: str, updated_by: str) -> str:
+    """Guarda el prompt de sistema de Instagram (o restaura el predeterminado si se envia vacio)."""
+    clean = (prompt_text or "").strip()
+    effective = clean if clean else DEFAULT_SYSTEM_PROMPT_INSTAGRAM
+    row = db.get(AppSetting, GEMINI_SYSTEM_PROMPT_INSTAGRAM_SETTING)
     if row is None:
-        db.add(AppSetting(key=GEMINI_SYSTEM_PROMPT_SETTING, value=effective, updated_by=updated_by))
+        db.add(AppSetting(key=GEMINI_SYSTEM_PROMPT_INSTAGRAM_SETTING, value=effective, updated_by=updated_by))
     else:
         row.value = effective
         row.updated_by = updated_by
     db.commit()
     return effective
+
+
+def get_system_prompt(db: Session | None) -> str:
+    """Alias compatible hacia el prompt de autocompletado."""
+    return get_system_prompt_autocomplete(db)
+
+
+def save_system_prompt(db: Session, prompt_text: str, updated_by: str) -> str:
+    """Alias compatible hacia el guardado del prompt de autocompletado."""
+    return save_system_prompt_autocomplete(db, prompt_text, updated_by)
 
 
 def resolve_api_key(db: Session) -> tuple[str, str]:
@@ -385,7 +431,7 @@ def _build_autocomplete_prompt(
 ) -> str:
     groups_desc = ", ".join(f"{g.get('id')}: {g.get('name')}" for g in available_groups if g.get("id"))
     if not groups_desc:
-        groups_desc = "ALL: Toda la comunidad UPA, TIE: Ingeniería Empresarial, PI: Ingeniería Industrial, TI: Tecnologías de la Información, PROF: Cuerpo docente"
+        groups_desc = "PI: Ingeniería Industrial, TI: Tecnologías de la Información, PROF: Cuerpo docente"
 
     existing_summary = {
         k: v
@@ -602,7 +648,7 @@ def autocomplete_publication(
     if not _clean_group_list(form_data.get("target_groups")):
         empty_fields.append("target_groups")
 
-    resolved_prompt = system_prompt if system_prompt is not None else get_system_prompt(db)
+    resolved_prompt = system_prompt if system_prompt is not None else get_system_prompt_autocomplete(db)
     prompt = _build_autocomplete_prompt(
         form_data=form_data,
         empty_fields=empty_fields,

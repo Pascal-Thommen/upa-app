@@ -543,15 +543,17 @@ test("historial: Rollenmatrix enthält Historial-Spalte und verbirgt Audit-Log o
   assert.equal(histEl.innerHTML, "");
 });
 
-test("modulo ia: index.html renombra reiter a IA, muestra modelo Flash informativo y campo de System Prompt", () => {
+test("modulo ia: index.html renombra reiter a IA, muestra modelo Flash informativo y dos campos separados de System Prompt", () => {
   const indexHtml = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf8");
   assert.ok(indexHtml.includes('id="nav-mod-ai"'));
   assert.ok(indexHtml.includes('<span class="flex-1">IA</span>'));
   assert.ok(!indexHtml.includes('<span class="flex-1">Control de IA</span>'));
   assert.ok(indexHtml.includes('aria-label="IA"'));
   assert.ok(indexHtml.includes('id="ai-model-info"'));
-  assert.ok(indexHtml.includes('id="ai-input-system-prompt"'));
-  assert.ok(indexHtml.includes('id="btn-ai-save-prompt"'));
+  assert.ok(indexHtml.includes('id="ai-input-system-prompt-autocomplete"'));
+  assert.ok(indexHtml.includes('id="ai-input-system-prompt-instagram"'));
+  assert.ok(indexHtml.includes('id="btn-ai-save-prompt-autocomplete"'));
+  assert.ok(indexHtml.includes('id="btn-ai-save-prompt-instagram"'));
   assert.ok(indexHtml.includes("https://aistudio.google.com/app/apikey"));
   assert.ok(indexHtml.includes("Create API key"));
   assert.ok(indexHtml.includes("Guardar y Probar"));
@@ -560,4 +562,20 @@ test("modulo ia: index.html renombra reiter a IA, muestra modelo Flash informati
   const env = createTestEnvironment("/dashboard/ia");
   assert.equal(env.window.location.pathname, "/dashboard/ia");
   assert.equal(env.router.getCurrentRoute(), "ia");
+
+  const autoInput = env.document.getElementById("ai-input-system-prompt-autocomplete");
+  const igInput = env.document.getElementById("ai-input-system-prompt-instagram");
+  const autoErr = env.document.getElementById("ai-prompt-autocomplete-error");
+  const igErr = env.document.getElementById("ai-prompt-instagram-error");
+  const btnAuto = env.document.getElementById("btn-ai-save-prompt-autocomplete");
+  const btnIg = env.document.getElementById("btn-ai-save-prompt-instagram");
+
+  // Validación >4000 caracteres muestra error en el campo correspondiente
+  autoInput.value = "A".repeat(4001);
+  btnAuto.click();
+  assert.ok(autoErr.textContent.includes("4000 caracteres"));
+
+  igInput.value = "B".repeat(4001);
+  btnIg.click();
+  assert.ok(igErr.textContent.includes("4000 caracteres"));
 });

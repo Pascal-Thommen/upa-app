@@ -627,6 +627,8 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
           source: aiConfiguredState ? "database" : "none",
           model: "gemini-1.5-flash",
           system_prompt: "Eres el asistente editorial inteligente de la UPA.",
+          system_prompt_autocomplete: "Eres el asistente editorial inteligente de la UPA.",
+          system_prompt_instagram: "Eres el analizador multimodal de Instagram de la UPA.",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );

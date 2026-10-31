@@ -585,11 +585,12 @@ test("grupos y matriz de roles en vivo contra SQLite/PostgreSQL", live, async ()
   assert.deepEqual(updatedRole.permissions, ["grupos", "apis"]);
   await ctx.admin.revokeRole("coordinador.test@upa.edu.py");
 
-  // Control de IA: guardar clave y prompt de Gemini y consultar clave enmascarada
+  // Control de IA: guardar clave y prompts separados de Gemini y consultar clave enmascarada
   const aiBefore = await ctx.admin.getAiConfig();
   assert.equal(typeof aiBefore.configured, "boolean");
   assert.equal(typeof aiBefore.model, "string");
-  assert.ok(aiBefore.system_prompt && aiBefore.system_prompt.length > 10);
+  assert.ok(aiBefore.system_prompt_autocomplete && aiBefore.system_prompt_autocomplete.length > 10);
+  assert.ok(aiBefore.system_prompt_instagram && aiBefore.system_prompt_instagram.length > 10);
 
   // Sin clave configurada, autocompletar con IA devuelve el mensaje claro indicando verificar Control de IA
   await assert.rejects(
@@ -605,10 +606,12 @@ test("grupos y matriz de roles en vivo contra SQLite/PostgreSQL", live, async ()
 
   const aiSaved = await ctx.admin.saveAiConfig(
     "AIzaSyLiveCockpitKey1234",
-    "Eres el asistente de redacción UPA. Usa formato 24h HH:mm."
+    "Eres el asistente de redacción UPA. Usa formato 24h HH:mm.",
+    "Analiza flyers de Instagram UPA con selección conservadora de grupos."
   );
   assert.equal(aiSaved.configured, true);
   assert.equal(aiSaved.masked_key, "AIza********1234");
   assert.equal(aiSaved.source, "database");
-  assert.equal(aiSaved.system_prompt, "Eres el asistente de redacción UPA. Usa formato 24h HH:mm.");
+  assert.equal(aiSaved.system_prompt_autocomplete, "Eres el asistente de redacción UPA. Usa formato 24h HH:mm.");
+  assert.equal(aiSaved.system_prompt_instagram, "Analiza flyers de Instagram UPA con selección conservadora de grupos.");
 });
