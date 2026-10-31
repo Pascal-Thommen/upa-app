@@ -543,10 +543,15 @@ test("historial: Rollenmatrix enthält Historial-Spalte und verbirgt Audit-Log o
   assert.equal(histEl.innerHTML, "");
 });
 
-test("control de ia: index.html contiene reiter Control de IA, guia en 3 pasos y controles de conexion", () => {
+test("modulo ia: index.html renombra reiter a IA, muestra modelo Flash informativo y campo de System Prompt", () => {
   const indexHtml = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf8");
   assert.ok(indexHtml.includes('id="nav-mod-ai"'));
-  assert.ok(indexHtml.includes("Control de IA"));
+  assert.ok(indexHtml.includes('<span class="flex-1">IA</span>'));
+  assert.ok(!indexHtml.includes('<span class="flex-1">Control de IA</span>'));
+  assert.ok(indexHtml.includes('aria-label="IA"'));
+  assert.ok(indexHtml.includes('id="ai-model-info"'));
+  assert.ok(indexHtml.includes('id="ai-input-system-prompt"'));
+  assert.ok(indexHtml.includes('id="btn-ai-save-prompt"'));
   assert.ok(indexHtml.includes("https://aistudio.google.com/app/apikey"));
   assert.ok(indexHtml.includes("Create API key"));
   assert.ok(indexHtml.includes("Guardar y Probar"));

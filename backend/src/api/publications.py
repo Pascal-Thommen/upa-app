@@ -234,7 +234,7 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
                     detail="La fecha de finalización del evento no puede ser anterior al inicio.",
                 )
         else:
-            event_end = event_start + timedelta(hours=1)
+            event_end = None
 
         location = payload.location.strip() if payload.location and payload.location.strip() else None
         event_notify_groups = _filter_subset_groups(payload.event_notify_groups, target_groups)
@@ -527,6 +527,7 @@ async def autocomplete_publication_ai(
         available_groups=available_groups,
         image_bytes=uploaded_bytes,
         image_mime_type=uploaded_mime,
+        system_prompt=gemini.get_system_prompt(db),
     )
     if not result.ok:
         err_status = (

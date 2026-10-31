@@ -30,6 +30,7 @@
     participantsPubId: null,
     dropzones: {},
     noticeTimer: null,
+    aiConfigured: false,
   };
 
   function getClient() {
@@ -538,12 +539,11 @@
       if (publishedInput) {
         publishedInput.disabled = !scheduled;
         publishedInput.readOnly = !scheduled;
-        publishedInput.min = Core.isoToDatetimeLocal(new Date().toISOString());
         publishedInput.classList.toggle("hidden", !scheduled);
       }
       if (publishedHint) {
         if (scheduled) {
-          publishedHint.textContent = "La publicación será visible a partir de esa fecha y hora.";
+          publishedHint.textContent = "La publicación será visible a partir de esa fecha y hora (DD/MM/YYYY HH:mm).";
         } else {
           publishedHint.textContent = "Se registrará la fecha exacta al guardar.";
         }
@@ -723,6 +723,7 @@
     hideParticipants();
     showFieldErrors("pub", {});
     applyTypeAndSectionRules();
+    syncAiButtonState();
   }
 
   // ---------------------------------------------------------------------------
@@ -791,7 +792,7 @@
   }
 
   async function openNewPublication() {
-    await syncAvailableGroups(true);
+    await Promise.all([syncAvailableGroups(true), syncAiAvailability()]);
     const allGroupIds = state.groupCatalog.map((g) => g.value);
     const defaults = Core.publicationToFormValues({
       post_type: Core.POST_TYPE_NORMAL,
@@ -802,6 +803,8 @@
     });
     defaults.targetGroups = allGroupIds.slice();
     defaults.eventNotifyGroups = allGroupIds.slice();
+    defaults.eventStart = "";
+    defaults.eventEnd = "";
     fillPublicationForm(defaults, null);
     const listHist = $("ed-list-history");
     if (listHist) listHist.classList.add("hidden");
@@ -815,7 +818,7 @@
   }
 
   async function openEditPublication(id) {
-    await syncAvailableGroups(true);
+    await Promise.all([syncAvailableGroups(true), syncAiAvailability()]);
     let item = state.publications.find((p) => String(p.id) === String(id)) || null;
     try {
       item = await getClient().getPublication(id);
@@ -878,6 +881,37 @@
     }
   }
 
+  function syncAiButtonState() {
+    const btn = $("ed-pub-autocomplete-ai");
+    const wrap = $("ed-pub-autocomplete-ai-wrap");
+    if (!btn) return;
+    if (btn.classList.contains("is-loading")) return;
+    const enabled = Boolean(state.aiConfigured);
+    const tooltip = enabled
+      ? (Core.TEXTS && Core.TEXTS.aiAutocompleteEnabledTooltip) ||
+        "Autocompletar campos vacíos con Google Gemini Flash"
+      : (Core.TEXTS && Core.TEXTS.aiAutocompleteDisabledTooltip) ||
+        "Configure un token válido de Gemini en la pestaña IA para habilitar el autocompletado.";
+    btn.disabled = !enabled;
+    btn.setAttribute("aria-disabled", enabled ? "false" : "true");
+    btn.classList.toggle("is-disabled", !enabled);
+    btn.setAttribute("title", tooltip);
+    if (wrap) wrap.setAttribute("title", tooltip);
+  }
+
+  async function syncAiAvailability() {
+    try {
+      const cfg = await getClient().getAiConfig();
+      if (cfg && typeof cfg.configured === "boolean") {
+        state.aiConfigured = cfg.configured;
+      }
+    } catch (_) {
+      /* mantiene estado actual si falla la red */
+    }
+    syncAiButtonState();
+    return state.aiConfigured;
+  }
+
   function setAiBusy(button, busy) {
     if (!button) return;
     const busyLabel = (Core.TEXTS && Core.TEXTS.aiAutocompleteBusy) || "Analizando contenido e imagen...";
@@ -894,12 +928,20 @@
       if (button.dataset.origHtml) {
         button.innerHTML = button.dataset.origHtml;
       }
-      button.disabled = false;
       button.classList.remove("is-loading");
+      syncAiButtonState();
     }
   }
 
   async function autocompletePublicationWithAi() {
+    if (!state.aiConfigured) {
+      showNotice(
+        "warning",
+        (Core.TEXTS && Core.TEXTS.aiAutocompleteDisabledTooltip) ||
+          "Configure un token válido de Gemini en la pestaña IA para habilitar el autocompletado."
+      );
+      return null;
+    }
     if (state.dropzones.pub && state.dropzones.pub.uploading) {
       showNotice("warning", "Espere a que finalice la subida del archivo antes de autocompletar.");
       return null;
@@ -1225,6 +1267,54 @@
     }
     if ($("ed-btn-add-reminder")) $("ed-btn-add-reminder").addEventListener("click", addReminderRow);
 
+    document.querySelectorAll('[data-mask="datetime"]').forEach((inputEl) => {
+      inputEl.addEventListener("input", () => {
+        if (Core.maskDateTimeInput && /^[\d/\s:]*$/.test(inputEl.value)) {
+          const masked = Core.maskDateTimeInput(inputEl.value);
+          if (masked !== inputEl.value) inputEl.value = masked;
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-mask="time"]').forEach((inputEl) => {
+      inputEl.addEventListener("input", () => {
+        if (Core.maskTime24Input && /^[\d:]*$/.test(inputEl.value)) {
+          const masked = Core.maskTime24Input(inputEl.value);
+          if (masked !== inputEl.value) inputEl.value = masked;
+        }
+      });
+    });
+
+    const validateEventTimeFieldsLive = () => {
+      const isEv = Boolean($("ed-pub-is-event") && $("ed-pub-is-event").checked);
+      if (!isEv) return;
+      const values = readPublicationForm();
+      const errs = Core.validatePublicationValues(values);
+      const startErrEl = document.querySelector('[data-error-for="pub-eventStart"]');
+      const endErrEl = document.querySelector('[data-error-for="pub-eventEnd"]');
+      const startIn = $("ed-pub-event-start");
+      const endIn = $("ed-pub-event-end");
+      if (startErrEl && startIn && startIn.value.trim()) {
+        startErrEl.textContent = errs.eventStart || "";
+        startIn.classList.toggle("has-error", Boolean(errs.eventStart));
+      } else if (startErrEl && startIn && !startIn.value.trim()) {
+        startErrEl.textContent = "";
+        startIn.classList.remove("has-error");
+      }
+      if (endErrEl && endIn) {
+        endErrEl.textContent = errs.eventEnd || "";
+        endIn.classList.toggle("has-error", Boolean(errs.eventEnd));
+      }
+    };
+
+    ["ed-pub-event-start", "ed-pub-event-end"].forEach((id) => {
+      const el = $(id);
+      if (el) {
+        el.addEventListener("change", validateEventTimeFieldsLive);
+        el.addEventListener("blur", validateEventTimeFieldsLive);
+      }
+    });
+
     const tbody = $("ed-pub-rows");
     if (tbody) {
       tbody.addEventListener("click", (event) => {
@@ -1286,11 +1376,13 @@
       }
       initOnce();
       syncAvailableGroups();
+      syncAiAvailability();
     },
 
     reset() {
       state.allowed = false;
       state.isAdmin = false;
+      state.aiConfigured = false;
       state.publications = [];
       state.publicationsLoaded = false;
       state.groupCatalog = [];
@@ -1298,10 +1390,16 @@
       state.participantsPubId = null;
       groupsSynced = false;
       groupsSyncPromise = null;
+      syncAiButtonState();
       const editorial = $("view-editorial");
       if (editorial) editorial.classList.add("hidden");
       const student = $("student-workspace");
       if (student) student.classList.remove("hidden");
+    },
+
+    setAiConfigured(configured) {
+      state.aiConfigured = Boolean(configured);
+      syncAiButtonState();
     },
 
     applyMode,

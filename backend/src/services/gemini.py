@@ -13,6 +13,12 @@ from ..config import settings
 from ..models import AppSetting
 
 GEMINI_KEY_SETTING = "GEMINI_API_KEY"
+GEMINI_SYSTEM_PROMPT_SETTING = "GEMINI_SYSTEM_PROMPT"
+DEFAULT_SYSTEM_PROMPT = (
+    "Eres el asistente editorial inteligente de la Universidad Paraguayo Alemana (UPA). "
+    "Redacta en español formal institucional, claro y conciso, respetando estrictamente "
+    "los datos confirmados, el horario en formato de 24 horas (HH:mm) y la fecha en formato DD/MM/YYYY."
+)
 AUTOCOMPLETE_ERROR_PREFIX = "No se pudo autocompletar: Verifique la clave de IA en Control de IA"
 
 
@@ -50,6 +56,28 @@ def save_api_key(db: Session, key: str, updated_by: str) -> None:
         row.value = key
         row.updated_by = updated_by
     db.commit()
+
+
+def get_system_prompt(db: Session | None) -> str:
+    """Devuelve el System Prompt configurado en la base de datos o el prompt institucional por defecto."""
+    if db is not None:
+        row = db.get(AppSetting, GEMINI_SYSTEM_PROMPT_SETTING)
+        if row is not None and (row.value or "").strip():
+            return (row.value or "").strip()
+    return DEFAULT_SYSTEM_PROMPT
+
+
+def save_system_prompt(db: Session, prompt: str, updated_by: str) -> str:
+    """Guarda el System Prompt personalizado en app_settings (o restaura el valor por defecto si se envía vacío)."""
+    clean_prompt = (prompt or "").strip() or DEFAULT_SYSTEM_PROMPT
+    row = db.get(AppSetting, GEMINI_SYSTEM_PROMPT_SETTING)
+    if row is None:
+        db.add(AppSetting(key=GEMINI_SYSTEM_PROMPT_SETTING, value=clean_prompt, updated_by=updated_by))
+    else:
+        row.value = clean_prompt
+        row.updated_by = updated_by
+    db.commit()
+    return clean_prompt
 
 
 @dataclass
@@ -183,6 +211,7 @@ def _build_autocomplete_prompt(
     empty_fields: list[str],
     available_groups: list[dict[str, str]],
     has_image: bool,
+    system_prompt: str | None = None,
 ) -> str:
     groups_desc = ", ".join(f"{g.get('id')}: {g.get('name')}" for g in available_groups if g.get("id"))
     if not groups_desc:
@@ -195,8 +224,10 @@ def _build_autocomplete_prompt(
         and v not in (None, "", [])
     }
 
+    active_system_prompt = (system_prompt or "").strip() or DEFAULT_SYSTEM_PROMPT
+
     return (
-        "Eres el asistente editorial inteligente de la Universidad Paraguayo Alemana (UPA). "
+        f"{active_system_prompt}\n"
         "Analiza los datos actuales del formulario"
         + (" y la imagen adjunta" if has_image else "")
         + " para sugerir valores ÚNICAMENTE para los campos que están vacíos.\n"
@@ -206,8 +237,8 @@ def _build_autocomplete_prompt(
         "Categorías válidas: MELDUNG, ANKUENDIGUNG, VERANSTALTUNG, STELLENANGEBOT.\n"
         "Devuelve exclusivamente un objeto JSON válido con las claves de los campos vacíos que puedas inferir "
         "(por ejemplo: title, caption, content, is_event, event_start en formato YYYY-MM-DDTHH:MM, "
-        "event_end en formato YYYY-MM-DDTHH:MM, location, target_groups como lista de códigos, "
-        "category, has_registration, link_label, link_url)."
+        "event_end en formato YYYY-MM-DDTHH:MM solo si se menciona explícitamente la hora de finalización, "
+        "location, target_groups como lista de códigos, category, has_registration, link_label, link_url)."
     )
 
 
@@ -262,6 +293,7 @@ def autocomplete_publication(
     available_groups: list[dict[str, str]] | None = None,
     image_bytes: bytes | None = None,
     image_mime_type: str | None = None,
+    system_prompt: str | None = None,
 ) -> AutocompleteResult:
     """Envía el texto actual y la imagen opcional al modelo multimodal Gemini Flash y devuelve solo campos vacíos."""
     model = settings.GEMINI_MODEL
@@ -294,6 +326,7 @@ def autocomplete_publication(
         empty_fields=empty_fields,
         available_groups=available_groups or [],
         has_image=bool(image_bytes and image_mime_type),
+        system_prompt=system_prompt,
     )
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
