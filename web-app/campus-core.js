@@ -379,6 +379,61 @@
 
   /* ------------------------------------------------------------------ contenido */
 
+  function escapeHtml(value) {
+    return String(value === null || value === undefined ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function trimTrailingUrlPunctuation(rawUrl) {
+    let url = rawUrl;
+    let suffix = "";
+    while (url.length > 0) {
+      const last = url[url.length - 1];
+      if (/[.,;:!?]/.test(last)) {
+        suffix = last + suffix;
+        url = url.slice(0, -1);
+        continue;
+      }
+      if (last === ")") {
+        const opens = (url.match(/\(/g) || []).length;
+        const closes = (url.match(/\)/g) || []).length;
+        if (closes > opens) {
+          suffix = last + suffix;
+          url = url.slice(0, -1);
+          continue;
+        }
+      }
+      break;
+    }
+    return { url, suffix };
+  }
+
+  function linkifyText(value) {
+    const escaped = escapeHtml(value);
+    if (!escaped) return "";
+    const pattern =
+      /((?:https?:\/\/|www\.|(?:bit\.ly|forms\.gle|t\.me|wa\.me)\/)[^\s<>"']+)|(^|[\s([¡¿,;])(#[A-Za-zÀ-ÖØ-öø-ÿÑñ0-9_]*[A-Za-zÀ-ÖØ-öø-ÿÑñ][A-Za-zÀ-ÖØ-öø-ÿÑñ0-9_]*)/gi;
+    return escaped.replace(pattern, (match, rawUrl, hashPrefix, hashtag) => {
+      if (rawUrl) {
+        const entityBreak = rawUrl.search(/&(?:lt|gt|quot|#39);/i);
+        const candidate = entityBreak === -1 ? rawUrl : rawUrl.slice(0, entityBreak);
+        const remainder = entityBreak === -1 ? "" : rawUrl.slice(entityBreak);
+        const { url, suffix } = trimTrailingUrlPunctuation(candidate);
+        if (!url) return match;
+        const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+        return `<a class="rich-link" href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${suffix}${remainder}`;
+      }
+      if (hashtag) {
+        return `${hashPrefix || ""}<span class="hashtag">${hashtag}</span>`;
+      }
+      return match;
+    });
+  }
+
   function safeUrl(value) {
     const url = String(value || "").trim();
     if (!url) return "";
@@ -799,6 +854,8 @@
     formatEventSchedule,
     monthGrid,
     shiftMonth,
+    escapeHtml,
+    linkifyText,
     safeUrl,
     isVideoMedia,
     postKind,
