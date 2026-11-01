@@ -220,6 +220,19 @@
     return Boolean(e.coarsePointer) && Number(e.width) <= 1024;
   }
 
+  function isBetaEnvironment(env) {
+    const e = env || {};
+    const host = String(e.hostname || "").toLowerCase();
+    const port = String(e.port || "");
+    const search = String(e.search || "");
+    const appEnv = String(e.appEnv || "").toLowerCase();
+    if (appEnv === "beta") return true;
+    if (port === "8185" || port === "8100") return true;
+    if (/(^|[.-])beta([.-]|$)/i.test(host) || host.includes("upa-beta")) return true;
+    if (/(^|[?&])(env=beta|beta=1)(&|$)/.test(search)) return true;
+    return false;
+  }
+
   function normalizeTheme(value) {
     return THEMES.includes(value) ? value : "system";
   }
@@ -313,6 +326,29 @@
     if (!key) return "";
     const short = formatDayShort(key);
     return `${short.day} ${short.month.toLowerCase()} ${key.slice(0, 4)}`;
+  }
+
+  function formatEventSchedule(eventStart, eventEnd, timeZone) {
+    const start = eventStart instanceof Date ? eventStart : new Date(eventStart);
+    if (!eventStart || Number.isNaN(start.getTime())) {
+      return { dayKey: "", day: "", month: "", dateLong: "", startTime: "", endTime: "", timeRange: "" };
+    }
+    const key = dayKey(start, timeZone);
+    const short = formatDayShort(key);
+    const dateLong = formatDayLong(key);
+    const startTime = formatTime(start, timeZone);
+    const end = eventEnd ? (eventEnd instanceof Date ? eventEnd : new Date(eventEnd)) : null;
+    const endTime = end && !Number.isNaN(end.getTime()) ? formatTime(end, timeZone) : "";
+    const timeRange = endTime && endTime !== startTime ? `${startTime} - ${endTime}` : startTime;
+    return {
+      dayKey: key,
+      day: short.day,
+      month: short.month,
+      dateLong,
+      startTime,
+      endTime,
+      timeRange,
+    };
   }
 
   function pad(n) {
@@ -489,6 +525,9 @@
       const start = new Date(ev.event_start);
       if (Number.isNaN(start.getTime())) continue;
       const endDate = ev.event_end ? new Date(ev.event_end) : null;
+      const validEnd = endDate && !Number.isNaN(endDate.getTime()) ? endDate : null;
+      const startLabel = formatTime(start);
+      const endLabel = validEnd ? formatTime(validEnd) : "";
       entries.push({
         key: `event:${ev.id}`,
         kind: "event",
@@ -496,12 +535,14 @@
         title: ev.title,
         description: ev.description || ev.summary || "",
         dayKey: dayKey(start),
-        sortKey: `${dayKey(start)} ${formatTime(start)}`,
-        timeLabel: formatTime(start),
+        sortKey: `${dayKey(start)} ${startLabel}`,
+        timeLabel: startLabel,
+        endTimeLabel: endLabel,
+        timeRange: endLabel && endLabel !== startLabel ? `${startLabel} - ${endLabel}` : startLabel,
         place: ev.location || "",
         link: "",
         date: start,
-        end: endDate && !Number.isNaN(endDate.getTime()) ? endDate : null,
+        end: validEnd,
         raw: ev,
       });
     }
@@ -744,6 +785,7 @@
     roleLabel,
     initials,
     isMobileEnvironment,
+    isBetaEnvironment,
     normalizeTheme,
     resolveTheme,
     detectInstallPlatform,
@@ -754,6 +796,7 @@
     formatDayShort,
     formatMonthLabel,
     formatPublished,
+    formatEventSchedule,
     monthGrid,
     shiftMonth,
     safeUrl,

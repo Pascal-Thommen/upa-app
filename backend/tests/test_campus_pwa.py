@@ -101,9 +101,12 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert "Probar la versión web aquí" not in html
 
     html_versions = set(re.findall(r"/campus/[\w./-]+\.(?:js|css)\?v=([\d.]+)", html))
-    assert html_versions == {"1.0.0"}
+    assert html_versions == {"1.0.2"}
+    assert "upa-logo.png" not in html
 
     sw = (WEB_APP / "sw.js").read_text(encoding="utf-8")
+    assert 'const VERSION = "1.0.2";' in sw
+    assert "upa-logo.png" not in sw
     shell_files = re.findall(r'"(/[^"]*)"', sw.split("SHELL_FILES")[1].split("];")[0])
     assert "/" in shell_files and "/manifest.webmanifest" in shell_files
     for entry in shell_files:

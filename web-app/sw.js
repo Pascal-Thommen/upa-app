@@ -7,16 +7,15 @@
  */
 "use strict";
 
-const VERSION = "1.0.1";
+const VERSION = "1.0.2";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
 const SHELL_FILES = [
   "/",
   "/manifest.webmanifest",
-  "/campus/campus.css?v=1.0.0",
-  "/campus/campus-core.js?v=1.0.0",
-  "/campus/vendor/qrcode.js?v=1.0.0",
-  "/campus/campus.js?v=1.0.0",
-  "/campus/icons/upa-logo.png",
+  "/campus/campus.css?v=1.0.2",
+  "/campus/campus-core.js?v=1.0.2",
+  "/campus/vendor/qrcode.js?v=1.0.2",
+  "/campus/campus.js?v=1.0.2",
   "/campus/icons/favicon-32.png",
   "/campus/icons/apple-touch-icon.png",
   "/campus/icons/icon-192.png",
@@ -31,6 +30,12 @@ self.addEventListener("install", (event) => {
       .then((cache) => cache.addAll(SHELL_FILES))
       .then(() => self.skipWaiting()),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {

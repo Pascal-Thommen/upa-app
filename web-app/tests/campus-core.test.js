@@ -48,6 +48,13 @@ test("isMobileEnvironment: distingue escritorio, movil, iPadOS, standalone y par
   );
   assert.equal(Core.isMobileEnvironment({ userAgent: "Mozilla/5.0", standalone: true }), true);
   assert.equal(Core.isMobileEnvironment({ userAgent: "Mozilla/5.0", search: "?app=1" }), true);
+
+  assert.equal(Core.isBetaEnvironment({ hostname: "upa-beta.eu1.netbird.services", port: "" }), true);
+  assert.equal(Core.isBetaEnvironment({ hostname: "localhost", port: "8185" }), true);
+  assert.equal(Core.isBetaEnvironment({ hostname: "localhost", port: "8085" }), false);
+  assert.equal(Core.isBetaEnvironment({ hostname: "upa.eu1.netbird.services", port: "" }), false);
+  assert.equal(Core.isBetaEnvironment({ hostname: "localhost", port: "8085", search: "?env=beta" }), true);
+  assert.equal(Core.isBetaEnvironment({ hostname: "localhost", port: "8085", appEnv: "beta" }), true);
 });
 
 test("buildQr: genera un SVG valido cuya matriz es leida por un lector QR real (jsQR)", () => {
@@ -141,8 +148,17 @@ test("Agenda: agrupa eventos y entregas en horario de Asuncion, filtra por dia y
   assert.equal(entries[0].id, "dl-2");
   assert.equal(entries[1].id, 10);
   assert.equal(entries[1].timeLabel, "11:00");
+  assert.equal(entries[1].endTimeLabel, "12:00");
+  assert.equal(entries[1].timeRange, "11:00 - 12:00");
   assert.equal(entries[2].id, "dl-1");
   assert.equal(entries[2].link, "https://classroom.google.com/c/1/a/2/details");
+
+  const sched = Core.formatEventSchedule("2026-11-05T14:00:00Z", "2026-11-05T15:30:00Z");
+  assert.equal(sched.dayKey, "2026-11-05");
+  assert.equal(sched.day, "5");
+  assert.equal(sched.startTime, "11:00");
+  assert.equal(sched.endTime, "12:30");
+  assert.equal(sched.timeRange, "11:00 - 12:30");
 
   assert.equal(Core.upcomingEntries(entries, "2026-11-04").length, 2);
   assert.equal(Core.entriesForDay(entries, "2026-11-05").length, 2);

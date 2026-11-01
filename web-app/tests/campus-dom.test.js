@@ -71,6 +71,12 @@ async function openCampus(options) {
     media: query,
     addEventListener: () => {},
   });
+  if (opts.serviceWorker) {
+    Object.defineProperty(window.navigator, "serviceWorker", {
+      value: opts.serviceWorker,
+      configurable: true,
+    });
+  }
   if (opts.storage) {
     for (const [k, v] of Object.entries(opts.storage)) window.localStorage.setItem(k, v);
   }
@@ -188,7 +194,9 @@ test("Escritorio: muestra landing con telefono interactivo real en marco negro j
     await app.click(app.document.querySelector('[data-tab="perfil"]'));
     assert.equal(app.$("view-perfil").hidden, false);
     const landingDarkSignet = app.document.querySelector(".landing-header .upa-signet.logo-dark");
-    const landingLightLogo = app.document.querySelector(".landing-header .logo-light");
+    const landingLightLogo = app.document.querySelector(".landing-header .upa-signet.logo-light");
+    assert.ok(landingLightLogo && landingDarkSignet, "El logo en escritorio debe ser el signet vectorial de 3 letras UPA en ambos modos");
+    assert.equal(app.document.querySelector('img[src*="upa-logo"]'), null, "No debe existir el logo bitmap upa-logo.png");
     await app.click(app.document.querySelector('[data-theme-option="dark"]'));
     assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "dark");
     assert.equal(landingDarkSignet.hidden, false);
@@ -276,6 +284,25 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.ok(cards.length >= 2);
     assert.match(cards[0].textContent, /Fijado/);
     assert.match(cards[0].textContent, /Foro de Ingeniería Empresarial 2026/);
+
+    // Publicacion sin imagen (!media): badges prominentes (Campus y Evento) arriba a la izquierda en .card-header
+    const eventHeaderBadges = [...cards[0].querySelectorAll(".card-header .card-badges .badge")];
+    assert.equal(eventHeaderBadges.length, 2, "El evento sin imagen debe mostrar badges de origen (Campus) y tipo (Evento) en el encabezado");
+    assert.equal(eventHeaderBadges[0].textContent.trim(), "Campus");
+    assert.equal(eventHeaderBadges[1].textContent.trim(), "Evento");
+
+    // Detalle estructurado de un evento: bloque #detail-event-card con fecha, horario 24h, Lugar y Estado de inscripcion
+    await app.click(cards[0].querySelector(".card-open"));
+    assert.equal(app.$("detail").hidden, false);
+    assert.equal(app.$("detail-event-card").hidden, false, "El detalle de un evento debe renderizar el bloque estructurado #detail-event-card");
+    assert.ok(app.$("detail-event-card").querySelector(".detail-date-tile"), "Debe incluir mosaico de fecha (dia/mes)");
+    assert.match(app.$("detail-event-card").textContent, /Horario: \d{2}:\d{2} - \d{2}:\d{2} hs/);
+    assert.match(app.$("detail-event-card").textContent, /Lugar/);
+    assert.match(app.$("detail-event-card").textContent, /Auditorio Edificio 1/);
+    assert.match(app.$("detail-event-status").textContent, /Inscripción abierta/);
+    app.window.history.back();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(app.$("detail").hidden, true);
 
     const regBtn = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
     assert.ok(regBtn);
@@ -423,9 +450,11 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(app.$("profile-groups"), null, "El contenedor #profile-groups no debe existir en el perfil");
 
     const meta = app.document.querySelector('meta[name="theme-color"]');
-    const topbarLightLogo = app.document.querySelector(".topbar .logo-light");
+    const topbarLightLogo = app.document.querySelector(".topbar .upa-signet.logo-light");
     const topbarDarkSignet = app.document.querySelector(".topbar .upa-signet.logo-dark");
-    assert.ok(topbarLightLogo && topbarDarkSignet, "Deben existir las variantes clara y oscura (signet blanco UPA) en la barra superior");
+    assert.ok(topbarLightLogo && topbarDarkSignet, "Deben existir las variantes clara (signet verde #6c9339) y oscura (signet blanco UPA) en la barra superior");
+    assert.equal(topbarLightLogo.tagName.toLowerCase(), "svg");
+    assert.equal(topbarDarkSignet.tagName.toLowerCase(), "svg");
 
     await app.click(app.document.querySelector('[data-theme-option="dark"]'));
     assert.equal(app.document.documentElement.getAttribute("data-theme"), "dark");
@@ -498,5 +527,63 @@ test("Resiliencia: modo sin conexion con datos guardados, fallo sin cache y toke
     assert.equal(expired.$("login-prompt").hidden, false);
   } finally {
     expired.close();
+  }
+});
+
+test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona updatefound/controllerchange", live, async () => {
+  const swListeners = {};
+  const regListeners = {};
+  const installingWorker = {
+    state: "installing",
+    listeners: {},
+    postMessages: [],
+    addEventListener(ev, fn) {
+      this.listeners[ev] = fn;
+    },
+    postMessage(msg) {
+      this.postMessages.push(msg);
+    },
+  };
+  let updateCalled = 0;
+  const fakeSw = {
+    controller: {},
+    addEventListener(ev, fn) {
+      swListeners[ev] = fn;
+    },
+    register: async () => ({
+      installing: installingWorker,
+      waiting: null,
+      update: async () => {
+        updateCalled += 1;
+      },
+      addEventListener(ev, fn) {
+        regListeners[ev] = fn;
+      },
+    }),
+  };
+
+  const betaApp = await openCampus({ url: "/?env=beta", serviceWorker: fakeSw });
+  try {
+    assert.equal(betaApp.$("beta-badge").hidden, false, "En instancia Beta debe mostrarse el badge BETA en la barra superior");
+    assert.equal(betaApp.$("beta-badge").textContent, "BETA");
+    assert.equal(betaApp.$("profile-beta-badge").hidden, false, "En instancia Beta debe mostrarse el badge BETA en el perfil");
+    assert.equal(updateCalled >= 1, true, "Debe invocar reg.update() al registrar el Service Worker");
+
+    // Simular nueva version detectada por el Service Worker (updatefound -> installed -> SKIP_WAITING)
+    assert.ok(regListeners.updatefound, "Debe escuchar el evento updatefound");
+    regListeners.updatefound();
+    installingWorker.state = "installed";
+    installingWorker.listeners.statechange();
+    assert.equal(betaApp.$("toast").hidden, false);
+    assert.match(betaApp.$("toast").textContent, /Nueva versión disponible/);
+    assert.equal(installingWorker.postMessages.length, 1);
+    assert.equal(installingWorker.postMessages[0].type, "SKIP_WAITING");
+
+    // Simular cambio de controlador (controllerchange)
+    assert.ok(swListeners.controllerchange, "Debe escuchar el evento controllerchange");
+    swListeners.controllerchange();
+    assert.match(betaApp.$("toast").textContent, /Nueva versión disponible/);
+  } finally {
+    betaApp.close();
   }
 });
