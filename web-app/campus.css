@@ -729,6 +729,11 @@ p {
   background: var(--surface-2);
 }
 
+video.card-media {
+  aspect-ratio: 16 / 9;
+  min-height: 200px;
+}
+
 .card-body {
   padding: 14px 16px;
   display: flex;

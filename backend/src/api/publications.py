@@ -287,6 +287,10 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
     if final_type != "INSTAGRAM" or is_create:
         if payload.media_url is not None:
             post.media_url = payload.media_url.strip() or None
+        if payload.image_url is not None:
+            post.image_url = payload.image_url.strip() or None
+        elif payload.media_url is not None and not payload.media_url.strip():
+            post.image_url = None
         post.media_type = _infer_media_type(post.media_url, payload.media_type)
         if payload.permalink is not None:
             post.permalink = payload.permalink.strip() or None
@@ -653,6 +657,7 @@ def _merge_update_into_write(post: Post, patch: PublicationUpdate) -> tuple[Publ
         is_pinned=patch.is_pinned if "is_pinned" in provided and patch.is_pinned is not None else bool(post.is_pinned),
         expires_at=patch.expires_at if "expires_at" in provided else post.expires_at,
         media_url=patch.media_url if "media_url" in provided else post.media_url,
+        image_url=patch.image_url if "image_url" in provided else (None if "media_url" in provided else post.image_url),
         media_type=patch.media_type if "media_type" in provided else post.media_type,
         link_label=patch.link_label if "link_label" in provided else post.link_label,
         link_url=patch.link_url if "link_url" in provided else post.link_url,

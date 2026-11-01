@@ -1,7 +1,45 @@
 from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false, func
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
 from .database import Base
+
+DEFAULT_VIDEO_POSTER_FALLBACK = "/campus/icons/icon-512.png"
+
+
+def is_video_stream_url(url: str | None) -> bool:
+    """Detecta si una URL apunta directamente a un archivo de video reproducible (mp4, webm, mov)."""
+    if not url:
+        return False
+    clean = str(url).strip().lower().split("?", 1)[0].split("#", 1)[0]
+    return clean.endswith((".mp4", ".webm", ".mov"))
+
+
+def split_stored_media_urls(raw_value: str | None) -> tuple[str | None, str | None]:
+    """Separa media_url y thumbnail/image_url codificados sin requerir migracion de esquema."""
+    if raw_value is None:
+        return None, None
+    text_val = str(raw_value)
+    if "\n" in text_val:
+        primary, thumb = text_val.split("\n", 1)
+        clean_primary = primary.strip() or None
+        clean_thumb = thumb.strip() or None
+        return clean_primary, clean_thumb
+    clean = text_val.strip() or None
+    return clean, None
+
+
+def pack_stored_media_urls(primary: str | None, thumb: str | None) -> str | None:
+    """Empaqueta media_url e image_url en la columna media_url existente."""
+    clean_primary = str(primary).strip() if primary and str(primary).strip() else None
+    clean_thumb = str(thumb).strip() if thumb and str(thumb).strip() else None
+    if clean_primary and clean_thumb and clean_thumb != clean_primary:
+        return f"{clean_primary}\n{clean_thumb}"
+    if clean_primary:
+        return clean_primary
+    if clean_thumb:
+        return f"\n{clean_thumb}"
+    return None
 
 
 class User(Base):
@@ -72,8 +110,54 @@ class Post(Base):
     # Campos de sincronizacion con Instagram
     instagram_id = Column(String(100), unique=True, nullable=True, index=True)
     media_type = Column(String(50), nullable=True)  # IMAGE, VIDEO, CAROUSEL_ALBUM
-    media_url = Column(Text, nullable=True)
+    _stored_media_url = Column("media_url", Text, nullable=True)
     permalink = Column(Text, nullable=True)
+
+    @hybrid_property
+    def media_url(self) -> str | None:
+        primary, thumb = split_stored_media_urls(self._stored_media_url)
+        return primary or thumb
+
+    @media_url.setter
+    def media_url(self, value: str | None) -> None:
+        existing_primary, existing_thumb = split_stored_media_urls(self._stored_media_url)
+        clean_val = str(value).strip() if value and str(value).strip() else None
+        if clean_val is None:
+            if existing_primary is not None:
+                self._stored_media_url = None
+            else:
+                self._stored_media_url = pack_stored_media_urls(None, existing_thumb)
+            return
+        if existing_thumb and (existing_primary is None or is_video_stream_url(clean_val)):
+            self._stored_media_url = pack_stored_media_urls(clean_val, existing_thumb)
+        else:
+            self._stored_media_url = clean_val
+
+    @media_url.expression
+    def media_url(cls):
+        return cls._stored_media_url
+
+    @hybrid_property
+    def image_url(self) -> str | None:
+        primary, thumb = split_stored_media_urls(self._stored_media_url)
+        if thumb:
+            return thumb
+        if primary and not is_video_stream_url(primary):
+            return primary
+        mtype = str(getattr(self, "media_type", "") or "").strip().upper()
+        if mtype == "VIDEO" or is_video_stream_url(primary):
+            return DEFAULT_VIDEO_POSTER_FALLBACK
+        return None
+
+    @image_url.setter
+    def image_url(self, value: str | None) -> None:
+        existing_primary, _ = split_stored_media_urls(self._stored_media_url)
+        clean_thumb = str(value).strip() if value and str(value).strip() else None
+        self._stored_media_url = pack_stored_media_urls(existing_primary, clean_thumb)
+
+    @image_url.expression
+    def image_url(cls):
+        return cls._stored_media_url
 
     # Metadatos
     author_id = Column(Integer, ForeignKey("users.id"), nullable=True)

@@ -170,7 +170,8 @@ class PublicationWrite(BaseModel):
     category: str | None = Field(default=None, description="Categoria opcional")
     is_pinned: bool = Field(default=False, description="Fijar en la parte superior")
     expires_at: datetime | None = Field(default=None, description="Vencimiento opcional")
-    media_url: str | None = Field(default=None, description="URL de imagen o cartel")
+    media_url: str | None = Field(default=None, description="URL de imagen, video o cartel")
+    image_url: str | None = Field(default=None, description="URL de miniatura o imagen de portada (poster)")
     media_type: str | None = Field(default=None, description="IMAGE, VIDEO o CAROUSEL_ALBUM")
     link_label: str | None = Field(default=None, description="Texto del boton de enlace opcional")
     link_url: str | None = Field(default=None, description="URL destino del boton de enlace opcional")
@@ -244,6 +245,7 @@ class PublicationUpdate(BaseModel):
     is_pinned: bool | None = None
     expires_at: datetime | None = None
     media_url: str | None = None
+    image_url: str | None = None
     media_type: str | None = None
     link_label: str | None = None
     link_url: str | None = None
@@ -376,7 +378,8 @@ class PublicationResponse(BaseModel):
         summary_text = (
             raw_caption if raw_caption else (full_content[:140] + "..." if len(full_content) > 140 else full_content)
         )
-        img = (getattr(post, "media_url", None) or "").strip()
+        media = (getattr(post, "media_url", None) or "").strip()
+        img = (getattr(post, "image_url", None) or media).strip()
         created = ensure_utc_datetime(getattr(post, "created_at", None))
         published = effective_published_at(post)
         raw_updated = getattr(post, "updated_at", None)
@@ -429,7 +432,7 @@ class PublicationResponse(BaseModel):
             reminders=effective_reminders(post),
             instagram_id=(getattr(post, "instagram_id", None) or "").strip(),
             media_type=(getattr(post, "media_type", None) or "").strip(),
-            media_url=img,
+            media_url=media,
             image_url=img,
             permalink=(getattr(post, "permalink", None) or "").strip(),
             **extra_detail_fields(post),
