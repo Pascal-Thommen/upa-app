@@ -309,7 +309,7 @@ p {
 }
 
 .landing-header {
-  padding: 16px 40px 6px;
+  padding: 12px 40px 4px;
   display: flex;
   align-items: center;
 }
@@ -367,8 +367,8 @@ p {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 60px;
-  padding: 12px 40px 24px;
+  gap: 56px;
+  padding: 8px 40px 16px;
   flex-wrap: wrap;
 }
 
@@ -379,98 +379,35 @@ p {
 }
 
 .phone-frame {
-  width: 384px;
-  height: min(760px, calc(100dvh - 120px));
-  min-height: 580px;
-  padding: 12px;
-  border-radius: 50px;
-  background: linear-gradient(145deg, #232934 0%, #0b0e14 42%, #050609 100%);
+  width: 416px;
+  height: min(860px, 88vh);
+  height: min(860px, 88dvh);
+  min-height: 620px;
+  padding: 10px;
+  border-radius: 40px;
+  background: #0b0e14;
   box-shadow:
-    0 30px 65px rgba(2, 6, 23, 0.45),
-    0 10px 24px rgba(2, 6, 23, 0.25),
-    inset 0 0 0 2px #384152,
-    inset 0 0 0 4px #050609;
+    0 24px 56px rgba(2, 6, 23, 0.4),
+    0 6px 18px rgba(2, 6, 23, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   position: relative;
   display: flex;
   flex-direction: column;
-}
-
-.phone-frame::before {
-  content: "";
-  position: absolute;
-  left: -3px;
-  top: 112px;
-  width: 3px;
-  height: 28px;
-  background: #1e2430;
-  border-radius: 2px 0 0 2px;
-  box-shadow: 0 44px 0 #1e2430, 0 86px 0 #1e2430;
-}
-
-.phone-frame::after {
-  content: "";
-  position: absolute;
-  right: -3px;
-  top: 150px;
-  width: 3px;
-  height: 54px;
-  background: #1e2430;
-  border-radius: 0 2px 2px 0;
-}
-
-.phone-notch {
-  width: 106px;
-  height: 22px;
-  background: #050609;
-  border-radius: 0 0 15px 15px;
-  margin: 0 auto;
-  position: relative;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  flex: none;
-}
-
-.phone-speaker {
-  width: 36px;
-  height: 4px;
-  border-radius: 999px;
-  background: #1f2633;
-}
-
-.phone-camera {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #2563eb 0%, #0f172a 60%, #050609 100%);
 }
 
 .phone-screen {
   flex: 1;
   min-height: 0;
   background: var(--bg);
-  border-radius: 38px;
+  border-radius: 30px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  margin-top: -10px;
-}
-
-.phone-home-bar {
-  width: 118px;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
-  margin: 7px auto 1px;
-  flex: none;
 }
 
 .landing-card {
-  max-width: 380px;
+  max-width: 360px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -485,20 +422,13 @@ p {
 }
 
 .landing h1 {
-  font-size: 1.75rem;
-  line-height: 1.18;
-  margin: 6px 0 8px;
-}
-
-.landing-lead {
-  color: var(--muted);
-  font-size: 0.95rem;
-  margin-bottom: 16px;
+  font-size: 1.7rem;
+  line-height: 1.2;
+  margin: 6px 0 16px;
 }
 
 .landing-qr {
   text-align: center;
-  margin-bottom: 14px;
 }
 
 .qr-box {
@@ -522,24 +452,6 @@ p {
   font-size: 0.82rem;
   word-break: break-all;
   max-width: 220px;
-}
-
-.landing-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--accent);
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-decoration: none;
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-
-.landing-link:hover {
-  border-color: var(--accent);
 }
 
 .desktop-return-bar {
@@ -610,7 +522,7 @@ p {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  --safe-top: 10px;
+  --safe-top: 4px;
   --safe-bottom: 4px;
   --safe-left: 0px;
   --safe-right: 0px;
@@ -845,6 +757,7 @@ p {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  scroll-behavior: smooth;
   padding: 12px calc(var(--safe-right) + 14px) 10px calc(var(--safe-left) + 14px);
   -webkit-overflow-scrolling: touch;
 }
@@ -853,7 +766,7 @@ p {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  padding: 4px calc(var(--safe-right) + 12px) 6px calc(var(--safe-left) + 12px);
+  padding: 2px calc(var(--safe-right) + 10px) 4px calc(var(--safe-left) + 10px);
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
@@ -879,6 +792,15 @@ p {
   gap: 8px;
 }
 
+.agenda-month-header {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 6px 2px 2px;
+}
+
 .agenda-item {
   display: flex;
   align-items: stretch;
@@ -887,6 +809,14 @@ p {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
+  scroll-margin-top: 8px;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
+}
+
+.agenda-item-highlight {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand);
+  background: var(--brand-soft);
 }
 
 .agenda-open {
@@ -958,27 +888,27 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 30px;
-  margin-bottom: 2px;
-  font-size: 0.88rem;
+  min-height: 24px;
+  margin-bottom: 1px;
+  font-size: 0.8rem;
 }
 
 .cal-head .icon-btn {
-  width: 30px;
-  height: 30px;
-  font-size: 1.25rem;
+  width: 24px;
+  height: 24px;
+  font-size: 1.1rem;
 }
 
 .cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: 30px;
-  gap: 2px;
+  grid-auto-rows: 24px;
+  gap: 1px;
 }
 
 .cal-dow {
   text-align: center;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 700;
   color: var(--muted);
   align-self: center;
@@ -992,12 +922,12 @@ p {
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text);
-  font-size: 0.8rem;
-  line-height: 1.1;
-  padding: 2px 0;
+  font-size: 0.74rem;
+  line-height: 1;
+  padding: 1px 0;
   cursor: pointer;
   min-height: 0;
 }
@@ -1030,13 +960,13 @@ p {
 .dots {
   display: flex;
   gap: 2px;
-  height: 4px;
+  height: 3px;
   margin-top: 1px;
 }
 
 .dot {
-  width: 4px;
-  height: 4px;
+  width: 3.5px;
+  height: 3.5px;
   border-radius: 50%;
 }
 
@@ -1312,7 +1242,7 @@ p {
   }
 
   .phone-frame {
-    width: min(100vw - 40px, 384px);
+    width: min(100vw - 32px, 416px);
   }
 }
 

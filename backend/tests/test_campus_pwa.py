@@ -96,6 +96,9 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     ):
         assert expected in html
     assert "profile-groups" not in html
+    assert "phone-notch" not in html
+    assert "try-web-link" not in html
+    assert "Probar la versión web aquí" not in html
 
     html_versions = set(re.findall(r"/campus/[\w./-]+\.(?:js|css)\?v=([\d.]+)", html))
     assert html_versions == {"1.0.0"}
@@ -124,7 +127,8 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert ".card-media-wrap" in css
     assert ".upa-signet" in css
     assert ".app.app-framed" in css
-    assert "grid-auto-rows: 30px" in css
+    assert "grid-auto-rows: 24px" in css
+    assert ".phone-notch" not in css
 
     nginx = (REPO_ROOT / "web-admin" / "nginx.conf").read_text(encoding="utf-8")
     for snippet in (

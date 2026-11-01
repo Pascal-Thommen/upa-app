@@ -13,6 +13,7 @@
   const INSTALL_KEY = "upa_campus_install_dismissed";
   const NOTIFIED_KEY = "upa_campus_notified";
   const FORCE_APP_KEY = "upa_campus_force_app";
+  const DEFAULT_AGENDA_MODE = "timeline";
   const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
 
   const doc = document;
@@ -55,6 +56,7 @@
     tab: "inicio",
     month: null,
     selectedDay: null,
+    agendaMode: DEFAULT_AGENDA_MODE,
     detail: null,
     offline: false,
     installPrompt: null,
@@ -66,6 +68,7 @@
   let overlays = null;
   let api = null;
   let toastTimer = null;
+  let highlightTimer = null;
 
   function track(promise) {
     pending.add(promise);
@@ -104,6 +107,7 @@
     toastTimer = setTimeout(() => {
       el.hidden = true;
     }, 3500);
+    if (toastTimer && typeof toastTimer.unref === "function") toastTimer.unref();
   }
 
   function externalIcon() {
@@ -695,7 +699,7 @@
       ),
     );
     open.addEventListener("click", () => openDetail(detailFromEntry(entry)));
-    const item = h("li", { class: `agenda-item agenda-kind-${entry.kind}` }, open);
+    const item = h("li", { class: `agenda-item agenda-kind-${entry.kind}`, "data-agenda-day": entry.dayKey }, open);
     if (entry.kind === "deadline" && entry.link) {
       item.append(
         h("a", { class: "ext-link", href: entry.link, target: "_blank", rel: "noopener noreferrer", "aria-label": `Abrir ${entry.title} en Google Classroom`, title: "Abrir en Google Classroom" }, externalIcon()),
@@ -704,7 +708,25 @@
     return item;
   }
 
-  function renderAgendaList() {
+  function renderAgendaStatus(entries, emptyMessage) {
+    const statusEl = $("agenda-status");
+    if (!state.token) {
+      statusBox(statusEl, "Inicia sesión con tu cuenta @upa.edu.py para ver tu agenda y tus tareas de Classroom.");
+    } else if (state.agenda.error && !state.agenda.entries.length) {
+      statusBox(statusEl, state.agenda.error, () => track(loadAgenda()));
+    } else if (state.agenda.loaded && !entries.length) {
+      statusBox(statusEl, emptyMessage);
+    } else {
+      statusBox(statusEl, "");
+    }
+  }
+
+  /**
+   * Modo alternativo de agenda por dia individual (conservado como modulo conmutable).
+   * Filtra la lista superior exclusivamente al dia seleccionado (`state.selectedDay`).
+   * Se activa mediante `UpaCampus.setAgendaMode("single-day")` o invocando `renderAgendaSingleDay()`.
+   */
+  function renderAgendaSingleDay() {
     const list = $("agenda-list");
     clear(list);
     const entries = state.selectedDay
@@ -713,15 +735,63 @@
     $("agenda-heading").textContent = state.selectedDay ? Core.formatDayLong(state.selectedDay) : "Próximos eventos y tareas";
     $("agenda-clear").hidden = !state.selectedDay;
     entries.forEach((e) => list.append(agendaItem(e)));
-    const statusEl = $("agenda-status");
-    if (!state.token) {
-      statusBox(statusEl, "Inicia sesión con tu cuenta @upa.edu.py para ver tu agenda y tus tareas de Classroom.");
-    } else if (state.agenda.error && !state.agenda.entries.length) {
-      statusBox(statusEl, state.agenda.error, () => track(loadAgenda()));
-    } else if (state.agenda.loaded && !entries.length) {
-      statusBox(statusEl, state.selectedDay ? "No hay eventos ni tareas para este día." : "No hay eventos ni tareas próximos.");
+    renderAgendaStatus(entries, state.selectedDay ? "No hay eventos ni tareas para este día." : "No hay eventos ni tareas próximos.");
+  }
+
+  /**
+   * Modo predeterminado de linea de tiempo cronologica (`state.agendaMode === "timeline"`).
+   * Presenta todos los eventos y tareas pendientes en un flujo continuo desplazable agrupado por mes y fecha.
+   */
+  function renderAgendaTimeline() {
+    const list = $("agenda-list");
+    clear(list);
+    const entries = Core.upcomingEntries(state.agenda.entries, todayKey());
+    const groups = Core.groupAgendaByMonth(entries);
+    $("agenda-heading").textContent = "Próximos eventos y tareas";
+    $("agenda-clear").hidden = !state.selectedDay;
+    for (const group of groups) {
+      list.append(h("li", { class: "agenda-month-header", "data-month": group.monthKey, text: group.label }));
+      for (const entry of group.entries) {
+        const item = agendaItem(entry);
+        if (state.selectedDay && entry.dayKey === state.selectedDay) {
+          item.classList.add("agenda-item-highlight");
+        }
+        list.append(item);
+      }
+    }
+    renderAgendaStatus(entries, "No hay eventos ni tareas próximos.");
+  }
+
+  function scrollToAgendaDay(key) {
+    const list = $("agenda-list");
+    if (!list) return false;
+    clearTimeout(highlightTimer);
+    list.querySelectorAll(".agenda-item-highlight").forEach((el) => el.classList.remove("agenda-item-highlight"));
+    if (!key) return false;
+    const matches = [...list.querySelectorAll(`.agenda-item[data-agenda-day="${key}"]`)];
+    if (!matches.length) return false;
+    matches.forEach((el) => el.classList.add("agenda-item-highlight"));
+    const first = matches[0];
+    const container = doc.querySelector(".agenda-top");
+    if (container && typeof container.scrollTo === "function") {
+      const top = Math.max(0, (first.offsetTop || 0) - (container.offsetTop || 0) - 8);
+      container.scrollTo({ top, behavior: "smooth" });
+    }
+    if (typeof first.scrollIntoView === "function") {
+      first.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    highlightTimer = setTimeout(() => {
+      matches.forEach((el) => el.classList.remove("agenda-item-highlight"));
+    }, 1800);
+    if (highlightTimer && typeof highlightTimer.unref === "function") highlightTimer.unref();
+    return true;
+  }
+
+  function renderAgendaList() {
+    if (state.agendaMode === "single-day") {
+      renderAgendaSingleDay();
     } else {
-      statusBox(statusEl, "");
+      renderAgendaTimeline();
     }
   }
 
@@ -757,7 +827,18 @@
   }
 
   function selectDay(key) {
-    state.selectedDay = state.selectedDay === key ? null : key;
+    if (state.agendaMode === "single-day") {
+      state.selectedDay = state.selectedDay === key ? null : key;
+      renderAgenda();
+      return;
+    }
+    state.selectedDay = key;
+    renderAgenda();
+    scrollToAgendaDay(key);
+  }
+
+  function setAgendaMode(mode) {
+    state.agendaMode = mode === "single-day" ? "single-day" : "timeline";
     renderAgenda();
   }
 
@@ -802,7 +883,7 @@
     $("profile-user").hidden = !state.token;
     $("btn-logout").hidden = !state.token;
     if (state.token) {
-      const name = (user && user.full_name) || "Usuario UPA";
+      const name = (user && user.full_name) || (user && user.email ? user.email.split("@")[0] : "Cuenta UPA");
       $("profile-avatar").textContent = Core.initials(name);
       $("profile-name").textContent = name;
       $("profile-email").textContent = (user && user.email) || "";
@@ -1020,19 +1101,6 @@
   function bindEvents() {
     if (eventsBound) return;
     eventsBound = true;
-    const tryWeb = $("try-web-link") || doc.querySelector(".landing-link");
-    if (tryWeb) {
-      tryWeb.addEventListener("click", (event) => {
-        event.preventDefault();
-        session.setItem(FORCE_APP_KEY, "1");
-        try {
-          win.history.replaceState(null, "", "/?app=1");
-        } catch (_) {
-          /* el historial no admite replaceState en este contexto */
-        }
-        track(enterApp({}));
-      });
-    }
     if ($("btn-back-landing")) {
       $("btn-back-landing").addEventListener("click", () => returnToLanding());
     }
@@ -1046,6 +1114,11 @@
     $("ios-close").addEventListener("click", () => overlays.close());
     $("agenda-clear").addEventListener("click", () => {
       state.selectedDay = null;
+      clearTimeout(highlightTimer);
+      const container = doc.querySelector(".agenda-top");
+      if (container && typeof container.scrollTo === "function") {
+        container.scrollTo({ top: 0, behavior: "smooth" });
+      }
       renderAgenda();
     });
     $("cal-prev").addEventListener("click", () => {
@@ -1145,6 +1218,10 @@
     },
     openDetail: (detail) => openDetail(detail),
     refresh: () => track(refreshAll()),
+    renderAgendaTimeline,
+    renderAgendaSingleDay,
+    scrollToAgendaDay,
+    setAgendaMode,
   };
 
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", boot);

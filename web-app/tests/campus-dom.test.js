@@ -174,6 +174,11 @@ test("Escritorio: muestra landing con telefono interactivo real en marco negro j
     assert.equal(app.document.querySelector(".phone-mockup .phone-frame #phone-screen #app"), app.$("app"), "La app interactiva real debe vivir dentro del marco de smartphone en escritorio");
     assert.match(app.$("landing").textContent, /Escanea con tu celular para abrir la app/);
     assert.ok(app.document.querySelector(".phone-mockup .phone-frame"), "Debe mostrar el marco negro realista de smartphone");
+    assert.equal(app.document.querySelector(".phone-notch"), null, "No debe existir Apple-Notch en el marco del smartphone");
+    assert.equal(app.document.querySelector(".phone-speaker"), null, "No debe existir altavoz de notch");
+    assert.equal(app.document.querySelector(".phone-camera"), null, "No debe existir camara de notch");
+    assert.equal(app.$("try-web-link"), null, "No debe existir el enlace Probar la versión web aquí");
+    assert.equal(/Probar la versión web aquí/.test(app.$("landing").textContent), false);
     assert.equal(app.document.querySelector(".landing-points"), null, "No debe mostrar la lista larga de texto en escritorio");
     assert.equal(app.$("admin-link").getAttribute("href"), "/dashboard/");
     assert.equal(app.$("admin-link").textContent.trim(), "Acceso Administrativo");
@@ -217,20 +222,6 @@ test("Escritorio: muestra landing con telefono interactivo real en marco negro j
       }
     }
     assert.equal(jsQR(rgba, side, side).data, `${BASE_URL}/`);
-
-    // Probar la version web a pantalla completa desde escritorio muestra barra de retorno y permite volver al marco con QR
-    await app.click(app.$("try-web-link"));
-    assert.equal(app.$("landing").hidden, true);
-    assert.equal(app.$("app").hidden, false);
-    assert.equal(app.$("app").classList.contains("app-framed"), false);
-    assert.equal(app.$("desktop-return-bar").hidden, false);
-    assert.match(app.$("btn-back-landing").textContent, /Volver al código QR/);
-
-    await app.click(app.$("btn-back-landing"));
-    assert.equal(app.$("landing").hidden, false);
-    assert.equal(app.$("app").hidden, false);
-    assert.equal(app.$("app").classList.contains("app-framed"), true);
-    assert.equal(app.$("desktop-return-bar").hidden, true);
   } finally {
     app.close();
   }
@@ -367,15 +358,32 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     const dayCell = app.document.querySelector(`[data-day="${seeded.eventDayKey}"]`);
     assert.ok(dayCell, "El dia del evento debe existir en la cuadricula mensual");
     assert.ok(dayCell.querySelector(".dot-event"), "El dia del evento debe tener punto indicador");
+    assert.ok(app.$("agenda-list").querySelector(".agenda-month-header"), "La linea de tiempo debe agrupar por mes");
+
+    let smoothScrolled = 0;
+    const agendaTop = app.document.querySelector(".agenda-top");
+    agendaTop.scrollTo = (opts) => {
+      if (opts && opts.behavior === "smooth") smoothScrolled += 1;
+    };
 
     await app.click(dayCell);
     const selectedCell = app.document.querySelector(`[data-day="${seeded.eventDayKey}"]`);
     assert.equal(selectedCell.classList.contains("selected"), true);
     assert.equal(app.$("agenda-clear").hidden, false);
-    assert.equal(app.$("agenda-list").children.length >= 1, true);
+    assert.equal(smoothScrolled >= 1, true, "Tocar un dia en el calendario debe hacer smooth scroll al evento");
+    const highlighted = app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"].agenda-item-highlight`);
+    assert.ok(highlighted, "El evento del dia seleccionado debe resaltarse en la linea de tiempo");
 
     await app.click(app.$("agenda-clear"));
     assert.equal(app.$("agenda-clear").hidden, true);
+
+    // El modo modular de dia individual (renderAgendaSingleDay / setAgendaMode) sigue disponible y funcional
+    app.window.UpaCampus.setAgendaMode("single-day");
+    await app.click(app.document.querySelector(`[data-day="${seeded.eventDayKey}"]`));
+    assert.equal(app.$("agenda-list").querySelectorAll(".agenda-month-header").length, 0);
+    assert.equal(app.$("agenda-list").querySelectorAll(".agenda-item").length >= 1, true);
+    app.window.UpaCampus.setAgendaMode("timeline");
+    assert.ok(app.$("agenda-list").querySelector(".agenda-month-header"));
 
     // Tarea de Google Classroom: icono de enlace externo salta a Classroom
     const withDeadline = app.window.UpaCampusCore.buildAgendaEntries({

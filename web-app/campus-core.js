@@ -536,6 +536,30 @@
     return (entries || []).filter((e) => e.dayKey === key);
   }
 
+  function groupAgendaByMonth(entries) {
+    const groups = [];
+    let current = null;
+    for (const entry of entries || []) {
+      const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(entry.dayKey || ""));
+      if (!m) continue;
+      const year = Number(m[1]);
+      const monthIndex = Number(m[2]) - 1;
+      const monthKey = `${m[1]}-${m[2]}`;
+      if (!current || current.monthKey !== monthKey) {
+        current = {
+          monthKey,
+          year,
+          monthIndex,
+          label: formatMonthLabel(year, monthIndex),
+          entries: [],
+        };
+        groups.push(current);
+      }
+      current.entries.push(entry);
+    }
+    return groups;
+  }
+
   function markedDays(entries) {
     const marks = {};
     for (const e of entries || []) {
@@ -747,6 +771,7 @@
     buildAgendaEntries,
     upcomingEntries,
     entriesForDay,
+    groupAgendaByMonth,
     markedDays,
     applyRegistration,
     createCache,

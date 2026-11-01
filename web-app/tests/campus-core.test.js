@@ -146,6 +146,22 @@ test("Agenda: agrupa eventos y entregas en horario de Asuncion, filtra por dia y
 
   assert.equal(Core.upcomingEntries(entries, "2026-11-04").length, 2);
   assert.equal(Core.entriesForDay(entries, "2026-11-05").length, 2);
+  const grouped = Core.groupAgendaByMonth([
+    ...entries,
+    {
+      key: "event:99",
+      kind: "event",
+      id: 99,
+      title: "Cierre de semestre",
+      dayKey: "2026-12-10",
+      sortKey: "2026-12-10 09:00",
+    },
+  ]);
+  assert.equal(grouped.length, 2);
+  assert.equal(grouped[0].monthKey, "2026-11");
+  assert.equal(grouped[0].entries.length, 3);
+  assert.equal(grouped[1].monthKey, "2026-12");
+  assert.equal(grouped[1].entries.length, 1);
   assert.deepEqual(Core.markedDays(entries), {
     "2026-11-02": { event: false, deadline: true },
     "2026-11-05": { event: true, deadline: true },
