@@ -88,7 +88,8 @@ class FeedItemResponse(BaseModel):
         summary_text = (
             raw_caption if raw_caption else (full_content[:150] + "..." if len(full_content) > 150 else full_content)
         )
-        img = (getattr(post, "media_url", None) or "").strip()
+        media = (getattr(post, "media_url", None) or "").strip()
+        img = (getattr(post, "image_url", None) or media).strip()
         created = ensure_utc_datetime(getattr(post, "created_at", None))
         published = effective_published_at(post)
         raw_expires = getattr(post, "expires_at", None)
@@ -118,7 +119,7 @@ class FeedItemResponse(BaseModel):
             target_groups=normalize_target_groups(getattr(post, "target_groups", None)),
             instagram_id=(getattr(post, "instagram_id", None) or "").strip(),
             media_type=(getattr(post, "media_type", None) or "").strip(),
-            media_url=img,
+            media_url=media,
             image_url=img,
             permalink=(getattr(post, "permalink", None) or "").strip(),
             **extra_detail_fields(post),

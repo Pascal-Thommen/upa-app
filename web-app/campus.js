@@ -519,9 +519,18 @@
 
   function mediaNode(post, className, controls) {
     const url = Core.safeUrl(post.media_url || post.image_url);
-    if (!url) return null;
+    if (!url && !Core.isVideoMedia(post)) return null;
     if (Core.isVideoMedia(post)) {
-      return h("video", { class: className, src: url, muted: true, playsinline: true, preload: "metadata", controls: controls ? true : null });
+      const poster = Core.videoPosterUrl(post);
+      return h("video", {
+        class: className,
+        src: url || null,
+        poster,
+        muted: true,
+        playsinline: true,
+        preload: "metadata",
+        controls: controls ? true : null,
+      });
     }
     return h("img", { class: className, src: url, alt: "", loading: "lazy", decoding: "async" });
   }
@@ -701,8 +710,8 @@
       title: entry.title || raw.title || feedPost.title || "",
       content: raw.content || feedPost.content || raw.description || entry.description || raw.summary || feedPost.summary || "",
       summary: raw.summary || feedPost.summary || entry.description || "",
-      media_url: raw.media_url || raw.image_url || feedPost.media_url || feedPost.image_url || "",
-      image_url: raw.image_url || raw.media_url || feedPost.image_url || feedPost.media_url || "",
+      media_url: raw.media_url || feedPost.media_url || raw.image_url || feedPost.image_url || "",
+      image_url: raw.image_url || feedPost.image_url || raw.media_url || feedPost.media_url || "",
       media_type: raw.media_type || feedPost.media_type || "",
       permalink,
       link_url: raw.link_url || feedPost.link_url || "",

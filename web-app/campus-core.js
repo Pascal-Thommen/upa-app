@@ -442,10 +442,25 @@
     return "";
   }
 
+  const DEFAULT_VIDEO_POSTER = "/campus/icons/icon-512.png";
+
+  function isVideoUrl(url) {
+    return /\.(mp4|webm|mov)(\?|#|$)/i.test(String(url || "").trim());
+  }
+
   function isVideoMedia(post) {
     if (!post) return false;
     if (/VIDEO/i.test(String(post.media_type || ""))) return true;
-    return /\.(mp4|webm|mov)(\?|#|$)/i.test(String(post.media_url || ""));
+    return isVideoUrl(post.media_url);
+  }
+
+  function videoPosterUrl(post) {
+    if (!post) return DEFAULT_VIDEO_POSTER;
+    const imgCandidate = safeUrl(post.image_url || post.thumbnail_url);
+    if (imgCandidate && !isVideoUrl(imgCandidate)) return imgCandidate;
+    const mediaCandidate = safeUrl(post.media_url);
+    if (mediaCandidate && !isVideoUrl(mediaCandidate)) return mediaCandidate;
+    return DEFAULT_VIDEO_POSTER;
   }
 
   function postKind(post) {
@@ -904,7 +919,10 @@
     escapeHtml,
     linkifyText,
     safeUrl,
+    DEFAULT_VIDEO_POSTER,
+    isVideoUrl,
     isVideoMedia,
+    videoPosterUrl,
     postKind,
     postOrigin,
     originLabel,

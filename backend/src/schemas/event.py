@@ -91,7 +91,8 @@ class EventResponse(BaseModel):
         if end_dt is not None and end_dt < start_dt:
             end_dt = None
         loc = (getattr(post, "location", None) or "").strip() or "Campus UPA"
-        img = (getattr(post, "media_url", None) or "").strip()
+        media = (getattr(post, "media_url", None) or "").strip()
+        img = (getattr(post, "image_url", None) or media).strip()
 
         raw_regs = getattr(post, "registrations", None) or []
         attending_regs = [r for r in raw_regs if (getattr(r, "status", "attending") or "attending") == "attending"]

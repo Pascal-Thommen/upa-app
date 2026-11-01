@@ -170,6 +170,43 @@ test("preparacion: creacion de publicaciones reales (noticia, fijada, urgente y 
   });
   assert.equal(event.status, 201);
   seeded.eventId = event.body.id;
+
+  const reelWithThumb = await api("/api/publications", admin, {
+    method: "POST",
+    json: {
+      title: "¿Sabés cómo adaptar tu estado de resultados a la NIIF 18?",
+      caption: "Capacitación ejecutiva en NIIF 18.",
+      content: "Mirá el resumen en video sobre la nueva norma contable.",
+      media_url: "https://upa.edu.py/static/videos/niif18-reel.mp4",
+      image_url: "https://upa.edu.py/static/images/niif18-thumb.jpg",
+      media_type: "VIDEO",
+      permalink: "https://www.instagram.com/upalemana/reel/De92KpiM8x1/",
+      is_news: true,
+      is_event: false,
+      is_pinned: false,
+      target_groups: ["ALL"],
+    },
+  });
+  assert.equal(reelWithThumb.status, 201);
+  seeded.videoWithThumbId = reelWithThumb.body.id;
+
+  const videoNoThumb = await api("/api/publications", admin, {
+    method: "POST",
+    json: {
+      title: "Recorrido audiovisual por el laboratorio de robótica",
+      caption: "Video sin miniatura explícita.",
+      content: "Conocé el equipamiento de última generación.",
+      media_url: "https://upa.edu.py/static/videos/robotica-sin-thumb.mp4",
+      media_type: "VIDEO",
+      permalink: "https://upa.edu.py/videos/robotica",
+      is_news: true,
+      is_event: false,
+      is_pinned: false,
+      target_groups: ["ALL"],
+    },
+  });
+  assert.equal(videoNoThumb.status, 201);
+  seeded.videoNoThumbId = videoNoThumb.body.id;
 });
 
 test("Escritorio: muestra landing con telefono interactivo real en marco negro junto al codigo QR dinamico", live, async () => {
@@ -388,6 +425,41 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.equal(detailLinks[0].getAttribute("href"), "https://www.instagram.com/p/DerQoIzjtYf/");
     app.window.history.back();
     await new Promise((r) => setTimeout(r, 20));
+
+    // Videos y Reels: atributo poster con image_url en el feed y en el overlay de detalle, y fallback estable sin miniatura
+    const videoCardBtn = app.document.querySelector(`[data-post-id="${seeded.videoWithThumbId}"]`);
+    assert.ok(videoCardBtn, "Debe existir la tarjeta de video con miniatura en el feed");
+    const feedVideo = videoCardBtn.querySelector("video.card-media");
+    assert.ok(feedVideo, "La tarjeta de video debe renderizar una etiqueta <video>");
+    assert.equal(feedVideo.getAttribute("src"), "https://upa.edu.py/static/videos/niif18-reel.mp4");
+    assert.equal(
+      feedVideo.getAttribute("poster"),
+      "https://upa.edu.py/static/images/niif18-thumb.jpg",
+      "El video en el feed debe incluir el atributo poster con post.image_url",
+    );
+
+    await app.click(videoCardBtn);
+    assert.equal(app.$("detail").hidden, false);
+    const detailVideo = app.$("detail-media").querySelector("video.detail-image");
+    assert.ok(detailVideo, "El overlay de detalle debe renderizar el <video> con controles");
+    assert.equal(detailVideo.getAttribute("src"), "https://upa.edu.py/static/videos/niif18-reel.mp4");
+    assert.equal(
+      detailVideo.getAttribute("poster"),
+      "https://upa.edu.py/static/images/niif18-thumb.jpg",
+      "El video en el detalle debe conservar el atributo poster con post.image_url",
+    );
+    app.window.history.back();
+    await new Promise((r) => setTimeout(r, 20));
+
+    const fallbackVideoBtn = app.document.querySelector(`[data-post-id="${seeded.videoNoThumbId}"]`);
+    assert.ok(fallbackVideoBtn, "Debe existir la tarjeta de video sin miniatura explícita");
+    const fallbackVideo = fallbackVideoBtn.querySelector("video.card-media");
+    assert.ok(fallbackVideo);
+    assert.equal(
+      fallbackVideo.getAttribute("poster"),
+      "/campus/icons/icon-512.png",
+      "Los videos sin thumbnail deben utilizar la imagen de respaldo estable en poster",
+    );
   } finally {
     app.close();
   }

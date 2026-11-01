@@ -300,6 +300,35 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
     /<a class="rich-link" href="https:\/\/upa\.edu\.py\/" target="_blank" rel="noopener noreferrer">https:\/\/upa\.edu\.py\/<\/a>&quot;&gt;&lt;script&gt;alert\(3\)&lt;\/script&gt;/,
   );
 
+  // Deteccion de video y resolucion de poster (thumbnail en image_url con fallback estable)
+  assert.equal(Core.isVideoMedia({ media_type: "VIDEO", media_url: "https://cdn.instagram.com/reel.mp4" }), true);
+  assert.equal(Core.isVideoMedia({ media_type: "IMAGE", media_url: "https://cdn.instagram.com/clip.mp4?dl=1" }), true);
+  assert.equal(Core.isVideoMedia({ media_type: "IMAGE", media_url: "https://cdn.instagram.com/foto.jpg" }), false);
+  assert.equal(
+    Core.videoPosterUrl({
+      media_type: "VIDEO",
+      media_url: "https://cdn.instagram.com/reel.mp4",
+      image_url: "https://cdn.instagram.com/thumb.jpg",
+    }),
+    "https://cdn.instagram.com/thumb.jpg",
+  );
+  assert.equal(
+    Core.videoPosterUrl({
+      media_type: "VIDEO",
+      media_url: "https://cdn.instagram.com/reel.mp4",
+      image_url: "",
+    }),
+    Core.DEFAULT_VIDEO_POSTER,
+  );
+  assert.equal(
+    Core.videoPosterUrl({
+      media_type: "VIDEO",
+      media_url: "https://cdn.instagram.com/reel.mp4",
+      image_url: "https://cdn.instagram.com/reel.mp4",
+    }),
+    Core.DEFAULT_VIDEO_POSTER,
+  );
+
   // Origen de publicacion (Instagram vs Campus) y resumen sin duplicar primera linea
   assert.equal(Core.postOrigin({ post_type: "INSTAGRAM", is_event: true }), "instagram");
   assert.equal(Core.postOrigin({ post_type: "MANUAL", is_news: true }), "campus");

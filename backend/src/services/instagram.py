@@ -7,7 +7,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Post
+from ..models import DEFAULT_VIDEO_POSTER_FALLBACK, Post, is_video_stream_url
 from ..schemas.publication import clean_group_codes, extract_instagram_teaser
 from .ai_extractor import extract_event_from_instagram_post, to_utc_datetime
 
@@ -22,6 +22,14 @@ class NormalizedSocialPost:
     media_url: str
     permalink: str
     timestamp: datetime | None = None
+    image_url: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.image_url:
+            if self.media_url and not is_video_stream_url(self.media_url):
+                self.image_url = self.media_url
+            elif str(self.media_type or "").strip().upper() == "VIDEO" or is_video_stream_url(self.media_url):
+                self.image_url = DEFAULT_VIDEO_POSTER_FALLBACK
 
 
 class InstagramSyncService:
@@ -32,6 +40,7 @@ class InstagramSyncService:
     """
 
     DEFAULT_PERMALINK_FALLBACK = "https://www.instagram.com/upalemana"
+    DEFAULT_VIDEO_THUMBNAIL_FALLBACK = DEFAULT_VIDEO_POSTER_FALLBACK
 
     def extract_title_from_caption(self, caption: str) -> str:
         """Extrae un titulo conciso a partir de la primera linea del pie de foto (maximo 200 caracteres)."""
@@ -52,7 +61,17 @@ class InstagramSyncService:
         media_id = str(item.get("id", ""))
         caption = item.get("caption") or ""
         media_type = item.get("media_type") or "IMAGE"
-        media_url = item.get("media_url") or item.get("thumbnail_url") or ""
+        raw_media_url = (item.get("media_url") or "").strip()
+        raw_thumb_url = (item.get("thumbnail_url") or item.get("image_url") or "").strip()
+        media_url = raw_media_url or raw_thumb_url
+        if str(media_type).strip().upper() == "VIDEO" or is_video_stream_url(media_url):
+            image_url = (
+                raw_thumb_url
+                or (raw_media_url if raw_media_url and not is_video_stream_url(raw_media_url) else "")
+                or self.DEFAULT_VIDEO_THUMBNAIL_FALLBACK
+            )
+        else:
+            image_url = raw_thumb_url or media_url
         permalink = item.get("permalink") or self.DEFAULT_PERMALINK_FALLBACK
 
         timestamp = None
@@ -68,6 +87,7 @@ class InstagramSyncService:
             caption=caption,
             media_type=media_type,
             media_url=media_url,
+            image_url=image_url,
             permalink=permalink,
             timestamp=timestamp,
         )
@@ -84,15 +104,35 @@ class InstagramSyncService:
             or ""
         )
         media_type = item.get("pic_type") or item.get("media_type") or ("VIDEO" if item.get("video_url") else "IMAGE")
-        media_url = (
+        primary_pic = (
             item.get("image_url")
             or item.get("post_link")
             or item.get("full_pic_src")
             or item.get("pic_src")
             or item.get("picture")
-            or item.get("media_url")
             or ""
         )
+        thumb_url = (
+            item.get("thumbnail_url")
+            or item.get("thumbnail")
+            or primary_pic
+            or ""
+        )
+        media_url = (
+            primary_pic
+            or item.get("media_url")
+            or thumb_url
+            or item.get("video_url")
+            or ""
+        )
+        if str(media_type).strip().upper() == "VIDEO" or is_video_stream_url(media_url):
+            image_url = (
+                thumb_url
+                or (media_url if media_url and not is_video_stream_url(media_url) else "")
+                or self.DEFAULT_VIDEO_THUMBNAIL_FALLBACK
+            )
+        else:
+            image_url = thumb_url or media_url
         permalink = (
             item.get("link")
             or item.get("permalink")
@@ -113,6 +153,7 @@ class InstagramSyncService:
             caption=caption,
             media_type=media_type,
             media_url=media_url,
+            image_url=image_url,
             permalink=permalink,
             timestamp=timestamp,
         )
@@ -225,6 +266,7 @@ class InstagramSyncService:
                         existing.content = item.caption
                     existing.media_type = item.media_type
                     existing.media_url = item.media_url
+                    existing.image_url = item.image_url
                     existing.permalink = item.permalink
                     if not existing.link_url:
                         existing.link_url = item.permalink
@@ -278,6 +320,7 @@ class InstagramSyncService:
                             instagram_id=item.instagram_id,
                             media_type=item.media_type,
                             media_url=item.media_url,
+                            image_url=item.image_url,
                             permalink=item.permalink,
                             link_url=item.permalink,
                             link_label="Ver en Instagram",
@@ -301,6 +344,7 @@ class InstagramSyncService:
                             instagram_id=item.instagram_id,
                             media_type=item.media_type,
                             media_url=item.media_url,
+                            image_url=item.image_url,
                             permalink=item.permalink,
                             link_url=item.permalink,
                             link_label="Ver en Instagram",
