@@ -563,7 +563,7 @@
       kindLabel: Core.originLabel(origin),
       title: post.title,
       meta: postTimeLine(post) || "",
-      text: post.content || post.summary || "",
+      text: post.content || post.caption || post.summary || "",
       extra: "",
       media: post,
       source: Core.safeUrl(post.permalink),
@@ -611,33 +611,36 @@
         ended: false,
       };
     }
-    const when = `${Core.formatDayLong(entry.dayKey)} · ${entry.timeRange || entry.timeLabel}`;
-    const isInsta = Boolean(raw && raw.post_type === "INSTAGRAM");
-    return {
-      postId: raw.id || entry.id,
-      kind: "event",
-      origin: isInsta ? "instagram" : "campus",
-      isEvent: true,
-      postType: (raw && raw.post_type) || "",
-      kindLabel: isInsta ? "Instagram" : "Campus",
-      title: entry.title,
-      meta: [when, entry.place].filter(Boolean).join(" · "),
-      text: raw.description || raw.summary || entry.description || "",
-      extra: "",
-      media: { media_url: raw.image_url || raw.media_url, media_type: raw.media_type || "" },
-      source: Core.safeUrl(raw.permalink),
-      sourceLabel: isInsta ? "Ver en Instagram" : "Ver fuente original",
-      linkUrl: Core.safeUrl(raw.link_url),
-      linkLabel: raw.link_label || "Abrir enlace",
-      eventStart: raw.event_start || (entry.date ? entry.date.toISOString() : ""),
-      eventEnd: raw.event_end || (entry.end ? entry.end.toISOString() : ""),
-      location: entry.place || raw.location || "",
-      hasRegistration: Boolean(raw.has_registration),
-      eventId: raw.has_registration ? raw.id : null,
-      isRegistered: Boolean(raw.is_registered),
-      count: raw.registered_count || 0,
-      ended: Boolean(entry.end && entry.end.getTime() < Date.now()),
-    };
+    const postId = raw.id !== undefined ? raw.id : entry.id;
+    const feedPost = state.feed.posts.find((p) => p.id === postId) || {};
+    const permalink = raw.permalink || feedPost.permalink || entry.link || "";
+    const isInsta = Boolean(
+      raw.post_type === "INSTAGRAM" ||
+        feedPost.post_type === "INSTAGRAM" ||
+        /instagram\.com/i.test(String(permalink)),
+    );
+    return detailFromPost({
+      ...feedPost,
+      ...raw,
+      id: postId,
+      is_event: true,
+      post_type: isInsta ? "INSTAGRAM" : raw.post_type || feedPost.post_type || "MANUAL",
+      title: entry.title || raw.title || feedPost.title || "",
+      content: raw.content || feedPost.content || raw.description || entry.description || raw.summary || feedPost.summary || "",
+      summary: raw.summary || feedPost.summary || entry.description || "",
+      media_url: raw.media_url || raw.image_url || feedPost.media_url || feedPost.image_url || "",
+      image_url: raw.image_url || raw.media_url || feedPost.image_url || feedPost.media_url || "",
+      media_type: raw.media_type || feedPost.media_type || "",
+      permalink,
+      link_url: raw.link_url || feedPost.link_url || "",
+      link_label: raw.link_label || feedPost.link_label || "",
+      event_start: raw.event_start || feedPost.event_start || (entry.date ? entry.date.toISOString() : ""),
+      event_end: raw.event_end || feedPost.event_end || (entry.end ? entry.end.toISOString() : ""),
+      location: entry.place || raw.location || feedPost.location || "",
+      has_registration: Boolean(raw.has_registration !== undefined ? raw.has_registration : feedPost.has_registration),
+      is_registered: Boolean(raw.is_registered !== undefined ? raw.is_registered : feedPost.is_registered),
+      registered_count: raw.registered_count !== undefined ? raw.registered_count : feedPost.registered_count || 0,
+    });
   }
 
   function renderDetailEventCard() {
@@ -760,19 +763,25 @@
       kindEl.className = "badge";
       kindEl.textContent = detail.kindLabel;
     }
-    $("detail-title").textContent = detail.title;
-    $("detail-meta").textContent = detail.meta;
-    $("detail-meta").hidden = Boolean((detail.kind === "event" || detail.isEvent) && detail.eventStart);
-    renderDetailEventCard();
-    $("detail-text").textContent = detail.text;
-    $("detail-text").hidden = !detail.text;
-    const extra = $("detail-extra");
-    extra.textContent = detail.extra;
-    extra.hidden = !detail.extra;
     const mediaBox = $("detail-media");
     clear(mediaBox);
     const media = detail.media ? mediaNode(detail.media, "detail-image", true) : null;
     if (media) mediaBox.append(media);
+    mediaBox.hidden = !media;
+
+    $("detail-title").textContent = detail.title;
+    $("detail-meta").textContent = detail.meta;
+    $("detail-meta").hidden = Boolean((detail.kind === "event" || detail.isEvent) && detail.eventStart);
+
+    const textEl = $("detail-text");
+    textEl.innerHTML = Core.linkifyText(detail.text);
+    textEl.hidden = !detail.text;
+
+    const extra = $("detail-extra");
+    extra.innerHTML = Core.linkifyText(detail.extra);
+    extra.hidden = !detail.extra;
+
+    renderDetailEventCard();
     renderDetailActions();
     $("detail").querySelector(".overlay-body").scrollTop = 0;
     overlays.open("detail");

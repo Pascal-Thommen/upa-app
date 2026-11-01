@@ -155,7 +155,8 @@ test("preparacion: creacion de publicaciones reales (noticia, fijada, urgente y 
     json: {
       title: "Foro de Ingeniería Empresarial 2026",
       caption: "Auditorio principal, inscripción previa.",
-      content: "Panel con egresados e invitados internacionales.",
+      content: "Panel con egresados en https://upa.edu.py/foro y bit.ly/foro-upa26. <script>window.__xss=1</script> #UPA #Ingeniería",
+      permalink: "https://upa.edu.py/foro-2026",
       is_news: true,
       is_event: true,
       is_pinned: true,
@@ -291,14 +292,37 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.equal(eventHeaderBadges[0].textContent.trim(), "Campus");
     assert.equal(eventHeaderBadges[1].textContent.trim(), "Evento");
 
-    // Detalle estructurado de un evento: bloque #detail-event-card con fecha, horario 24h, Lugar y Estado de inscripcion
+    // Detalle estructurado de un evento: orden estricto detail-media -> detail-title -> detail-text -> detail-event-card -> detail-actions
     await app.click(cards[0].querySelector(".card-open"));
     assert.equal(app.$("detail").hidden, false);
-    assert.equal(app.$("detail-event-card").hidden, false, "El detalle de un evento debe renderizar el bloque estructurado #detail-event-card");
-    assert.ok(app.$("detail-event-card").querySelector(".detail-date-tile"), "Debe incluir mosaico de fecha (dia/mes)");
-    assert.match(app.$("detail-event-card").textContent, /Horario: \d{2}:\d{2} - \d{2}:\d{2} hs/);
-    assert.match(app.$("detail-event-card").textContent, /Lugar/);
-    assert.match(app.$("detail-event-card").textContent, /Auditorio Edificio 1/);
+    const detailMedia = app.$("detail-media");
+    const detailTitle = app.$("detail-title");
+    const detailText = app.$("detail-text");
+    const detailEventCard = app.$("detail-event-card");
+    const detailActions = app.$("detail-actions");
+    const FOLLOWING = app.window.Node.DOCUMENT_POSITION_FOLLOWING;
+    assert.ok(detailMedia.compareDocumentPosition(detailTitle) & FOLLOWING, "detail-media debe preceder a detail-title");
+    assert.ok(detailTitle.compareDocumentPosition(detailText) & FOLLOWING, "detail-title debe preceder a detail-text");
+    assert.ok(detailText.compareDocumentPosition(detailEventCard) & FOLLOWING, "detail-text debe preceder a detail-event-card");
+    assert.ok(detailEventCard.compareDocumentPosition(detailActions) & FOLLOWING, "detail-event-card debe preceder a detail-actions");
+
+    // Rich-Text Linkifier en #detail-text: URLs clicables, Hashtags formateados y XSS neutralizado
+    const textLinks = [...detailText.querySelectorAll("a.rich-link")];
+    assert.equal(textLinks.length, 2, "Debe convertir las URLs https y bit.ly en enlaces clicables");
+    assert.equal(textLinks[0].getAttribute("href"), "https://upa.edu.py/foro");
+    assert.equal(textLinks[0].getAttribute("target"), "_blank");
+    assert.equal(textLinks[0].getAttribute("rel"), "noopener noreferrer");
+    assert.equal(textLinks[1].getAttribute("href"), "https://bit.ly/foro-upa26");
+    const hashtags = [...detailText.querySelectorAll("span.hashtag")].map((el) => el.textContent);
+    assert.deepEqual(hashtags, ["#UPA", "#Ingeniería"]);
+    assert.equal(detailText.querySelectorAll("script").length, 0, "No debe inyectar etiquetas <script> en el DOM");
+    assert.equal(app.window.__xss, undefined, "El intento de XSS debe quedar completamente neutralizado");
+
+    assert.equal(detailEventCard.hidden, false, "El detalle de un evento debe renderizar el bloque estructurado #detail-event-card");
+    assert.ok(detailEventCard.querySelector(".detail-date-tile"), "Debe incluir mosaico de fecha (dia/mes)");
+    assert.match(detailEventCard.textContent, /Horario: \d{2}:\d{2} - \d{2}:\d{2} hs/);
+    assert.match(detailEventCard.textContent, /Lugar/);
+    assert.match(detailEventCard.textContent, /Auditorio Edificio 1/);
     assert.match(app.$("detail-event-status").textContent, /Inscripción abierta/);
     app.window.history.back();
     await new Promise((r) => setTimeout(r, 20));
@@ -336,6 +360,7 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.equal(app.$("detail-kind").textContent.trim(), "Campus");
     assert.equal(app.$("detail-title").textContent, "Convocatoria de intercambio en Heidelberg");
     assert.match(app.$("detail-text").textContent, /promedio mínimo 4\.0/);
+    assert.equal(app.$("detail-event-card").hidden, true, "Las publicaciones sin evento deben ocultar limpiamente #detail-event-card");
     assert.equal(app.$("detail-source").getAttribute("href"), "https://upa.edu.py/intercambio");
 
     // Boton Atras de Android (popstate) cierra el detalle sin salir de la aplicacion
@@ -400,6 +425,19 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     assert.equal(smoothScrolled >= 1, true, "Tocar un dia en el calendario debe hacer smooth scroll al evento");
     const highlighted = app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"].agenda-item-highlight`);
     assert.ok(highlighted, "El evento del dia seleccionado debe resaltarse en la linea de tiempo");
+
+    // Abrir evento desde Agenda (detailFromEntry) renderiza exactamente la misma estructura armonizada que desde Inicio (detailFromPost)
+    await app.click(highlighted.querySelector(".agenda-open"));
+    assert.equal(app.$("detail").hidden, false);
+    assert.equal(app.$("detail-title").textContent, "Foro de Ingeniería Empresarial 2026");
+    assert.equal(app.$("detail-text").querySelectorAll("a.rich-link").length, 2, "El detalle desde Agenda debe aplicar linkifyText al texto");
+    assert.equal(app.$("detail-text").querySelectorAll("span.hashtag").length, 2, "El detalle desde Agenda debe resaltar los hashtags");
+    assert.equal(app.$("detail-event-card").hidden, false, "El detalle desde Agenda debe mostrar #detail-event-card debajo del texto");
+    assert.ok(app.$("detail-actions").querySelector("#detail-register"), "El detalle desde Agenda debe incluir el boton de inscripcion");
+    assert.ok(app.$("detail-actions").querySelector("#detail-source"), "El detalle desde Agenda debe incluir el boton de fuente original");
+    app.window.history.back();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(app.$("detail").hidden, true);
 
     await app.click(app.$("agenda-clear"));
     assert.equal(app.$("agenda-clear").hidden, true);

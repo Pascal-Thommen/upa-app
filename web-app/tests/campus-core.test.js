@@ -236,6 +236,38 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
   assert.equal(Core.safeUrl("/uploads/cartel.png"), "/uploads/cartel.png");
   assert.equal(Core.safeUrl("https://classroom.google.com/c/1"), "https://classroom.google.com/c/1");
 
+  // Rich-Text Linkifier: URLs (http, https, bit.ly), Hashtags y proteccion estricta contra XSS
+  assert.equal(Core.escapeHtml('<script>alert("xss")</script>'), "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;");
+  const richHtml = Core.linkifyText(
+    "Inscripciones en https://upa.edu.py/foro, http://portal.upa.edu.py o bit.ly/upa-2026. Sumate a #UPA y #Ingeniería2026!",
+  );
+  assert.match(
+    richHtml,
+    /<a class="rich-link" href="https:\/\/upa\.edu\.py\/foro" target="_blank" rel="noopener noreferrer">https:\/\/upa\.edu\.py\/foro<\/a>,/,
+  );
+  assert.match(
+    richHtml,
+    /<a class="rich-link" href="http:\/\/portal\.upa\.edu\.py" target="_blank" rel="noopener noreferrer">http:\/\/portal\.upa\.edu\.py<\/a>/,
+  );
+  assert.match(
+    richHtml,
+    /<a class="rich-link" href="https:\/\/bit\.ly\/upa-2026" target="_blank" rel="noopener noreferrer">bit\.ly\/upa-2026<\/a>\./,
+  );
+  assert.match(richHtml, /<span class="hashtag">#UPA<\/span>/);
+  assert.match(richHtml, /<span class="hashtag">#Ingeniería2026<\/span>!/);
+
+  const xssAttempt = Core.linkifyText(
+    ' Texto malicioso <script>alert(1)</script> <img src=x onerror="alert(2)"> https://upa.edu.py/"><script>alert(3)</script> #UPA ',
+  );
+  assert.equal(xssAttempt.includes("<script>"), false);
+  assert.equal(xssAttempt.includes("<img"), false);
+  assert.match(xssAttempt, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(xssAttempt, /&lt;img src=x onerror=&quot;alert\(2\)&quot;&gt;/);
+  assert.match(
+    xssAttempt,
+    /<a class="rich-link" href="https:\/\/upa\.edu\.py\/" target="_blank" rel="noopener noreferrer">https:\/\/upa\.edu\.py\/<\/a>&quot;&gt;&lt;script&gt;alert\(3\)&lt;\/script&gt;/,
+  );
+
   // Origen de publicacion (Instagram vs Campus) y resumen sin duplicar primera linea
   assert.equal(Core.postOrigin({ post_type: "INSTAGRAM", is_event: true }), "instagram");
   assert.equal(Core.postOrigin({ post_type: "MANUAL", is_news: true }), "campus");
