@@ -340,7 +340,7 @@ def extract_event_from_instagram_post(
             logger.warning("[AI Extractor] Error inesperado en llamada a Gemini: %s", exc)
             return AIEventExtractionResult(is_event=False)
 
-        if response.status_code == 404 and idx < len(candidate_models) - 1:
+        if response.status_code in (404, 429) and idx < len(candidate_models) - 1:
             continue
         break
 

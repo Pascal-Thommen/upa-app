@@ -714,7 +714,7 @@
                     <div class="font-semibold text-slate-700">Modelo Gemini Flash conectado</div>
                     <div id="ai-model-tier" class="text-[11px] text-slate-500">Nivel gratuito &bull; Solo información</div>
                   </div>
-                  <code id="ai-model-info" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 font-mono text-xs text-emerald-800">gemini-1.5-flash</code>
+                  <code id="ai-model-info" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 font-mono text-xs text-emerald-800">gemini-2.0-flash</code>
                 </div>
               </div>
 
@@ -724,14 +724,14 @@
                 <ol class="list-decimal list-inside space-y-1.5 text-xs text-slate-700 leading-relaxed">
                   <li>Abre <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="font-semibold text-[#6c9339] underline hover:text-emerald-800">https://aistudio.google.com/app/apikey</a> con tu cuenta de Google.</li>
                   <li>Haz clic en <strong>'Create API key'</strong> y copia la clave generada.</li>
-                  <li>Pega la clave aquí y haz clic en <strong>'Guardar y Probar'</strong>.</li>
+                  <li>Pega la clave aquí y haz clic en <strong>'Guardar configuración y probar conexión'</strong> (Guardar y Probar).</li>
                 </ol>
               </div>
 
               <!-- Banner de resultado de conexión en vivo (verde en éxito / rojo con causa exacta en error) -->
               <div id="ai-connection-banner" class="hidden rounded-xl p-4 text-xs font-semibold border" role="alert"></div>
 
-              <!-- Formulario de configuración y prueba en vivo -->
+              <!-- Formulario unificado de configuración y prueba en vivo (1-Klick-Save) -->
               <form id="form-ai-config" class="space-y-4" novalidate>
                 <div>
                   <label class="ed-label" for="ai-input-api-key">Clave de API de Google Gemini (GEMINI_API_KEY)</label>
@@ -741,32 +741,22 @@
 
                 <div>
                   <label class="ed-label" for="ai-input-system-prompt-autocomplete">Prompt del sistema: Autocompletado editorial (Publicaciones y Eventos)</label>
-                  <textarea id="ai-input-system-prompt-autocomplete" rows="3" maxlength="4000" placeholder="Instrucciones de redacción, tono institucional y formato para sugerencias en publicaciones y eventos..." class="ed-input"></textarea>
+                  <textarea id="ai-input-system-prompt-autocomplete" rows="3" maxlength="4000" placeholder="Instrucciones de redacción, tono institucional y formato para sugerencias en publicaciones y eventos..." class="ed-input">Eres el asistente editorial inteligente de la Universidad Paraguayo Alemana (UPA). Redacta en español formal institucional, claro y conciso, respetando estrictamente los datos confirmados, el horario en formato de 24 horas (HH:mm) y la fecha en formato DD/MM/YYYY.</textarea>
                   <p id="ai-prompt-autocomplete-error" class="ed-field-error hidden" data-error-for="ai-prompt-autocomplete"></p>
-                  <div class="flex justify-end pt-1.5">
-                    <button id="btn-ai-save-prompt-autocomplete" type="button" class="ed-btn ed-btn-secondary">
-                      Guardar prompt de autocompletado
-                    </button>
-                  </div>
                 </div>
 
                 <div>
                   <label class="ed-label" for="ai-input-system-prompt-instagram">Prompt del sistema: Extracción multimodal de Instagram (Posts y Flyers)</label>
-                  <textarea id="ai-input-system-prompt-instagram" rows="3" maxlength="4000" placeholder="Instrucciones para el análisis multimodal de publicaciones e imágenes de Instagram..." class="ed-input"></textarea>
+                  <textarea id="ai-input-system-prompt-instagram" rows="3" maxlength="4000" placeholder="Instrucciones para el análisis multimodal de publicaciones e imágenes de Instagram..." class="ed-input">Eres el analizador multimodal de eventos de la Universidad Paraguayo Alemana (UPA) para publicaciones e imágenes de Instagram. Extrae únicamente eventos confirmados del texto y afiche, respetando horarios del mismo día calendario y seleccionando grupos destinatarios de forma conservadora.</textarea>
                   <p id="ai-prompt-instagram-error" class="ed-field-error hidden" data-error-for="ai-prompt-instagram"></p>
-                  <div class="flex justify-end pt-1.5">
-                    <button id="btn-ai-save-prompt-instagram" type="button" class="ed-btn ed-btn-secondary">
-                      Guardar prompt de Instagram
-                    </button>
-                  </div>
                 </div>
 
-                <div class="flex flex-wrap items-center justify-end gap-2.5 pt-1">
-                  <button id="btn-ai-test-connection" type="button" class="ed-btn ed-btn-secondary">
-                    Probar conexión
+                <div class="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+                  <button id="btn-ai-restore-defaults" type="button" class="ed-btn ed-btn-secondary" title="Standard wiederherstellen">
+                    Restaurar valores por defecto
                   </button>
-                  <button id="btn-ai-save-test" type="submit" class="ed-btn ed-btn-primary">
-                    Guardar y Probar
+                  <button id="btn-ai-save-test" type="submit" class="ed-btn ed-btn-primary" title="Konfiguration speichern &amp; Verbindung testen">
+                    Guardar configuración y probar conexión
                   </button>
                 </div>
               </form>

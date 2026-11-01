@@ -33,12 +33,12 @@ DEFAULT_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
 
 FREE_TIER_QUOTA_RPM = 15
 
-# Orden de prioridad de modelos gratuitos Gemini Flash (mas reciente primero)
+# Orden de prioridad oficial de modelos gratuitos Gemini Flash en Google AI Studio (mas reciente primero)
 PREFERRED_FLASH_MODELS: tuple[str, ...] = (
-    "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
 )
+DEFAULT_FLASH_MODEL = "gemini-2.0-flash"
 
 
 def mask_key(key: str) -> str:
@@ -66,10 +66,12 @@ def get_stored_model(db: Session | None) -> str:
 def resolve_active_model(db: Session | None = None) -> str:
     """Devuelve el modelo Gemini Flash activo (guardado tras deteccion o predeterminado en configuracion)."""
     stored_model = get_stored_model(db)
-    if stored_model:
+    if stored_model in PREFERRED_FLASH_MODELS:
         return stored_model
     configured = (settings.GEMINI_MODEL or "").strip()
-    return configured or "gemini-2.5-flash"
+    if configured in PREFERRED_FLASH_MODELS:
+        return configured
+    return DEFAULT_FLASH_MODEL
 
 
 def save_active_model(db: Session | None, model_name: str, updated_by: str = "system") -> None:
@@ -170,8 +172,8 @@ def save_api_key(db: Session, key: str, updated_by: str) -> None:
 
 def _parse_flash_model_sort_key(model_id: str) -> tuple[int, int, int, int, str]:
     """
-    Ordena los modelos Gemini Flash gratuitos priorizando la version estable mas reciente
-    (ej. gemini-2.5-flash > gemini-2.0-flash > gemini-1.5-flash) y dejando variantes -lite o -preview detras.
+    Ordena los modelos Gemini Flash gratuitos priorizando la version estable oficial mas reciente
+    (gemini-2.0-flash > gemini-1.5-flash) y dejando variantes -lite o -preview detras.
     """
     clean = model_id.removeprefix("models/").strip().lower()
     m = re.match(r"^gemini-(\d+)(?:\.(\d+))?-flash(.*)$", clean)
@@ -189,7 +191,7 @@ def _parse_flash_model_sort_key(model_id: str) -> tuple[int, int, int, int, str]
 def discover_available_flash_models(api_key: str, base_url: str | None = None) -> list[str]:
     """
     Consulta el catalogo de modelos disponibles para la clave en Google AI Studio (GET /v1beta/models)
-    y devuelve los modelos Gemini Flash compatibles con generateContent ordenados del mas reciente al mas antiguo.
+    y devuelve los modelos oficiales Gemini Flash compatibles con generateContent (gemini-2.0-flash, gemini-1.5-flash).
     """
     clean_key = (api_key or "").strip()
     if not clean_key:
@@ -217,12 +219,7 @@ def discover_available_flash_models(api_key: str, base_url: str | None = None) -
         if not isinstance(item, dict):
             continue
         name = str(item.get("name") or "").removeprefix("models/").strip()
-        if not name:
-            continue
-        lower_name = name.lower()
-        if not lower_name.startswith("gemini-") or "flash" not in lower_name:
-            continue
-        if any(excluded in lower_name for excluded in ("image", "tts", "audio", "live", "thinking", "vision")):
+        if not name or name not in PREFERRED_FLASH_MODELS:
             continue
         methods = item.get("supportedGenerationMethods")
         if isinstance(methods, list) and methods and "generateContent" not in methods:
@@ -242,19 +239,19 @@ def build_candidate_flash_models(
 ) -> list[str]:
     """
     Construye la lista priorizada de modelos Gemini Flash en el contingente gratuito (15 RPM):
-    1. Si el servidor expone /v1beta/models, prioriza el Flash mas reciente descubierto.
-    2. Añade el modelo preferido/configurado y la cadena de respaldo (gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash).
+    1. Si el servidor expone /v1beta/models, prioriza el Flash oficial mas reciente descubierto (gemini-2.0-flash > gemini-1.5-flash).
+    2. Añade el modelo preferido/configurado y la cadena de respaldo oficial (gemini-2.0-flash, gemini-1.5-flash).
     """
     base_url = settings.GEMINI_API_BASE_URL.rstrip("/")
     candidates: list[str] = []
 
     discovered = discover_available_flash_models(api_key, base_url=base_url)
     for m in discovered:
-        if m not in candidates:
+        if m in PREFERRED_FLASH_MODELS and m not in candidates:
             candidates.append(m)
 
     initial = (preferred_model or resolve_active_model(db) or settings.GEMINI_MODEL or "").strip()
-    if initial and initial not in candidates:
+    if initial in PREFERRED_FLASH_MODELS and initial not in candidates:
         candidates.append(initial)
 
     for fallback in PREFERRED_FLASH_MODELS:
@@ -321,7 +318,7 @@ def check_connection(api_key: str, *, db: Session | None = None) -> ConnectionRe
                 False, "NETWORK", "Error de red con Google: no se pudo establecer la conexión.", active_model
             )
 
-        if response.status_code == 404 and idx < len(candidate_models) - 1:
+        if response.status_code in (404, 429) and idx < len(candidate_models) - 1:
             continue
         break
 
@@ -710,7 +707,7 @@ def autocomplete_publication(
                 {},
             )
 
-        if response.status_code == 404 and idx < len(candidate_models) - 1:
+        if response.status_code in (404, 429) and idx < len(candidate_models) - 1:
             continue
         break
 
