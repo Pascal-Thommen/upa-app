@@ -126,6 +126,8 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert ':root[data-theme="dark"]' in css
     assert ".badge-instagram" in css
     assert ".badge-campus" in css
+    assert ".badge-classroom" in css
+    assert ".agenda-badges" in css
     assert "#6c9339" in css
     assert ".hashtag" in css
     assert ".badge-floating" in css

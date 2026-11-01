@@ -186,6 +186,38 @@ test("Agenda: agrupa eventos y entregas en horario de Asuncion, filtra por dia y
   const updated = Core.applyRegistration(entries, { id: 10, is_registered: true, registered_count: 5 });
   assert.equal(updated[1].raw.is_registered, true);
   assert.equal(updated[1].raw.registered_count, 5);
+  assert.equal(updated[1].isRegistered, true);
+  assert.equal(updated[1].registeredCount, 5);
+  assert.equal(entries[2].dueLabel, "Vence 23:59 hs");
+  assert.equal(entries[2].courseName, "Ingenieria de Software");
+
+  // Filtro estricto de linea de tiempo futura (sin fallback a diciembre 2024) y carga explicita de mes pasado
+  const withHistorical2024 = Core.buildAgendaEntries({
+    events: [],
+    deadlines: [
+      {
+        id: "hist-2024",
+        title: "Tarea Antigua 2024",
+        course_name: "Matematica I",
+        due_date_formatted: "2024-12-15 23:59",
+        alternate_link: "https://classroom.google.com/c/2024",
+      },
+    ],
+  });
+  assert.equal(
+    Core.filterAgendaTimeline(withHistorical2024, {
+      todayKey: "2026-11-01",
+      month: { year: 2026, monthIndex: 10 },
+    }).length,
+    0,
+    "No debe hacer fallback a entradas historicas de 2024 cuando no hay eventos futuros",
+  );
+  const pastDec2024 = Core.filterAgendaTimeline(withHistorical2024, {
+    todayKey: "2026-11-01",
+    month: { year: 2024, monthIndex: 11 },
+  });
+  assert.equal(pastDec2024.length, 1);
+  assert.equal(pastDec2024[0].id, "hist-2024");
 });
 
 test("monthGrid y shiftMonth: semanas de lunes a domingo", () => {
