@@ -59,6 +59,7 @@
     agendaMode: DEFAULT_AGENDA_MODE,
     detail: null,
     offline: false,
+    isBeta: false,
     installPrompt: null,
     lastRefresh: 0,
     prefs: Core.loadNotificationPrefs(local),
@@ -69,6 +70,7 @@
   let api = null;
   let toastTimer = null;
   let highlightTimer = null;
+  let swRegistration = null;
 
   function track(promise) {
     pending.add(promise);
@@ -181,8 +183,11 @@
     if (kind === "instagram") {
       return h("span", { class: `badge badge-instagram${floatCls}` }, instagramIcon(13), h("span", { text: labelText || "Instagram" }));
     }
-    if (kind === "campus" || kind === "news" || kind === "event") {
+    if (kind === "campus" || kind === "news") {
       return h("span", { class: `badge badge-campus${floatCls}` }, upaIcon(13), h("span", { text: labelText || "Campus" }));
+    }
+    if (kind === "event") {
+      return h("span", { class: `badge badge-event${floatCls}`, text: labelText || "Evento" });
     }
     if (kind === "urgent") {
       return h("span", { class: `badge badge-urgent${floatCls}`, text: labelText || Core.kindLabel(kind) });
@@ -204,8 +209,26 @@
       coarsePointer: match("(pointer: coarse)"),
       standalone: match("(display-mode: standalone)") || nav.standalone === true,
       width: win.innerWidth || 0,
+      hostname: win.location.hostname || "",
+      port: win.location.port || "",
       search: forced && !/app=1/.test(search) ? `${search}&app=1` : search,
     };
+  }
+
+  function updateBetaIndicator(appEnv) {
+    const isBeta =
+      state.isBeta ||
+      Core.isBetaEnvironment({
+        hostname: win.location.hostname || "",
+        port: win.location.port || "",
+        search: win.location.search || "",
+        appEnv: appEnv || "",
+      });
+    state.isBeta = isBeta;
+    ["beta-badge", "landing-beta-badge", "profile-beta-badge"].forEach((id) => {
+      const el = $(id);
+      if (el) el.hidden = !isBeta;
+    });
   }
 
   function currentUserKey() {
@@ -400,9 +423,10 @@
     cache.set(`feed:${currentUserKey()}`, state.feed);
     renderFeed();
     renderAgenda();
-    if (state.detail && state.detail.eventId === updated.id) {
+    if (state.detail && (state.detail.eventId === updated.id || state.detail.postId === updated.id)) {
       state.detail.isRegistered = updated.is_registered;
       state.detail.count = updated.registered_count;
+      renderDetailEventCard();
       renderDetailActions();
     }
   }
@@ -468,7 +492,16 @@
     const origin = urgent ? "urgent" : Core.postOrigin(post);
     const media = urgent ? null : mediaNode(post, "card-media");
     const badge = kindBadge(origin, Core.originLabel(origin), Boolean(media));
+    const eventBadge = !urgent && post.is_event ? kindBadge("event", "Evento", false) : null;
     const mediaWrap = media ? h("div", { class: "card-media-wrap" }, media, badge) : null;
+    const headerRow = !media
+      ? h(
+          "div",
+          { class: "card-header" },
+          h("div", { class: "card-badges" }, badge, eventBadge),
+          post.is_pinned ? h("span", { class: "pin", text: "Fijado" }) : null,
+        )
+      : null;
     const summaryText = Core.postSummary(post);
     const open = h(
       "button",
@@ -477,11 +510,11 @@
       h(
         "div",
         { class: "card-body" },
+        headerRow,
         h(
           "div",
           { class: "card-meta" },
-          !media ? badge : null,
-          post.is_pinned ? h("span", { class: "pin", text: "Fijado" }) : null,
+          media && post.is_pinned ? h("span", { class: "pin", text: "Fijado" }) : null,
           h("span", { class: "card-time", text: postTimeLine(post) }),
         ),
         h("h3", { class: "card-title", text: post.title }),
@@ -520,9 +553,12 @@
   function detailFromPost(post) {
     const kind = Core.postKind(post);
     const origin = Core.postOrigin(post);
+    const isEvent = Boolean(post.is_event);
     return {
+      postId: post.id,
       kind,
       origin,
+      isEvent,
       postType: post.post_type || "",
       kindLabel: Core.originLabel(origin),
       title: post.title,
@@ -534,20 +570,26 @@
       sourceLabel: post.post_type === "INSTAGRAM" ? "Ver en Instagram" : "Ver fuente original",
       linkUrl: Core.safeUrl(post.link_url),
       linkLabel: post.link_label || "Abrir enlace",
-      eventId: post.is_event && post.has_registration ? post.id : null,
+      eventStart: isEvent ? post.event_start || "" : "",
+      eventEnd: isEvent ? post.event_end || "" : "",
+      location: isEvent ? post.location || "" : "",
+      hasRegistration: Boolean(isEvent && post.has_registration),
+      eventId: isEvent && post.has_registration ? post.id : null,
       isRegistered: Boolean(post.is_registered),
       count: post.registered_count || 0,
-      ended: Boolean(post.is_event && post.event_end && Date.parse(post.event_end) < Date.now()),
+      ended: Boolean(isEvent && post.event_end && Date.parse(post.event_end) < Date.now()),
     };
   }
 
   function detailFromEntry(entry) {
-    const raw = entry.raw;
+    const raw = entry.raw || {};
     if (entry.kind === "deadline") {
       const when = entry.timeLabel ? `${Core.formatDayLong(entry.dayKey)} · ${entry.timeLabel}` : Core.formatDayLong(entry.dayKey);
       return {
+        postId: entry.id,
         kind: "deadline",
         origin: "deadline",
+        isEvent: false,
         postType: "",
         kindLabel: "Tarea de Google Classroom",
         title: entry.title,
@@ -559,33 +601,101 @@
         sourceLabel: "",
         linkUrl: entry.link,
         linkLabel: "Abrir en Google Classroom",
+        eventStart: "",
+        eventEnd: "",
+        location: "",
+        hasRegistration: false,
         eventId: null,
         isRegistered: false,
         count: 0,
         ended: false,
       };
     }
-    const when = `${Core.formatDayLong(entry.dayKey)} · ${entry.timeLabel}`;
+    const when = `${Core.formatDayLong(entry.dayKey)} · ${entry.timeRange || entry.timeLabel}`;
     const isInsta = Boolean(raw && raw.post_type === "INSTAGRAM");
     return {
+      postId: raw.id || entry.id,
       kind: "event",
       origin: isInsta ? "instagram" : "campus",
+      isEvent: true,
       postType: (raw && raw.post_type) || "",
       kindLabel: isInsta ? "Instagram" : "Campus",
       title: entry.title,
       meta: [when, entry.place].filter(Boolean).join(" · "),
-      text: raw.description || raw.summary || "",
+      text: raw.description || raw.summary || entry.description || "",
       extra: "",
-      media: { media_url: raw.image_url, media_type: "" },
+      media: { media_url: raw.image_url || raw.media_url, media_type: raw.media_type || "" },
       source: Core.safeUrl(raw.permalink),
       sourceLabel: isInsta ? "Ver en Instagram" : "Ver fuente original",
       linkUrl: Core.safeUrl(raw.link_url),
       linkLabel: raw.link_label || "Abrir enlace",
+      eventStart: raw.event_start || (entry.date ? entry.date.toISOString() : ""),
+      eventEnd: raw.event_end || (entry.end ? entry.end.toISOString() : ""),
+      location: entry.place || raw.location || "",
+      hasRegistration: Boolean(raw.has_registration),
       eventId: raw.has_registration ? raw.id : null,
       isRegistered: Boolean(raw.is_registered),
       count: raw.registered_count || 0,
       ended: Boolean(entry.end && entry.end.getTime() < Date.now()),
     };
+  }
+
+  function renderDetailEventCard() {
+    const card = $("detail-event-card");
+    if (!card) return;
+    clear(card);
+    const d = state.detail;
+    if (!d || (d.kind !== "event" && !d.isEvent) || !d.eventStart) {
+      card.hidden = true;
+      return;
+    }
+    const sched = Core.formatEventSchedule(d.eventStart, d.eventEnd);
+    if (!sched.dayKey) {
+      card.hidden = true;
+      return;
+    }
+    let statusText = "Entrada libre";
+    let statusClass = "badge detail-status-badge";
+    if (d.ended) {
+      statusText = "Evento finalizado";
+      statusClass += " detail-status-ended";
+    } else if (d.isRegistered) {
+      statusText = d.count > 0 ? `Inscrito · ${d.count} inscritos` : "Inscrito";
+      statusClass += " detail-status-registered";
+    } else if (d.hasRegistration || d.eventId) {
+      statusText = d.count > 0 ? `Inscripción abierta · ${d.count} inscritos` : "Inscripción abierta";
+    }
+
+    card.append(
+      h(
+        "div",
+        { class: "detail-event-head" },
+        h("div", { class: "date-tile detail-date-tile" }, h("strong", { text: sched.day }), h("span", { text: sched.month })),
+        h(
+          "div",
+          { class: "detail-event-primary" },
+          h("strong", { class: "detail-event-date", text: sched.dateLong }),
+          h("span", { class: "detail-event-time", text: `Horario: ${sched.timeRange} hs` }),
+        ),
+      ),
+      h(
+        "div",
+        { class: "detail-event-rows" },
+        h(
+          "div",
+          { class: "detail-event-row" },
+          h("span", { class: "detail-event-label", text: "Lugar" }),
+          h("strong", { class: "detail-event-value", text: d.location || "Campus UPA" }),
+        ),
+        h(
+          "div",
+          { class: "detail-event-row" },
+          h("span", { class: "detail-event-label", text: "Estado" }),
+          h("span", { class: statusClass, id: "detail-event-status", text: statusText }),
+        ),
+      ),
+    );
+    card.hidden = false;
   }
 
   function renderDetailActions() {
@@ -652,7 +762,10 @@
     }
     $("detail-title").textContent = detail.title;
     $("detail-meta").textContent = detail.meta;
+    $("detail-meta").hidden = Boolean((detail.kind === "event" || detail.isEvent) && detail.eventStart);
+    renderDetailEventCard();
     $("detail-text").textContent = detail.text;
+    $("detail-text").hidden = !detail.text;
     const extra = $("detail-extra");
     extra.textContent = detail.extra;
     extra.hidden = !detail.extra;
@@ -685,7 +798,8 @@
 
   function agendaItem(entry) {
     const short = Core.formatDayShort(entry.dayKey);
-    const sub = [entry.timeLabel, entry.place].filter(Boolean).join(" · ");
+    const timeText = entry.timeRange || entry.timeLabel;
+    const sub = [timeText, entry.place].filter(Boolean).join(" · ");
     const open = h(
       "button",
       { class: "agenda-open", type: "button", "data-entry": entry.key },
@@ -745,7 +859,9 @@
   function renderAgendaTimeline() {
     const list = $("agenda-list");
     clear(list);
-    const entries = Core.upcomingEntries(state.agenda.entries, todayKey());
+    const upcoming = Core.upcomingEntries(state.agenda.entries, todayKey());
+    const hasSelectedInUpcoming = !state.selectedDay || upcoming.some((e) => e.dayKey === state.selectedDay);
+    const entries = upcoming.length && hasSelectedInUpcoming ? upcoming : state.agenda.entries;
     const groups = Core.groupAgendaByMonth(entries);
     $("agenda-heading").textContent = "Próximos eventos y tareas";
     $("agenda-clear").hidden = !state.selectedDay;
@@ -1091,9 +1207,52 @@
     if (!("serviceWorker" in win.navigator)) return;
     const secure = win.isSecureContext || /^(localhost|127\.0\.0\.1)$/.test(win.location.hostname);
     if (!secure) return;
-    win.navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
-      /* sin service worker la app sigue funcionando en linea */
-    });
+    const sw = win.navigator.serviceWorker;
+    const hadController = Boolean(sw.controller);
+    let refreshing = false;
+    if (typeof sw.addEventListener === "function") {
+      sw.addEventListener("controllerchange", () => {
+        if (refreshing) return;
+        refreshing = true;
+        toast("Nueva versión disponible");
+        if (hadController && win.location && typeof win.location.reload === "function") {
+          try {
+            win.location.reload();
+          } catch (_) {
+            /* el entorno no permite recargar automaticamente */
+          }
+        }
+      });
+    }
+    sw.register("/sw.js", { scope: "/" })
+      .then((reg) => {
+        if (!reg) return;
+        swRegistration = reg;
+        if (typeof reg.update === "function") {
+          reg.update().catch(() => {});
+        }
+        if (reg.waiting && typeof reg.waiting.postMessage === "function") {
+          toast("Nueva versión disponible");
+          reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        }
+        if (typeof reg.addEventListener === "function") {
+          reg.addEventListener("updatefound", () => {
+            const installing = reg.installing;
+            if (!installing || typeof installing.addEventListener !== "function") return;
+            installing.addEventListener("statechange", () => {
+              if (installing.state === "installed" && sw.controller) {
+                toast("Nueva versión disponible");
+                if (typeof installing.postMessage === "function") {
+                  installing.postMessage({ type: "SKIP_WAITING" });
+                }
+              }
+            });
+          });
+        }
+      })
+      .catch(() => {
+        /* sin service worker la app sigue funcionando en linea */
+      });
   }
 
   let eventsBound = false;
@@ -1153,7 +1312,12 @@
       if (event.key === "Escape" && overlays && overlays.depth()) overlays.close();
     });
     doc.addEventListener("visibilitychange", () => {
-      if (doc.visibilityState === "visible" && state.token && Date.now() - state.lastRefresh > REFRESH_AFTER_MS) track(refreshAll());
+      if (doc.visibilityState === "visible") {
+        if (swRegistration && typeof swRegistration.update === "function") {
+          swRegistration.update().catch(() => {});
+        }
+        if (state.token && Date.now() - state.lastRefresh > REFRESH_AFTER_MS) track(refreshAll());
+      }
     });
     win.addEventListener("resize", () => {
       const env = readEnvironment();
@@ -1191,6 +1355,7 @@
 
   async function start() {
     applyTheme(local.getItem(THEME_KEY));
+    updateBetaIndicator();
     const auth = consumeAuthFragment();
     state.token = loadStoredToken();
     bindEvents();

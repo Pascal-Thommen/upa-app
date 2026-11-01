@@ -15,7 +15,7 @@ def test_default_settings():
     assert settings.PORT == 8000
     assert settings.HOST == "0.0.0.0"
     assert settings.ALLOWED_EMAIL_DOMAIN == "upa.edu.py"
-    assert settings.APP_ENV in ("development", "production", "test")
+    assert settings.APP_ENV in ("development", "production", "test", "beta")
 
 
 def test_cors_origins_list_parsing():
