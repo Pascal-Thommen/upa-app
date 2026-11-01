@@ -21,6 +21,8 @@ class AiConfigResponse(BaseModel):
     system_prompt: str
     system_prompt_autocomplete: str
     system_prompt_instagram: str
+    default_system_prompt_autocomplete: str = gemini.DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
+    default_system_prompt_instagram: str = gemini.DEFAULT_SYSTEM_PROMPT_INSTAGRAM
     quota_rpm: int = gemini.FREE_TIER_QUOTA_RPM
 
 
@@ -75,6 +77,8 @@ def _config_response(db: Session) -> AiConfigResponse:
         system_prompt=sys_prompt_auto,
         system_prompt_autocomplete=sys_prompt_auto,
         system_prompt_instagram=sys_prompt_ig,
+        default_system_prompt_autocomplete=gemini.DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE,
+        default_system_prompt_instagram=gemini.DEFAULT_SYSTEM_PROMPT_INSTAGRAM,
         quota_rpm=gemini.FREE_TIER_QUOTA_RPM,
     )
 
@@ -106,7 +110,7 @@ def set_ai_config(
         or payload.system_prompt_autocomplete is not None
         or payload.system_prompt_instagram is not None
     )
-    has_key_field = (raw_key is not None and bool(raw_key.strip())) or not has_prompt_fields
+    has_key_field = (raw_key is not None and len(raw_key) > 0) or not has_prompt_fields
     if has_key_field:
         key = (raw_key or "").strip()
         if len(key) < 10 or any(c.isspace() for c in key):

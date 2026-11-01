@@ -131,9 +131,16 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
           listeners["click"].forEach((cb) => cb({ preventDefault() {}, stopPropagation() {} }));
         }
       },
+      dispatchEvent(evt) {
+        const type = evt && evt.type ? evt.type : String(evt || "");
+        if (listeners[type]) {
+          listeners[type].forEach((cb) => cb({ type, preventDefault() {}, stopPropagation() {} }));
+        }
+      },
       querySelectorAll() {
         return [];
       },
+      value: "",
       innerHTML: "",
       textContent: "",
     };
@@ -543,39 +550,71 @@ test("historial: Rollenmatrix enthält Historial-Spalte und verbirgt Audit-Log o
   assert.equal(histEl.innerHTML, "");
 });
 
-test("modulo ia: index.html renombra reiter a IA, muestra modelo Flash informativo y dos campos separados de System Prompt", () => {
+test("modulo ia: index.html renombra reiter a IA, consolida 1-Klick-Save, precarga prompts UPA y restaura valores por defecto", async () => {
   const indexHtml = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf8");
   assert.ok(indexHtml.includes('id="nav-mod-ai"'));
   assert.ok(indexHtml.includes('<span class="flex-1">IA</span>'));
   assert.ok(!indexHtml.includes('<span class="flex-1">Control de IA</span>'));
   assert.ok(indexHtml.includes('aria-label="IA"'));
   assert.ok(indexHtml.includes('id="ai-model-info"'));
+  assert.ok(indexHtml.includes("gemini-2.0-flash"));
+  assert.ok(!indexHtml.includes("gemini-2.5-flash"));
   assert.ok(indexHtml.includes('id="ai-input-system-prompt-autocomplete"'));
   assert.ok(indexHtml.includes('id="ai-input-system-prompt-instagram"'));
-  assert.ok(indexHtml.includes('id="btn-ai-save-prompt-autocomplete"'));
-  assert.ok(indexHtml.includes('id="btn-ai-save-prompt-instagram"'));
+  assert.ok(indexHtml.includes('id="btn-ai-restore-defaults"'));
+  assert.ok(indexHtml.includes('id="btn-ai-save-test"'));
+  assert.ok(indexHtml.includes("Standard wiederherstellen"));
+  assert.ok(indexHtml.includes("Konfiguration speichern &amp; Verbindung testen"));
+  assert.ok(indexHtml.includes("Guardar configuración y probar conexión"));
   assert.ok(indexHtml.includes("https://aistudio.google.com/app/apikey"));
   assert.ok(indexHtml.includes("Create API key"));
-  assert.ok(indexHtml.includes("Guardar y Probar"));
-  assert.ok(indexHtml.includes("Probar conexión"));
+
+  // Los tres botones individuales confusos han sido eliminados
+  assert.ok(!indexHtml.includes('id="btn-ai-save-prompt-autocomplete"'));
+  assert.ok(!indexHtml.includes('id="btn-ai-save-prompt-instagram"'));
+  assert.ok(!indexHtml.includes('id="btn-ai-test-connection"'));
 
   const env = createTestEnvironment("/dashboard/ia");
   assert.equal(env.window.location.pathname, "/dashboard/ia");
   assert.equal(env.router.getCurrentRoute(), "ia");
 
+  const form = env.document.getElementById("form-ai-config");
+  const keyInput = env.document.getElementById("ai-input-api-key");
   const autoInput = env.document.getElementById("ai-input-system-prompt-autocomplete");
   const igInput = env.document.getElementById("ai-input-system-prompt-instagram");
+  const keyErr = env.document.getElementById("ai-key-error");
   const autoErr = env.document.getElementById("ai-prompt-autocomplete-error");
   const igErr = env.document.getElementById("ai-prompt-instagram-error");
-  const btnAuto = env.document.getElementById("btn-ai-save-prompt-autocomplete");
-  const btnIg = env.document.getElementById("btn-ai-save-prompt-instagram");
+  const btnRestore = env.document.getElementById("btn-ai-restore-defaults");
 
-  // Validación >4000 caracteres muestra error en el campo correspondiente
+  // Los dos textareas vienen precargados por defecto con los prompts institucionales de la UPA
+  assert.ok(autoInput.value.includes("Universidad Paraguayo Alemana (UPA)"));
+  assert.ok(autoInput.value.includes("24 horas (HH:mm)"));
+  assert.ok(igInput.value.includes("Universidad Paraguayo Alemana (UPA)"));
+  assert.ok(igInput.value.includes("Instagram"));
+
+  // Modificar los prompts y pulsar "Restaurar valores por defecto" (Standard wiederherstellen)
+  autoInput.value = "Prompt temporal modificado por el editor";
+  igInput.value = "Prompt temporal de Instagram modificado";
+  btnRestore.click();
+  assert.ok(autoInput.value.includes("Universidad Paraguayo Alemana (UPA)"));
+  assert.ok(autoInput.value.includes("DD/MM/YYYY"));
+  assert.ok(igInput.value.includes("Instagram"));
+
+  // Validación >4000 caracteres al enviar el formulario único muestra error en el campo correspondiente
+  keyInput.value = "AIzaValidKeyForTesting12345";
   autoInput.value = "A".repeat(4001);
-  btnAuto.click();
+  form.dispatchEvent({ type: "submit" });
   assert.ok(autoErr.textContent.includes("4000 caracteres"));
 
+  btnRestore.click();
   igInput.value = "B".repeat(4001);
-  btnIg.click();
+  form.dispatchEvent({ type: "submit" });
   assert.ok(igErr.textContent.includes("4000 caracteres"));
+
+  // Validación de clave inválida (corta o con espacios)
+  btnRestore.click();
+  keyInput.value = "corta";
+  form.dispatchEvent({ type: "submit" });
+  assert.ok(keyErr.textContent.includes("al menos 10 caracteres"));
 });

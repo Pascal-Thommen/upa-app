@@ -213,7 +213,7 @@ Zentraler Single Source of Truth Endpunkt des Web Admin Cockpits (`/dashboard/pu
 Multimodaler KI Endpunkt fuer den Button `Autocompletar con IA` im Publikations Editor:
 * **Berechtigung:** `Authorization: Bearer <access_token>` (Berechtigung `publicaciones`).
 * **Eingabe:** JSON Objekt oder `multipart/form-data` mit den aktuellen Formularwerten (`title`, `caption`, `content`, `location`, `event_start`, `event_end`, `target_groups`, `category`, `link_label`, `link_url`, `media_url`, `image_base64`) sowie optionaler Bilddatei (`file` / `image` im Format `JPG`, `PNG`, `WEBP` oder `PDF`).
-* **Verhalten:** Sendet die vorhandenen Angaben und das Plakatbild an Google Gemini Flash (`gemini-2.0-flash` / `gemini-2.5-flash`) und gibt **ausschliesslich Vorschlaege fuer diejenigen Felder zurueck, die im Formular noch leer sind**. Bereits vom Nutzer eingetragene Werte bleiben garantiert unveraendert.
+* **Verhalten:** Sendet die vorhandenen Angaben und das Plakatbild an Google Gemini Flash (`gemini-2.0-flash` / `gemini-1.5-flash`) und gibt **ausschliesslich Vorschlaege fuer diejenigen Felder zurueck, die im Formular noch leer sind**. Bereits vom Nutzer eingetragene Werte bleiben garantiert unveraendert.
 
 **Beispiel Antwort (`200 OK`):**
 ```json

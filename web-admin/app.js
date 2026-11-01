@@ -1432,6 +1432,16 @@ async function renderAdminsModule() {
 // Módulo 5: IA (Google Gemini Flash + System Prompt + prueba de conexión en vivo)
 // ===========================================================================
 
+const DEFAULT_AI_PROMPT_AUTOCOMPLETE =
+  "Eres el asistente editorial inteligente de la Universidad Paraguayo Alemana (UPA). " +
+  "Redacta en español formal institucional, claro y conciso, respetando estrictamente " +
+  "los datos confirmados, el horario en formato de 24 horas (HH:mm) y la fecha en formato DD/MM/YYYY.";
+
+const DEFAULT_AI_PROMPT_INSTAGRAM =
+  "Eres el analizador multimodal de eventos de la Universidad Paraguayo Alemana (UPA) para publicaciones e imágenes de Instagram. " +
+  "Extrae únicamente eventos confirmados del texto y afiche, respetando horarios del mismo día calendario " +
+  "y seleccionando grupos destinatarios de forma conservadora.";
+
 function setAiConnectionBanner(type, message) {
   const banner = document.getElementById("ai-connection-banner");
   if (!banner) return;
@@ -1464,7 +1474,7 @@ function renderAiConfigState(cfg) {
     document.getElementById("ai-input-system-prompt");
   const promptInstagramInput = document.getElementById("ai-input-system-prompt-instagram");
   const configured = Boolean(cfg && cfg.configured);
-  const modelName = (cfg && cfg.model) || "gemini-1.5-flash";
+  const modelName = (cfg && cfg.model) || "gemini-2.0-flash";
 
   if (badge) {
     badge.textContent = configured ? "Configurado" : "Sin configurar";
@@ -1490,17 +1500,24 @@ function renderAiConfigState(cfg) {
       ? "Nivel gratuito conectado · Solo información"
       : "Nivel gratuito · Sin clave activa";
   }
+  const defaultAuto =
+    (cfg && cfg.default_system_prompt_autocomplete) || DEFAULT_AI_PROMPT_AUTOCOMPLETE;
+  const defaultIg =
+    (cfg && cfg.default_system_prompt_instagram) || DEFAULT_AI_PROMPT_INSTAGRAM;
   const autoPromptVal =
-    cfg && typeof cfg.system_prompt_autocomplete === "string"
+    cfg && typeof cfg.system_prompt_autocomplete === "string" && cfg.system_prompt_autocomplete.trim()
       ? cfg.system_prompt_autocomplete
-      : cfg && typeof cfg.system_prompt === "string"
+      : cfg && typeof cfg.system_prompt === "string" && cfg.system_prompt.trim()
         ? cfg.system_prompt
-        : null;
-  if (promptAutocompleteInput && autoPromptVal !== null) {
+        : defaultAuto;
+  if (promptAutocompleteInput) {
     promptAutocompleteInput.value = autoPromptVal;
   }
-  if (promptInstagramInput && cfg && typeof cfg.system_prompt_instagram === "string") {
-    promptInstagramInput.value = cfg.system_prompt_instagram;
+  if (promptInstagramInput) {
+    promptInstagramInput.value =
+      cfg && typeof cfg.system_prompt_instagram === "string" && cfg.system_prompt_instagram.trim()
+        ? cfg.system_prompt_instagram
+        : defaultIg;
   }
   if (window.UpaCockpit && typeof window.UpaCockpit.setAiConfigured === "function") {
     window.UpaCockpit.setAiConfigured(configured);
@@ -1524,14 +1541,8 @@ async function fetchAiConfig() {
 }
 
 async function runAiConnectionTest(candidateKey) {
-  const btnTest = document.getElementById("btn-ai-test-connection");
-  const prevLabel = btnTest ? btnTest.textContent : "Probar conexión";
-  if (btnTest) {
-    btnTest.disabled = true;
-    btnTest.textContent = "Probando...";
-  }
+  const cleanCandidate = String(candidateKey || "").trim();
   try {
-    const cleanCandidate = String(candidateKey || "").trim();
     const res = await apiRequest("/api/ai/test-connection", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1548,7 +1559,7 @@ async function runAiConnectionTest(candidateKey) {
         }
         setAiConnectionBanner(
           "success",
-          body.message || "Conexión exitosa con Google Gemini (Modelo gemini-1.5-flash listo)"
+          body.message || "Conexión exitosa con Google Gemini (Modelo gemini-2.0-flash listo)"
         );
       } else {
         if (
@@ -1568,74 +1579,41 @@ async function runAiConnectionTest(candidateKey) {
   } catch (_) {
     setAiConnectionBanner("error", "Error de red con Google: no se pudo establecer la conexión.");
     return null;
-  } finally {
-    if (btnTest) {
-      btnTest.disabled = false;
-      btnTest.textContent = prevLabel;
-    }
   }
 }
 
 async function renderAiModule() {
   if (state.aiLoaded && state.aiConfig) {
     renderAiConfigState(state.aiConfig);
+  } else {
+    renderAiConfigState(null);
   }
   await fetchAiConfig();
 }
 
-async function saveAiSpecificPrompt(kind) {
-  const isInstagram = kind === "instagram";
-  const inputId = isInstagram ? "ai-input-system-prompt-instagram" : "ai-input-system-prompt-autocomplete";
-  const errorId = isInstagram ? "ai-prompt-instagram-error" : "ai-prompt-autocomplete-error";
-  const btnId = isInstagram ? "btn-ai-save-prompt-instagram" : "btn-ai-save-prompt-autocomplete";
-  const payloadKey = isInstagram ? "system_prompt_instagram" : "system_prompt_autocomplete";
-  const successMsg = isInstagram
-    ? "Prompt de Instagram actualizado correctamente."
-    : "Prompt de autocompletado actualizado correctamente.";
+function restoreDefaultAiPrompts() {
+  const promptAutoInput = document.getElementById("ai-input-system-prompt-autocomplete");
+  const promptIgInput = document.getElementById("ai-input-system-prompt-instagram");
+  const defaultAuto =
+    (state.aiConfig && state.aiConfig.default_system_prompt_autocomplete) ||
+    DEFAULT_AI_PROMPT_AUTOCOMPLETE;
+  const defaultIg =
+    (state.aiConfig && state.aiConfig.default_system_prompt_instagram) ||
+    DEFAULT_AI_PROMPT_INSTAGRAM;
 
-  const promptInput = document.getElementById(inputId);
-  const btnPrompt = document.getElementById(btnId);
-  setInlineFieldError(errorId, inputId, "");
-  const promptVal = promptInput ? promptInput.value.trim() : "";
-  if (promptVal.length > 4000) {
-    const msg = "El prompt del sistema no puede superar los 4000 caracteres.";
-    setInlineFieldError(errorId, inputId, msg);
-    setAiConnectionBanner("error", msg);
-    return null;
+  setInlineFieldError("ai-prompt-autocomplete-error", "ai-input-system-prompt-autocomplete", "");
+  setInlineFieldError("ai-prompt-instagram-error", "ai-input-system-prompt-instagram", "");
+
+  if (promptAutoInput) {
+    promptAutoInput.value = defaultAuto;
   }
-  const prevLabel = btnPrompt ? btnPrompt.textContent : "Guardar prompt";
-  if (btnPrompt) {
-    btnPrompt.disabled = true;
-    btnPrompt.textContent = "Guardando...";
+  if (promptIgInput) {
+    promptIgInput.value = defaultIg;
   }
-  try {
-    const res = await apiRequest("/api/ai/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [payloadKey]: promptVal }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const detail = err.detail || "No se pudo guardar el prompt del sistema.";
-      setInlineFieldError(errorId, inputId, detail);
-      setAiConnectionBanner("error", detail);
-      return null;
-    }
-    const saved = await res.json();
-    state.aiConfig = saved;
-    state.aiLoaded = true;
-    renderAiConfigState(saved);
-    setAiConnectionBanner("success", successMsg);
-    return saved;
-  } catch (_) {
-    setAiConnectionBanner("error", "Error de red al guardar el prompt del sistema.");
-    return null;
-  } finally {
-    if (btnPrompt) {
-      btnPrompt.disabled = false;
-      btnPrompt.textContent = prevLabel;
-    }
-  }
+  setAiConnectionBanner(
+    "info",
+    "Prompts institucionales predeterminados restaurados."
+  );
 }
 
 function setupAiFormHandlers() {
@@ -1643,10 +1621,15 @@ function setupAiFormHandlers() {
   const input = document.getElementById("ai-input-api-key");
   const promptAutoInput = document.getElementById("ai-input-system-prompt-autocomplete");
   const promptIgInput = document.getElementById("ai-input-system-prompt-instagram");
-  const btnSavePromptAuto = document.getElementById("btn-ai-save-prompt-autocomplete");
-  const btnSavePromptIg = document.getElementById("btn-ai-save-prompt-instagram");
-  const btnTest = document.getElementById("btn-ai-test-connection");
+  const btnRestoreDefaults = document.getElementById("btn-ai-restore-defaults");
   const btnSave = document.getElementById("btn-ai-save-test");
+
+  if (promptAutoInput && !String(promptAutoInput.value || "").trim()) {
+    promptAutoInput.value = DEFAULT_AI_PROMPT_AUTOCOMPLETE;
+  }
+  if (promptIgInput && !String(promptIgInput.value || "").trim()) {
+    promptIgInput.value = DEFAULT_AI_PROMPT_INSTAGRAM;
+  }
 
   if (input) {
     input.addEventListener("input", () => {
@@ -1666,23 +1649,9 @@ function setupAiFormHandlers() {
     });
   }
 
-  if (btnSavePromptAuto) {
-    btnSavePromptAuto.addEventListener("click", async () => {
-      await saveAiSpecificPrompt("autocomplete");
-    });
-  }
-
-  if (btnSavePromptIg) {
-    btnSavePromptIg.addEventListener("click", async () => {
-      await saveAiSpecificPrompt("instagram");
-    });
-  }
-
-  if (btnTest) {
-    btnTest.addEventListener("click", async () => {
-      setInlineFieldError("ai-key-error", "ai-input-api-key", "");
-      const candidate = input ? input.value.trim() : "";
-      await runAiConnectionTest(candidate);
+  if (btnRestoreDefaults) {
+    btnRestoreDefaults.addEventListener("click", () => {
+      restoreDefaultAiPrompts();
     });
   }
 
@@ -1692,16 +1661,12 @@ function setupAiFormHandlers() {
       setInlineFieldError("ai-key-error", "ai-input-api-key", "");
       setInlineFieldError("ai-prompt-autocomplete-error", "ai-input-system-prompt-autocomplete", "");
       setInlineFieldError("ai-prompt-instagram-error", "ai-input-system-prompt-instagram", "");
-      const key = input ? input.value.trim() : "";
-      const promptAutoVal = promptAutoInput ? promptAutoInput.value.trim() : undefined;
-      const promptIgVal = promptIgInput ? promptIgInput.value.trim() : undefined;
-      if (!key || key.length < 10 || /\s/.test(key)) {
-        const msg = "La clave de API no es válida: debe tener al menos 10 caracteres y no contener espacios.";
-        setInlineFieldError("ai-key-error", "ai-input-api-key", msg);
-        setAiConnectionBanner("error", msg);
-        if (input && input.focus) input.focus();
-        return;
-      }
+      const rawKey = input ? String(input.value || "") : "";
+      const key = rawKey.trim();
+      const promptAutoVal = promptAutoInput ? String(promptAutoInput.value || "").trim() : undefined;
+      const promptIgVal = promptIgInput ? String(promptIgInput.value || "").trim() : undefined;
+      const hasStoredKey = Boolean(state.aiConfig && state.aiConfig.configured);
+
       if (promptAutoVal !== undefined && promptAutoVal.length > 4000) {
         const msg = "El prompt del sistema no puede superar los 4000 caracteres.";
         setInlineFieldError("ai-prompt-autocomplete-error", "ai-input-system-prompt-autocomplete", msg);
@@ -1714,16 +1679,29 @@ function setupAiFormHandlers() {
         setAiConnectionBanner("error", msg);
         return;
       }
+      if ((rawKey.length > 0 && (key.length < 10 || /\s/.test(rawKey))) || (!key && !hasStoredKey)) {
+        const msg = "La clave de API no es válida: debe tener al menos 10 caracteres y no contener espacios.";
+        setInlineFieldError("ai-key-error", "ai-input-api-key", msg);
+        setAiConnectionBanner("error", msg);
+        if (input && input.focus) input.focus();
+        return;
+      }
 
-      const prevSaveLabel = btnSave ? btnSave.textContent : "Guardar y Probar";
+      const prevSaveLabel = btnSave ? btnSave.textContent : "Guardar configuración y probar conexión";
       if (btnSave) {
         btnSave.disabled = true;
-        btnSave.textContent = "Guardando...";
+        btnSave.textContent = "Guardando y probando...";
       }
       try {
-        const payload = { api_key: key };
-        if (promptAutoVal !== undefined) payload.system_prompt_autocomplete = promptAutoVal;
-        if (promptIgVal !== undefined) payload.system_prompt_instagram = promptIgVal;
+        const payload = {
+          system_prompt_autocomplete:
+            promptAutoVal !== undefined ? promptAutoVal : DEFAULT_AI_PROMPT_AUTOCOMPLETE,
+          system_prompt_instagram:
+            promptIgVal !== undefined ? promptIgVal : DEFAULT_AI_PROMPT_INSTAGRAM,
+        };
+        if (key) {
+          payload.api_key = key;
+        }
         const res = await apiRequest("/api/ai/config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1731,7 +1709,7 @@ function setupAiFormHandlers() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          const detail = err.detail || "No se pudo guardar la clave de API.";
+          const detail = err.detail || "No se pudo guardar la configuración de IA.";
           setInlineFieldError("ai-key-error", "ai-input-api-key", detail);
           setAiConnectionBanner("error", detail);
           return;
