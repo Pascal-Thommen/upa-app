@@ -427,14 +427,49 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     assert.ok(highlighted, "El evento del dia seleccionado debe resaltarse en la linea de tiempo");
 
     // Abrir evento desde Agenda (detailFromEntry) renderiza exactamente la misma estructura armonizada que desde Inicio (detailFromPost)
+    const eventItem = highlighted;
+    assert.ok(eventItem.querySelector(".badge.badge-campus.badge-event"), "El evento en Agenda debe mostrar el badge Campus-Event");
+    assert.ok(eventItem.querySelector(".badge.badge-campus svg.upa-u-glyph"), "El badge del evento en Agenda debe incluir el icono UPA");
+    assert.match(eventItem.querySelector(".agenda-room").textContent, /Auditorio Edificio 1/);
+    assert.match(eventItem.querySelector(".agenda-attendees").textContent, /0 inscritos/);
+
     await app.click(highlighted.querySelector(".agenda-open"));
     assert.equal(app.$("detail").hidden, false);
     assert.equal(app.$("detail-title").textContent, "Foro de Ingeniería Empresarial 2026");
     assert.equal(app.$("detail-text").querySelectorAll("a.rich-link").length, 2, "El detalle desde Agenda debe aplicar linkifyText al texto");
     assert.equal(app.$("detail-text").querySelectorAll("span.hashtag").length, 2, "El detalle desde Agenda debe resaltar los hashtags");
     assert.equal(app.$("detail-event-card").hidden, false, "El detalle desde Agenda debe mostrar #detail-event-card debajo del texto");
-    assert.ok(app.$("detail-actions").querySelector("#detail-register"), "El detalle desde Agenda debe incluir el boton de inscripcion");
+    const detailRegBtn = app.$("detail-actions").querySelector("#detail-register");
+    assert.ok(detailRegBtn, "El detalle desde Agenda debe incluir el boton de inscripcion");
+    assert.equal(detailRegBtn.textContent, "Inscripción");
     assert.ok(app.$("detail-actions").querySelector("#detail-source"), "El detalle desde Agenda debe incluir el boton de fuente original");
+
+    // Inscripcion RSVP directamente desde el overlay de Agenda y sincronizacion con el feed de Inicio
+    await app.click(detailRegBtn);
+    assert.equal(app.$("detail-register").textContent, "Cancelar inscripción");
+    assert.match(app.$("detail-event-status").textContent, /Inscrito · 1 inscritos/);
+    assert.equal(
+      app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent,
+      "Cancelar inscripción",
+      "El boton de RSVP en el feed de Inicio debe sincronizarse inmediatamente con la Agenda",
+    );
+    assert.ok(
+      app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"] .badge-registered`),
+      "El item de la Agenda debe mostrar el badge Inscrito tras registrarse en el detalle",
+    );
+    assert.match(
+      app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"] .agenda-attendees`).textContent,
+      /1 inscritos/,
+    );
+
+    // Cancelar inscripcion desde el mismo overlay de Agenda y verificar sincronizacion inversa
+    await app.click(app.$("detail-register"));
+    assert.equal(app.$("detail-register").textContent, "Inscripción");
+    assert.equal(
+      app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent,
+      "Inscripción",
+    );
+
     app.window.history.back();
     await new Promise((r) => setTimeout(r, 20));
     assert.equal(app.$("detail").hidden, true);
@@ -450,7 +485,7 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     app.window.UpaCampus.setAgendaMode("timeline");
     assert.ok(app.$("agenda-list").querySelector(".agenda-month-header"));
 
-    // Tarea de Google Classroom: icono de enlace externo salta a Classroom
+    // Tarea de Google Classroom: badge e icono diferenciado, hora de vencimiento, curso y enlace externo
     const withDeadline = app.window.UpaCampusCore.buildAgendaEntries({
       events: [],
       deadlines: [
@@ -462,15 +497,58 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
           due_date_formatted: `${seeded.eventDayKey} 23:59`,
           alternate_link: "https://classroom.google.com/c/100/a/cw-101/details",
         },
+        {
+          id: "cw-2024-old",
+          title: "Tarea Histórica Diciembre 2024",
+          description: "No debe aparecer en próximos eventos",
+          course_name: "Álgebra",
+          due_date_formatted: "2024-12-15 23:59",
+          alternate_link: "https://classroom.google.com/c/2024/a/old/details",
+        },
       ],
     });
     app.window.UpaCampus.state.agenda.entries.push(...withDeadline);
     await app.click(app.document.querySelector(`[data-day="${seeded.eventDayKey}"]`));
-    const extLink = app.$("agenda-list").querySelector(".agenda-kind-deadline a.ext-link");
+    assert.equal(
+      /Tarea Histórica Diciembre 2024/.test(app.$("agenda-list").textContent),
+      false,
+      "Las tareas antiguas de 2024 nunca deben filtrarse en la vista por defecto de proximos eventos",
+    );
+    const deadlineItem = app.$("agenda-list").querySelector(".agenda-kind-deadline");
+    assert.ok(deadlineItem, "Debe renderizar la tarea de Google Classroom futura");
+    const classroomBadge = deadlineItem.querySelector(".badge.badge-classroom");
+    assert.ok(classroomBadge, "La tarea de Classroom debe tener su badge visual .badge-classroom");
+    assert.equal(classroomBadge.textContent.trim(), "Google Classroom");
+    assert.ok(classroomBadge.querySelector("svg.classroom-glyph"), "El badge de Classroom debe incluir su icono SVG");
+    assert.match(deadlineItem.textContent, /Vence 23:59 hs/);
+    assert.match(deadlineItem.textContent, /Ingeniería de Software/);
+    const extLink = deadlineItem.querySelector("a.ext-link");
     assert.ok(extLink, "La tarea de Classroom debe mostrar el enlace externo con icono");
     assert.equal(extLink.getAttribute("href"), "https://classroom.google.com/c/100/a/cw-101/details");
     assert.equal(extLink.getAttribute("target"), "_blank");
     assert.ok(extLink.querySelector("svg"));
+
+    // Si solo existen entradas pasadas (ej. diciembre 2024) y ninguna futura, muestra "No hay eventos próximos" sin caer en 2024
+    const onlyPast2024 = withDeadline.filter((e) => e.id === "cw-2024-old");
+    app.window.UpaCampus.state.agenda.entries = onlyPast2024;
+    app.window.UpaCampus.state.selectedDay = null;
+    const [todayY, todayM] = app.window.UpaCampusCore.dayKey(new Date()).split("-").map(Number);
+    app.window.UpaCampus.state.month = { year: todayY, monthIndex: todayM - 1 };
+    app.window.UpaCampus.renderAgendaTimeline();
+    assert.equal(app.$("agenda-list").children.length, 0, "No debe hacer fallback a la base de datos historica de 2024");
+    assert.equal(app.$("agenda-status").hidden, false);
+    assert.match(app.$("agenda-status").textContent, /No hay eventos próximos/);
+
+    // Al seleccionar explicitamente un mes pasado en el calendario (ej. mes anterior vacio o diciembre 2024), se carga ese mes
+    await app.click(app.$("cal-prev"));
+    assert.equal(app.$("agenda-list").children.length, 0);
+    assert.equal(app.$("agenda-status").hidden, false);
+    assert.match(app.$("agenda-status").textContent, /No hay eventos próximos/);
+
+    app.window.UpaCampus.state.month = { year: 2024, monthIndex: 11 };
+    app.window.UpaCampus.renderAgendaTimeline();
+    assert.equal(app.$("agenda-list").querySelectorAll(".agenda-item").length, 1);
+    assert.match(app.$("agenda-list").textContent, /Tarea Histórica Diciembre 2024/);
   } finally {
     app.close();
   }

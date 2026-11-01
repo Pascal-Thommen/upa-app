@@ -178,6 +178,38 @@
     return svg;
   }
 
+  function classroomIcon(size) {
+    const px = String(size || 13);
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", px);
+    svg.setAttribute("height", px);
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("class", "classroom-glyph");
+    const board = doc.createElementNS("http://www.w3.org/2000/svg", "rect");
+    board.setAttribute("x", "2");
+    board.setAttribute("y", "3");
+    board.setAttribute("width", "20");
+    board.setAttribute("height", "16");
+    board.setAttribute("rx", "2.5");
+    board.setAttribute("fill", "none");
+    board.setAttribute("stroke", "currentColor");
+    board.setAttribute("stroke-width", "2");
+    const head = doc.createElementNS("http://www.w3.org/2000/svg", "circle");
+    head.setAttribute("cx", "12");
+    head.setAttribute("cy", "9.5");
+    head.setAttribute("r", "2.4");
+    head.setAttribute("fill", "currentColor");
+    const body = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+    body.setAttribute("d", "M7.5 16c0-2.1 2-3.4 4.5-3.4s4.5 1.3 4.5 3.4M6 21h12");
+    body.setAttribute("fill", "none");
+    body.setAttribute("stroke", "currentColor");
+    body.setAttribute("stroke-width", "2");
+    body.setAttribute("stroke-linecap", "round");
+    svg.append(board, head, body);
+    return svg;
+  }
+
   function kindBadge(kind, labelText, floating) {
     const floatCls = floating ? " badge-floating" : "";
     if (kind === "instagram") {
@@ -185,6 +217,9 @@
     }
     if (kind === "campus" || kind === "news") {
       return h("span", { class: `badge badge-campus${floatCls}` }, upaIcon(13), h("span", { text: labelText || "Campus" }));
+    }
+    if (kind === "deadline" || kind === "classroom") {
+      return h("span", { class: `badge badge-classroom${floatCls}` }, classroomIcon(13), h("span", { text: labelText || "Google Classroom" }));
     }
     if (kind === "event") {
       return h("span", { class: `badge badge-event${floatCls}`, text: labelText || "Evento" });
@@ -416,16 +451,36 @@
   /* ------------------------------------------------------------------ inscripcion */
 
   function applyRegistrationUpdate(updated) {
+    const targetId = String(updated.id);
     state.feed.posts = state.feed.posts.map((p) =>
-      p.id === updated.id ? { ...p, is_registered: updated.is_registered, registered_count: updated.registered_count } : p,
+      String(p.id) === targetId
+        ? { ...p, is_registered: updated.is_registered, registered_count: updated.registered_count }
+        : p,
     );
     state.agenda.entries = Core.applyRegistration(state.agenda.entries, updated);
     cache.set(`feed:${currentUserKey()}`, state.feed);
+    const agendaKey = `agenda:${currentUserKey()}`;
+    const cachedAgenda = cache.get(agendaKey);
+    if (cachedAgenda && cachedAgenda.data && Array.isArray(cachedAgenda.data.events)) {
+      cache.set(agendaKey, {
+        ...cachedAgenda.data,
+        events: cachedAgenda.data.events.map((ev) =>
+          String(ev.id) === targetId
+            ? { ...ev, is_registered: updated.is_registered, registered_count: updated.registered_count }
+            : ev,
+        ),
+      });
+    }
     renderFeed();
     renderAgenda();
-    if (state.detail && (state.detail.eventId === updated.id || state.detail.postId === updated.id)) {
-      state.detail.isRegistered = updated.is_registered;
-      state.detail.count = updated.registered_count;
+    if (
+      state.detail &&
+      (String(state.detail.eventId) === targetId || String(state.detail.postId) === targetId)
+    ) {
+      state.detail.hasRegistration = true;
+      state.detail.eventId = updated.id;
+      state.detail.isRegistered = Boolean(updated.is_registered);
+      state.detail.count = Number(updated.registered_count) || 0;
       renderDetailEventCard();
       renderDetailActions();
     }
@@ -584,14 +639,16 @@
   function detailFromEntry(entry) {
     const raw = entry.raw || {};
     if (entry.kind === "deadline") {
-      const when = entry.timeLabel ? `${Core.formatDayLong(entry.dayKey)} · ${entry.timeLabel}` : Core.formatDayLong(entry.dayKey);
+      const dueTime = entry.timeLabel || "23:59";
+      const dueLabel = entry.dueLabel || `Vence ${dueTime} hs`;
+      const when = `${Core.formatDayLong(entry.dayKey)} · ${dueLabel}`;
       return {
         postId: entry.id,
         kind: "deadline",
         origin: "deadline",
         isEvent: false,
         postType: "",
-        kindLabel: "Tarea de Google Classroom",
+        kindLabel: "Google Classroom",
         title: entry.title,
         meta: [entry.place, when].filter(Boolean).join(" · "),
         text: entry.description,
@@ -612,13 +669,29 @@
       };
     }
     const postId = raw.id !== undefined ? raw.id : entry.id;
-    const feedPost = state.feed.posts.find((p) => p.id === postId) || {};
+    const feedPost = state.feed.posts.find((p) => String(p.id) === String(postId)) || {};
     const permalink = raw.permalink || feedPost.permalink || entry.link || "";
     const isInsta = Boolean(
       raw.post_type === "INSTAGRAM" ||
         feedPost.post_type === "INSTAGRAM" ||
         /instagram\.com/i.test(String(permalink)),
     );
+    const hasRegistration = Boolean(
+      entry.hasRegistration || raw.has_registration || feedPost.has_registration,
+    );
+    const isRegistered = Boolean(
+      entry.isRegistered !== undefined
+        ? entry.isRegistered
+        : raw.is_registered !== undefined
+          ? raw.is_registered
+          : feedPost.is_registered,
+    );
+    const registeredCount =
+      entry.registeredCount !== undefined
+        ? entry.registeredCount
+        : raw.registered_count !== undefined
+          ? raw.registered_count
+          : feedPost.registered_count || 0;
     return detailFromPost({
       ...feedPost,
       ...raw,
@@ -637,9 +710,9 @@
       event_start: raw.event_start || feedPost.event_start || (entry.date ? entry.date.toISOString() : ""),
       event_end: raw.event_end || feedPost.event_end || (entry.end ? entry.end.toISOString() : ""),
       location: entry.place || raw.location || feedPost.location || "",
-      has_registration: Boolean(raw.has_registration !== undefined ? raw.has_registration : feedPost.has_registration),
-      is_registered: Boolean(raw.is_registered !== undefined ? raw.is_registered : feedPost.is_registered),
-      registered_count: raw.registered_count !== undefined ? raw.registered_count : feedPost.registered_count || 0,
+      has_registration: hasRegistration,
+      is_registered: isRegistered,
+      registered_count: registeredCount,
     });
   }
 
@@ -706,14 +779,15 @@
     const box = $("detail-actions");
     clear(box);
     if (!d) return;
-    if (d.eventId && !d.ended) {
+    const regEventId = d.eventId || (d.hasRegistration ? d.postId : null);
+    if (regEventId && !d.ended) {
       const button = h("button", {
         class: `btn btn-block ${d.isRegistered ? "btn-secondary" : "btn-primary"}`,
         type: "button",
         id: "detail-register",
         text: d.isRegistered ? "Cancelar inscripción" : "Inscripción",
       });
-      button.addEventListener("click", () => track(toggleRegistration(d.eventId, d.isRegistered, button)));
+      button.addEventListener("click", () => track(toggleRegistration(regEventId, d.isRegistered, button)));
       box.append(button);
       if (d.count > 0) box.append(h("p", { class: "muted small", text: `${d.count} personas inscritas` }));
     }
@@ -756,6 +830,9 @@
     } else if (origin === "campus") {
       kindEl.className = "badge badge-campus";
       kindEl.append(upaIcon(13), h("span", { text: detail.kindLabel || "Campus" }));
+    } else if (origin === "deadline") {
+      kindEl.className = "badge badge-classroom";
+      kindEl.append(classroomIcon(13), h("span", { text: detail.kindLabel || "Google Classroom" }));
     } else if (origin === "urgent") {
       kindEl.className = "badge badge-urgent";
       kindEl.textContent = detail.kindLabel || "Aviso urgente";
@@ -807,19 +884,70 @@
 
   function agendaItem(entry) {
     const short = Core.formatDayShort(entry.dayKey);
-    const timeText = entry.timeRange || entry.timeLabel;
-    const sub = [timeText, entry.place].filter(Boolean).join(" · ");
+    const raw = entry.raw || {};
+    let infoNode;
+
+    if (entry.kind === "deadline") {
+      const dueTime = entry.timeLabel || "23:59";
+      const dueText = entry.dueLabel || `Vence ${dueTime} hs`;
+      const courseText = entry.courseName || entry.place || raw.course_name || raw.course || "Google Classroom";
+      infoNode = h(
+        "div",
+        { class: "agenda-info" },
+        h(
+          "div",
+          { class: "agenda-badges" },
+          kindBadge("deadline", "Google Classroom", false),
+          h("span", { class: "agenda-due-badge", text: dueText }),
+        ),
+        h("b", { class: "agenda-title", text: entry.title }),
+        h(
+          "small",
+          { class: "agenda-meta" },
+          h("span", { class: "agenda-course", text: courseText }),
+          " · ",
+          h("span", { class: "agenda-due", text: dueText }),
+        ),
+      );
+    } else {
+      const timeText = entry.timeRange || entry.timeLabel;
+      const roomText = entry.place || raw.location || "Campus UPA";
+      const regCount =
+        entry.registeredCount !== undefined ? entry.registeredCount : Number(raw.registered_count) || 0;
+      const isReg = Boolean(entry.isRegistered !== undefined ? entry.isRegistered : raw.is_registered);
+      const attendeesText = `${regCount} inscritos`;
+      infoNode = h(
+        "div",
+        { class: "agenda-info" },
+        h(
+          "div",
+          { class: "agenda-badges" },
+          h("span", { class: "badge badge-campus badge-event" }, upaIcon(12), h("span", { text: "Evento Campus" })),
+          isReg ? h("span", { class: "badge badge-registered", text: "Inscrito" }) : null,
+        ),
+        h("b", { class: "agenda-title", text: entry.title }),
+        h(
+          "small",
+          { class: "agenda-meta" },
+          timeText ? h("span", { class: "agenda-time", text: `${timeText} hs` }) : null,
+          timeText ? " · " : null,
+          h("span", { class: "agenda-room", text: roomText }),
+          " · ",
+          h("span", { class: "agenda-attendees", text: attendeesText }),
+        ),
+      );
+    }
+
     const open = h(
       "button",
       { class: "agenda-open", type: "button", "data-entry": entry.key },
-      h("div", { class: "date-tile" }, h("strong", { text: short.day }), h("span", { text: short.month })),
       h(
         "div",
-        { class: "agenda-info" },
-        h("b", { text: entry.title }),
-        h("small", { text: `${Core.kindLabel(entry.kind)}${sub ? " · " + sub : ""}` }),
-        entry.kind === "event" && entry.raw.is_registered ? h("small", { text: " · Inscrito" }) : null,
+        { class: `date-tile date-tile-${entry.kind}` },
+        h("strong", { text: short.day }),
+        h("span", { text: short.month }),
       ),
+      infoNode,
     );
     open.addEventListener("click", () => openDetail(detailFromEntry(entry)));
     const item = h("li", { class: `agenda-item agenda-kind-${entry.kind}`, "data-agenda-day": entry.dayKey }, open);
@@ -858,21 +986,29 @@
     $("agenda-heading").textContent = state.selectedDay ? Core.formatDayLong(state.selectedDay) : "Próximos eventos y tareas";
     $("agenda-clear").hidden = !state.selectedDay;
     entries.forEach((e) => list.append(agendaItem(e)));
-    renderAgendaStatus(entries, state.selectedDay ? "No hay eventos ni tareas para este día." : "No hay eventos ni tareas próximos.");
+    renderAgendaStatus(entries, state.selectedDay ? "No hay eventos ni tareas para este día." : "No hay eventos próximos");
   }
 
   /**
    * Modo predeterminado de linea de tiempo cronologica (`state.agendaMode === "timeline"`).
-   * Presenta todos los eventos y tareas pendientes en un flujo continuo desplazable agrupado por mes y fecha.
+   * Filtra estrictamente desde `todayKey()` hacia el futuro (sin caer en datos historicos),
+   * y solo muestra meses pasados cuando el usuario los selecciona explicitamente en el calendario.
    */
   function renderAgendaTimeline() {
     const list = $("agenda-list");
     clear(list);
-    const upcoming = Core.upcomingEntries(state.agenda.entries, todayKey());
-    const hasSelectedInUpcoming = !state.selectedDay || upcoming.some((e) => e.dayKey === state.selectedDay);
-    const entries = upcoming.length && hasSelectedInUpcoming ? upcoming : state.agenda.entries;
+    const today = todayKey();
+    const pastMonth = Boolean(
+      state.month && Core.isPastMonth(state.month.year, state.month.monthIndex, today),
+    );
+    const entries = Core.filterAgendaTimeline(state.agenda.entries, {
+      todayKey: today,
+      month: state.month,
+    });
     const groups = Core.groupAgendaByMonth(entries);
-    $("agenda-heading").textContent = "Próximos eventos y tareas";
+    $("agenda-heading").textContent = pastMonth
+      ? Core.formatMonthLabel(state.month.year, state.month.monthIndex)
+      : "Próximos eventos y tareas";
     $("agenda-clear").hidden = !state.selectedDay;
     for (const group of groups) {
       list.append(h("li", { class: "agenda-month-header", "data-month": group.monthKey, text: group.label }));
@@ -884,7 +1020,7 @@
         list.append(item);
       }
     }
-    renderAgendaStatus(entries, "No hay eventos ni tareas próximos.");
+    renderAgendaStatus(entries, "No hay eventos próximos");
   }
 
   function scrollToAgendaDay(key) {
@@ -968,6 +1104,10 @@
   }
 
   function renderAgenda() {
+    if (!state.month) {
+      const [y, m] = todayKey().split("-").map(Number);
+      state.month = { year: y, monthIndex: m - 1 };
+    }
     renderAgendaList();
     renderCalendar();
   }
@@ -1085,6 +1225,7 @@
   const TITLES = { inicio: "Inicio", agenda: "Agenda", perfil: "Perfil" };
 
   function showTab(tab) {
+    const enteringAgenda = tab === "agenda" && state.tab !== "agenda";
     state.tab = tab;
     ["inicio", "agenda", "perfil"].forEach((name) => {
       $(`view-${name}`).hidden = name !== tab;
@@ -1095,6 +1236,11 @@
     });
     $("view-title").textContent = TITLES[tab];
     if (tab === "agenda") {
+      if (enteringAgenda) {
+        const [y, m] = todayKey().split("-").map(Number);
+        state.month = { year: y, monthIndex: m - 1 };
+        state.selectedDay = null;
+      }
       renderAgenda();
       if (!state.agenda.loaded || Date.now() - state.lastRefresh > REFRESH_AFTER_MS) track(loadAgenda());
     }
@@ -1291,11 +1437,13 @@
     });
     $("cal-prev").addEventListener("click", () => {
       state.month = Core.shiftMonth(state.month.year, state.month.monthIndex, -1);
-      renderCalendar();
+      state.selectedDay = null;
+      renderAgenda();
     });
     $("cal-next").addEventListener("click", () => {
       state.month = Core.shiftMonth(state.month.year, state.month.monthIndex, 1);
-      renderCalendar();
+      state.selectedDay = null;
+      renderAgenda();
     });
     doc.querySelectorAll("[data-theme-option]").forEach((btn) => btn.addEventListener("click", () => setTheme(btn.getAttribute("data-theme-option"))));
     doc.querySelectorAll("[data-notify]").forEach((input) => input.addEventListener("change", (ev) => track(onNotifyToggle(ev))));

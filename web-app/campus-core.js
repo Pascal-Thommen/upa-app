@@ -467,7 +467,7 @@
   }
 
   function kindLabel(kind) {
-    return { urgent: "Aviso urgente", event: "Evento", instagram: "Instagram", campus: "Campus", news: "Campus", deadline: "Tarea" }[kind] || "";
+    return { urgent: "Aviso urgente", event: "Evento", instagram: "Instagram", campus: "Campus", news: "Campus", deadline: "Google Classroom" }[kind] || "";
   }
 
   function postSummary(post) {
@@ -567,10 +567,13 @@
 
   function parseClassroomDue(formatted) {
     const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(String(formatted || "").trim());
-    if (!m) return { date: null, dayKey: "", hasTime: false };
-    if (m[4] === undefined) return { date: null, dayKey: `${m[1]}-${m[2]}-${m[3]}`, hasTime: false };
-    const date = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])));
-    return { date, dayKey: dayKey(date), hasTime: true };
+    if (!m) return { date: null, dayKey: "", timeLabel: "", hasTime: false };
+    const dayKeyStr = `${m[1]}-${m[2]}-${m[3]}`;
+    if (m[4] === undefined) return { date: null, dayKey: dayKeyStr, timeLabel: "23:59", hasTime: false };
+    const hh = m[4];
+    const mm = m[5];
+    const date = new Date(`${dayKeyStr}T${hh}:${mm}:00-03:00`);
+    return { date, dayKey: dayKeyStr, timeLabel: `${hh}:${mm}`, hasTime: true };
   }
 
   function buildAgendaEntries(agenda) {
@@ -596,6 +599,9 @@
         timeRange: endLabel && endLabel !== startLabel ? `${startLabel} - ${endLabel}` : startLabel,
         place: ev.location || "",
         link: "",
+        hasRegistration: Boolean(ev.has_registration),
+        isRegistered: Boolean(ev.is_registered),
+        registeredCount: Number(ev.registered_count) || 0,
         date: start,
         end: validEnd,
         raw: ev,
@@ -604,6 +610,8 @@
     for (const dl of Array.isArray(data.deadlines) ? data.deadlines : []) {
       const due = parseClassroomDue(dl.due_date_formatted);
       if (!due.dayKey) continue;
+      const dueTime = due.timeLabel || "23:59";
+      const courseName = dl.course_name || dl.course || "";
       entries.push({
         key: `deadline:${dl.id}`,
         kind: "deadline",
@@ -611,9 +619,11 @@
         title: dl.title,
         description: dl.description || "",
         dayKey: due.dayKey,
-        sortKey: `${due.dayKey} ${due.hasTime ? formatTime(due.date) : "23:59"}`,
-        timeLabel: due.hasTime ? formatTime(due.date) : "",
-        place: dl.course_name || dl.course || "",
+        sortKey: `${due.dayKey} ${dueTime}`,
+        timeLabel: dueTime,
+        dueLabel: `Vence ${dueTime} hs`,
+        courseName,
+        place: courseName,
         link: safeUrl(dl.alternate_link),
         date: due.date,
         end: null,
@@ -625,11 +635,37 @@
   }
 
   function upcomingEntries(entries, todayKey) {
+    if (!todayKey) return [...(entries || [])];
     return (entries || []).filter((e) => e.dayKey >= todayKey);
   }
 
   function entriesForDay(entries, key) {
     return (entries || []).filter((e) => e.dayKey === key);
+  }
+
+  function formatMonthKey(year, monthIndex) {
+    return `${year}-${pad(monthIndex + 1)}`;
+  }
+
+  function entriesForMonth(entries, year, monthIndex) {
+    const prefix = `${formatMonthKey(year, monthIndex)}-`;
+    return (entries || []).filter((e) => String(e.dayKey || "").startsWith(prefix));
+  }
+
+  function isPastMonth(year, monthIndex, todayKey) {
+    const todayMonth = String(todayKey || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(todayMonth)) return false;
+    return formatMonthKey(year, monthIndex) < todayMonth;
+  }
+
+  function filterAgendaTimeline(entries, options) {
+    const opts = options || {};
+    const today = String(opts.todayKey || "");
+    const month = opts.month || null;
+    if (month && typeof month.year === "number" && typeof month.monthIndex === "number" && isPastMonth(month.year, month.monthIndex, today)) {
+      return entriesForMonth(entries, month.year, month.monthIndex);
+    }
+    return upcomingEntries(entries, today);
   }
 
   function groupAgendaByMonth(entries) {
@@ -666,9 +702,20 @@
   }
 
   function applyRegistration(entries, updatedEvent) {
+    if (!updatedEvent || updatedEvent.id === undefined || updatedEvent.id === null) return entries || [];
+    const targetId = String(updatedEvent.id);
     return (entries || []).map((e) => {
-      if (e.kind !== "event" || e.id !== updatedEvent.id) return e;
-      return { ...e, raw: { ...e.raw, ...updatedEvent } };
+      if (e.kind !== "event" || String(e.id) !== targetId) return e;
+      const mergedRaw = { ...(e.raw || {}), ...updatedEvent };
+      return {
+        ...e,
+        hasRegistration: Boolean(
+          mergedRaw.has_registration !== undefined ? mergedRaw.has_registration : e.hasRegistration,
+        ),
+        isRegistered: Boolean(mergedRaw.is_registered),
+        registeredCount: Number(mergedRaw.registered_count) || 0,
+        raw: mergedRaw,
+      };
     });
   }
 
@@ -871,6 +918,10 @@
     buildAgendaEntries,
     upcomingEntries,
     entriesForDay,
+    formatMonthKey,
+    entriesForMonth,
+    isPastMonth,
+    filterAgendaTimeline,
     groupAgendaByMonth,
     markedDays,
     applyRegistration,

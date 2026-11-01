@@ -251,7 +251,8 @@ p {
 }
 
 .badge-instagram,
-.badge-campus {
+.badge-campus,
+.badge-classroom {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -275,7 +276,22 @@ p {
   border: 1px solid rgba(255, 255, 255, 0.22);
 }
 
-.badge-campus .upa-u-glyph {
+.badge-classroom {
+  background: #1a73e8;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.badge-registered {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border: 1px solid rgba(108, 147, 57, 0.4);
+  padding: 2px 8px;
+  font-size: 0.7rem;
+}
+
+.badge-campus .upa-u-glyph,
+.badge-classroom .classroom-glyph {
   flex: none;
   color: #ffffff;
 }
@@ -876,43 +892,105 @@ p {
 
 .date-tile {
   flex: none;
-  width: 48px;
+  width: 50px;
+  padding: 6px 4px;
+  border-radius: 10px;
   text-align: center;
   line-height: 1.1;
 }
 
+.date-tile-event {
+  background: var(--brand-soft);
+  border: 1px solid rgba(108, 147, 57, 0.3);
+}
+
+.date-tile-deadline {
+  background: rgba(26, 115, 232, 0.12);
+  border: 1px solid rgba(26, 115, 232, 0.32);
+}
+
 .date-tile strong {
   display: block;
-  font-size: 1.3rem;
+  font-size: 1.25rem;
 }
 
 .date-tile span {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--muted);
   font-weight: 700;
 }
 
 .agenda-info {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
-.agenda-info b {
+.agenda-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agenda-badges .badge {
+  padding: 2px 8px;
+  font-size: 0.7rem;
+}
+
+.agenda-due-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(26, 115, 232, 0.12);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.agenda-info b,
+.agenda-title {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.95rem;
 }
 
-.agenda-info small {
+.agenda-info small,
+.agenda-meta {
   color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.agenda-course,
+.agenda-room {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.agenda-attendees {
+  font-weight: 600;
+  color: var(--brand);
+}
+
+.agenda-due {
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .agenda-kind-deadline {
-  border-left: 4px solid var(--accent);
+  border-left: 4px solid #1a73e8;
+  background: var(--surface-2);
 }
 
 .agenda-kind-event {
   border-left: 4px solid var(--brand);
+  background: var(--surface);
 }
 
 .ext-link {
