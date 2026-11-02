@@ -459,7 +459,8 @@
   /* ------------------------------------------------------------------ inscripcion */
 
   function resolveRegistrationStatus(item, fallbackStatus) {
-    if (!item) return fallbackStatus || null;
+    const fb = fallbackStatus !== undefined ? fallbackStatus : null;
+    if (!item) return fb;
     if (item.registration_status === "attending" || item.registration_status === "declined") {
       return item.registration_status;
     }
@@ -467,13 +468,18 @@
       return item.registrationStatus;
     }
     if (item.is_registered || item.isRegistered) return "attending";
-    return fallbackStatus || null;
+    return fb;
   }
 
-  function applyRegistrationUpdate(updated, fallbackStatus) {
+  function applyRegistrationUpdate(updated, targetStatus) {
     const targetId = String(updated.id);
-    const isReg = Boolean(updated.is_registered);
-    const regStatus = isReg ? "attending" : resolveRegistrationStatus(updated, fallbackStatus);
+    const regStatus =
+      targetStatus !== undefined
+        ? targetStatus
+        : Boolean(updated.is_registered)
+          ? "attending"
+          : resolveRegistrationStatus(updated, null);
+    const isReg = regStatus === "attending";
     state.feed.posts = state.feed.posts.map((p) =>
       String(p.id) === targetId
         ? {
@@ -533,16 +539,26 @@
     }
   }
 
-  async function toggleRegistration(eventId, currentlyRegistered, button) {
+  async function toggleRegistration(eventId, desiredStatus, currentStatus, button) {
     if (!state.token) {
       toast("Inicia sesión para inscribirte.");
       return;
     }
     if (button) button.disabled = true;
     try {
-      const updated = currentlyRegistered ? await api.unregister(eventId) : await api.register(eventId);
-      applyRegistrationUpdate(updated, currentlyRegistered ? "declined" : "attending");
-      toast(updated.is_registered ? "Inscripción confirmada." : "Inscripción cancelada.");
+      if (currentStatus === desiredStatus) {
+        if (currentStatus === "attending") {
+          const updated = await api.unregister(eventId);
+          applyRegistrationUpdate({ ...updated, id: eventId, is_registered: false, registration_status: null }, null);
+        } else {
+          applyRegistrationUpdate({ id: eventId, is_registered: false, registration_status: null }, null);
+        }
+        toast("Inscripción cancelada.");
+        return;
+      }
+      const updated = desiredStatus === "attending" ? await api.register(eventId) : await api.unregister(eventId);
+      applyRegistrationUpdate(updated, desiredStatus);
+      toast(desiredStatus === "attending" ? "Inscripción confirmada." : "Inscripción cancelada.");
     } catch (error) {
       if (Core.isConnectivityError(error)) setOffline(true, true);
       if (error.kind !== "unauthorized") toast(Core.friendlyError(error));
@@ -625,42 +641,35 @@
     if (ended) return h("span", { class: "count", text: "Evento finalizado" });
     if (!state.token) return h("a", { class: "btn btn-secondary btn-small", href: "/api/auth/login-google?return_to=campus", text: "Inicia sesión para inscribirte" });
     const regStatus = resolveRegistrationStatus(post, null);
-    const registered = Boolean(post.is_registered) || regStatus === "attending";
-    const declined = !registered && regStatus === "declined";
-    if (registered) {
-      const button = h("button", {
-        class: "btn btn-small btn-secondary",
-        type: "button",
-        "data-register": String(post.id),
-        text: "Cancelar inscripción",
-      });
-      button.addEventListener("click", () => track(toggleRegistration(post.id, true, button)));
-      return [h("span", { class: "badge badge-registered", "data-rsvp-status": "attending", text: "Inscrito" }), button];
-    }
-    if (declined) {
-      const button = h("button", {
-        class: "btn btn-small btn-secondary",
-        type: "button",
-        "data-register": String(post.id),
-        text: "Cambiar: Inscribirme",
-      });
-      button.addEventListener("click", () => track(toggleRegistration(post.id, false, button)));
-      return [h("span", { class: "badge badge-declined", "data-rsvp-status": "declined", text: "No asistirás" }), button];
-    }
+    const isAttending = Boolean(post.is_registered) || regStatus === "attending";
+    const isDeclined = !isAttending && regStatus === "declined";
+    const currentStatus = isAttending ? "attending" : isDeclined ? "declined" : null;
+    const registerCls = isAttending
+      ? "btn btn-small btn-rsvp btn-primary is-active"
+      : isDeclined
+        ? "btn btn-small btn-rsvp btn-subtle"
+        : "btn btn-small btn-rsvp btn-secondary";
+    const declineCls = isDeclined
+      ? "btn btn-small btn-rsvp btn-secondary is-active"
+      : isAttending
+        ? "btn btn-small btn-rsvp btn-subtle"
+        : "btn btn-small btn-rsvp btn-secondary";
     const registerBtn = h("button", {
-      class: "btn btn-small btn-primary",
+      class: registerCls,
       type: "button",
       "data-register": String(post.id),
-      text: "Inscripción",
+      "aria-pressed": isAttending ? "true" : "false",
+      text: "Sí, asistiré",
     });
     const declineBtn = h("button", {
-      class: "btn btn-small btn-subtle",
+      class: declineCls,
       type: "button",
       "data-decline": String(post.id),
+      "aria-pressed": isDeclined ? "true" : "false",
       text: "No asistiré",
     });
-    registerBtn.addEventListener("click", () => track(toggleRegistration(post.id, false, registerBtn)));
-    declineBtn.addEventListener("click", () => track(toggleRegistration(post.id, true, declineBtn)));
+    registerBtn.addEventListener("click", () => track(toggleRegistration(post.id, "attending", currentStatus, registerBtn)));
+    declineBtn.addEventListener("click", () => track(toggleRegistration(post.id, "declined", currentStatus, declineBtn)));
     return [registerBtn, declineBtn];
   }
 
@@ -920,40 +929,37 @@
             text: "Inicia sesión para inscribirte",
           }),
         );
-      } else if (d.isRegistered || d.registrationStatus === "attending") {
-        const button = h("button", {
-          class: "btn btn-block btn-secondary",
-          type: "button",
-          id: "detail-register",
-          text: "Cancelar inscripción",
-        });
-        button.addEventListener("click", () => track(toggleRegistration(regEventId, true, button)));
-        box.append(button);
-      } else if (d.registrationStatus === "declined") {
-        const button = h("button", {
-          class: "btn btn-block btn-secondary",
-          type: "button",
-          id: "detail-register",
-          text: "Cambiar: Inscribirme",
-        });
-        button.addEventListener("click", () => track(toggleRegistration(regEventId, false, button)));
-        box.append(button);
       } else {
+        const isAttending = Boolean(d.isRegistered) || d.registrationStatus === "attending";
+        const isDeclined = !isAttending && d.registrationStatus === "declined";
+        const currentStatus = isAttending ? "attending" : isDeclined ? "declined" : null;
+        const registerCls = isAttending
+          ? "btn btn-rsvp btn-primary is-active"
+          : isDeclined
+            ? "btn btn-rsvp btn-subtle"
+            : "btn btn-rsvp btn-secondary";
+        const declineCls = isDeclined
+          ? "btn btn-rsvp btn-secondary is-active"
+          : isAttending
+            ? "btn btn-rsvp btn-subtle"
+            : "btn btn-rsvp btn-secondary";
         const registerBtn = h("button", {
-          class: "btn btn-block btn-primary",
+          class: registerCls,
           type: "button",
           id: "detail-register",
-          text: "Inscripción",
+          "aria-pressed": isAttending ? "true" : "false",
+          text: "Sí, asistiré",
         });
         const declineBtn = h("button", {
-          class: "btn btn-block btn-subtle",
+          class: declineCls,
           type: "button",
           id: "detail-decline",
+          "aria-pressed": isDeclined ? "true" : "false",
           text: "No asistiré",
         });
-        registerBtn.addEventListener("click", () => track(toggleRegistration(regEventId, false, registerBtn)));
-        declineBtn.addEventListener("click", () => track(toggleRegistration(regEventId, true, declineBtn)));
-        box.append(registerBtn, declineBtn);
+        registerBtn.addEventListener("click", () => track(toggleRegistration(regEventId, "attending", currentStatus, registerBtn)));
+        declineBtn.addEventListener("click", () => track(toggleRegistration(regEventId, "declined", currentStatus, declineBtn)));
+        box.append(h("div", { class: "rsvp-actions" }, registerBtn, declineBtn));
       }
     }
     const links = Core.resolveDetailLinks(d);

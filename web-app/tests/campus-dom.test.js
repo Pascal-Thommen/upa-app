@@ -436,32 +436,66 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     const declineBtn = app.document.querySelector(`[data-decline="${seeded.eventId}"]`);
     assert.ok(regBtn);
     assert.ok(declineBtn, "El evento con inscripcion abierta debe mostrar la opcion directa No asistiré");
-    assert.equal(regBtn.textContent, "Inscripción");
+    assert.equal(regBtn.textContent, "Sí, asistiré");
     assert.equal(declineBtn.textContent, "No asistiré");
+    assert.equal(regBtn.getAttribute("aria-pressed"), "false");
+    assert.equal(declineBtn.getAttribute("aria-pressed"), "false");
+    assert.equal(regBtn.classList.contains("is-active"), false);
+    assert.equal(declineBtn.classList.contains("is-active"), false);
+    assert.equal(
+      cards[0].querySelector(".card-actions .badge"),
+      null,
+      "El area de botones .card-actions no debe mostrar ningun badge de estado",
+    );
 
-    // Opt-out directo sin inscripcion previa (No asistiré -> No asistirás + Cambiar: Inscribirme)
+    // 1. Opt-out directo sin inscripcion previa (clic en No asistiré -> No asistiré activo con btn-secondary, Sí, asistiré en btn-subtle)
     await app.click(declineBtn);
-    const declinedBadge = app.document.querySelector(`[data-rsvp-status="declined"]`);
-    assert.ok(declinedBadge);
-    assert.equal(declinedBadge.textContent, "No asistirás");
-    assert.equal(app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent, "Cambiar: Inscribirme");
+    assert.equal(cards[0].querySelector(".card-actions [data-rsvp-status]"), null, "No debe existir widget data-rsvp-status junto a los botones");
+    assert.equal(cards[0].querySelector(".card-actions .badge"), null, "No debe existir badge de estado en .card-actions");
+    const regAfterDecline = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
+    const decAfterDecline = app.document.querySelector(`[data-decline="${seeded.eventId}"]`);
+    assert.equal(regAfterDecline.textContent, "Sí, asistiré");
+    assert.equal(decAfterDecline.textContent, "No asistiré");
+    assert.equal(decAfterDecline.getAttribute("aria-pressed"), "true");
+    assert.equal(decAfterDecline.classList.contains("btn-secondary"), true);
+    assert.equal(decAfterDecline.classList.contains("is-active"), true);
+    assert.equal(regAfterDecline.getAttribute("aria-pressed"), "false");
+    assert.equal(regAfterDecline.classList.contains("btn-subtle"), true);
     const checkOptOut = await api("/api/v1/agenda", student);
     const evOptOut = checkOptOut.body.events.find((e) => e.id === seeded.eventId);
     assert.equal(evOptOut.is_registered, false);
     assert.equal(evOptOut.registration_status, "declined");
 
-    // Cambiar de No asistirás a Inscrito
-    await app.click(app.document.querySelector(`[data-register="${seeded.eventId}"]`));
-    const updatedBtn = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
-    assert.equal(updatedBtn.textContent, "Cancelar inscripción");
+    // 2. Cambiar directamente con 1 clic a Sí, asistiré (POST /register -> Sí, asistiré activo con btn-primary, No asistiré en btn-subtle)
+    await app.click(regAfterDecline);
+    const regAfterAttend = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
+    const decAfterAttend = app.document.querySelector(`[data-decline="${seeded.eventId}"]`);
+    assert.equal(regAfterAttend.textContent, "Sí, asistiré");
+    assert.equal(decAfterAttend.textContent, "No asistiré");
+    assert.equal(regAfterAttend.getAttribute("aria-pressed"), "true");
+    assert.equal(regAfterAttend.classList.contains("btn-primary"), true);
+    assert.equal(regAfterAttend.classList.contains("is-active"), true);
+    assert.equal(decAfterAttend.getAttribute("aria-pressed"), "false");
+    assert.equal(decAfterAttend.classList.contains("btn-subtle"), true);
+    assert.equal(cards[0].querySelector(".card-actions .badge"), null);
     const check1 = await api("/api/v1/agenda", student);
     const ev1 = check1.body.events.find((e) => e.id === seeded.eventId);
     assert.equal(ev1.is_registered, true);
     assert.equal(ev1.registration_status, "attending");
     assert.equal(ev1.registered_count, 0, "El backend debe neutralizar registered_count a 0 para estudiantes");
 
-    await app.click(updatedBtn);
-    assert.equal(app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent, "Cambiar: Inscribirme");
+    // 3. Clic en la opcion ya activa (Sí, asistiré) restablece el estado a neutral/abierto y cancela en backend
+    await app.click(regAfterAttend);
+    const regAfterReset = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
+    const decAfterReset = app.document.querySelector(`[data-decline="${seeded.eventId}"]`);
+    assert.equal(regAfterReset.getAttribute("aria-pressed"), "false");
+    assert.equal(decAfterReset.getAttribute("aria-pressed"), "false");
+    assert.equal(regAfterReset.classList.contains("is-active"), false);
+    assert.equal(decAfterReset.classList.contains("is-active"), false);
+
+    // 4. Volver a marcar No asistiré para que el siguiente test de Agenda verifique el estado declined persistido
+    await app.click(decAfterReset);
+    assert.equal(app.document.querySelector(`[data-decline="${seeded.eventId}"]`).getAttribute("aria-pressed"), "true");
     const check2 = await api("/api/v1/agenda", student);
     const ev2 = check2.body.events.find((e) => e.id === seeded.eventId);
     assert.equal(ev2.is_registered, false);
@@ -627,19 +661,34 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     assert.equal(app.$("detail-text").querySelectorAll("span.hashtag").length, 2, "El detalle desde Agenda debe resaltar los hashtags");
     assert.equal(app.$("detail-event-card").hidden, false, "El detalle desde Agenda debe mostrar #detail-event-card debajo del texto");
     const detailRegBtn = app.$("detail-actions").querySelector("#detail-register");
-    assert.ok(detailRegBtn, "El detalle desde Agenda debe incluir el boton de inscripcion");
-    assert.equal(detailRegBtn.textContent, "Cambiar: Inscribirme");
+    const detailDecBtn = app.$("detail-actions").querySelector("#detail-decline");
+    assert.ok(detailRegBtn, "El detalle desde Agenda debe incluir el boton Sí, asistiré");
+    assert.ok(detailDecBtn, "El detalle desde Agenda debe incluir el boton No asistiré");
+    assert.equal(app.$("detail-actions").querySelector(".badge"), null, "No debe haber ningun badge en #detail-actions");
+    assert.equal(detailRegBtn.textContent, "Sí, asistiré");
+    assert.equal(detailDecBtn.textContent, "No asistiré");
+    assert.equal(detailRegBtn.getAttribute("aria-pressed"), "false");
+    assert.equal(detailDecBtn.getAttribute("aria-pressed"), "true");
+    assert.equal(detailDecBtn.classList.contains("btn-secondary"), true);
+    assert.equal(detailDecBtn.classList.contains("is-active"), true);
+    assert.equal(detailRegBtn.classList.contains("btn-subtle"), true);
     assert.equal(app.$("detail-event-status").textContent, "No asistirás");
     assert.ok(app.$("detail-actions").querySelector("#detail-source"), "El detalle desde Agenda debe incluir el boton de fuente original");
 
-    // Inscripcion RSVP directamente desde el overlay de Agenda y sincronizacion con el feed de Inicio
+    // Inscripcion RSVP directamente desde el overlay de Agenda (1 clic en Sí, asistiré) y sincronizacion con el feed de Inicio
     await app.click(detailRegBtn);
-    assert.equal(app.$("detail-register").textContent, "Cancelar inscripción");
+    assert.equal(app.$("detail-register").textContent, "Sí, asistiré");
+    assert.equal(app.$("detail-decline").textContent, "No asistiré");
+    assert.equal(app.$("detail-register").getAttribute("aria-pressed"), "true");
+    assert.equal(app.$("detail-register").classList.contains("btn-primary"), true);
+    assert.equal(app.$("detail-register").classList.contains("is-active"), true);
+    assert.equal(app.$("detail-decline").getAttribute("aria-pressed"), "false");
+    assert.equal(app.$("detail-decline").classList.contains("btn-subtle"), true);
     assert.equal(app.$("detail-event-status").textContent, "Inscrito");
     assert.equal(/inscritos|personas inscritas/i.test(app.$("detail").textContent), false, "El detalle no debe exponer el numero de inscritos");
     assert.equal(
-      app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent,
-      "Cancelar inscripción",
+      app.document.querySelector(`[data-register="${seeded.eventId}"]`).getAttribute("aria-pressed"),
+      "true",
       "El boton de RSVP en el feed de Inicio debe sincronizarse inmediatamente con la Agenda",
     );
     assert.ok(
@@ -647,13 +696,16 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
       "El item de la Agenda debe mostrar el badge Inscrito tras registrarse en el detalle",
     );
 
-    // Cancelar inscripcion desde el mismo overlay de Agenda y verificar sincronizacion inversa a No asistirás
-    await app.click(app.$("detail-register"));
-    assert.equal(app.$("detail-register").textContent, "Cambiar: Inscribirme");
+    // Cambiar a No asistiré con 1 clic desde el mismo overlay de Agenda y verificar sincronizacion inversa
+    await app.click(app.$("detail-decline"));
+    assert.equal(app.$("detail-register").getAttribute("aria-pressed"), "false");
+    assert.equal(app.$("detail-decline").getAttribute("aria-pressed"), "true");
+    assert.equal(app.$("detail-decline").classList.contains("btn-secondary"), true);
+    assert.equal(app.$("detail-decline").classList.contains("is-active"), true);
     assert.equal(app.$("detail-event-status").textContent, "No asistirás");
     assert.equal(
-      app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent,
-      "Cambiar: Inscribirme",
+      app.document.querySelector(`[data-decline="${seeded.eventId}"]`).getAttribute("aria-pressed"),
+      "true",
     );
     assert.ok(
       app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"] .badge-declined`),
