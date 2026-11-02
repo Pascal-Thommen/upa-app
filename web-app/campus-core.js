@@ -21,6 +21,8 @@
   const INSTALL_DISMISS_MS = 14 * 24 * 60 * 60 * 1000;
   const NOTIFY_WINDOW_MS = 24 * 60 * 60 * 1000;
   const DEFAULT_TIMEOUT_MS = 12000;
+  const APP_VERSION = "1.0.3";
+  const SW_UPDATE_COOLDOWN_MS = 5000;
   const DEFAULT_NOTIFICATIONS = { events: true, announcements: true, deadlines: true };
 
   /* ------------------------------------------------------------------ errores y API */
@@ -263,6 +265,65 @@
     if (s.platform === "ios") return true;
     if (s.platform === "android") return Boolean(s.hasPrompt);
     return false;
+  }
+
+  /* ------------------------------------------------------------------ ciclo de vida y actualizacion SW */
+
+  function isEditableElement(el) {
+    if (!el || typeof el !== "object") return false;
+    if (el.isContentEditable === true) return true;
+    const tag = String(el.tagName || "").toUpperCase();
+    if (tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (tag === "INPUT") {
+      const type = String(el.type || "text").toLowerCase();
+      return !/^(checkbox|radio|button|submit|reset|range|color|hidden|file|image)$/.test(type);
+    }
+    return false;
+  }
+
+  function canAutoReload(doc) {
+    if (!doc || typeof doc !== "object") return true;
+    if (isEditableElement(doc.activeElement)) return false;
+    if (typeof doc.querySelectorAll === "function") {
+      const fields = doc.querySelectorAll(
+        'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"])',
+      );
+      for (const field of fields) {
+        if (isEditableElement(field) && String(field.value || "").trim().length > 0) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function shouldReloadOnControllerChange(state) {
+    const s = state || {};
+    if (!s.hadController) return { reload: false, defer: false, reason: "initial_install" };
+    if (s.refreshing) return { reload: false, defer: false, reason: "already_refreshing" };
+    const now = s.now === undefined ? Date.now() : Number(s.now);
+    const lastReloadAt = Number(s.lastReloadAt) || 0;
+    if (lastReloadAt > 0 && now - lastReloadAt < SW_UPDATE_COOLDOWN_MS) {
+      return { reload: false, defer: false, reason: "cooldown" };
+    }
+    if (s.idle === false) {
+      return { reload: false, defer: true, reason: "user_busy" };
+    }
+    return { reload: true, defer: false, reason: "ready" };
+  }
+
+  function requestSkipWaiting(worker, notifiedSet) {
+    if (!worker || typeof worker.postMessage !== "function") return false;
+    if (notifiedSet && typeof notifiedSet.has === "function") {
+      if (notifiedSet.has(worker)) return false;
+      if (typeof notifiedSet.add === "function") notifiedSet.add(worker);
+    }
+    try {
+      worker.postMessage({ type: "SKIP_WAITING" });
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /* ------------------------------------------------------------------ fechas */
@@ -904,6 +965,8 @@
     THEMES,
     THEME_COLORS,
     INSTALL_DISMISS_MS,
+    APP_VERSION,
+    SW_UPDATE_COOLDOWN_MS,
     ApiError,
     createApi,
     friendlyError,
@@ -921,6 +984,10 @@
     resolveTheme,
     detectInstallPlatform,
     shouldShowInstallBanner,
+    isEditableElement,
+    canAutoReload,
+    shouldReloadOnControllerChange,
+    requestSkipWaiting,
     dayKey,
     formatTime,
     formatDayLong,

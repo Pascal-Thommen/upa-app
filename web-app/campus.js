@@ -13,6 +13,8 @@
   const INSTALL_KEY = "upa_campus_install_dismissed";
   const NOTIFIED_KEY = "upa_campus_notified";
   const FORCE_APP_KEY = "upa_campus_force_app";
+  const SW_RELOAD_TS_KEY = "upa_campus_sw_reload_ts";
+  const SW_UPDATED_KEY = "upa_campus_sw_updated";
   const DEFAULT_AGENDA_MODE = "timeline";
   const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
 
@@ -62,6 +64,7 @@
     isBeta: false,
     installPrompt: null,
     lastRefresh: 0,
+    reloadCount: 0,
     prefs: Core.loadNotificationPrefs(local),
   };
 
@@ -71,6 +74,12 @@
   let toastTimer = null;
   let highlightTimer = null;
   let swRegistration = null;
+  let swControllerBound = false;
+  let swHadController = false;
+  let swRefreshing = false;
+  let pendingSwReload = false;
+  const skipWaitingSent = typeof WeakSet === "function" ? new WeakSet() : new Set();
+  const watchedSwObjects = typeof WeakSet === "function" ? new WeakSet() : new Set();
 
   function track(promise) {
     pending.add(promise);
@@ -1395,56 +1404,152 @@
 
   /* ------------------------------------------------------------------ arranque */
 
+  function activateWaitingWorker(worker) {
+    if (Core.requestSkipWaiting(worker, skipWaitingSent)) {
+      toast("Aplicación actualizada");
+      return true;
+    }
+    return false;
+  }
+
+  function performSwReload() {
+    swRefreshing = true;
+    pendingSwReload = false;
+    const now = Date.now();
+    session.setItem(SW_RELOAD_TS_KEY, String(now));
+    session.setItem(SW_UPDATED_KEY, "1");
+    toast("Aplicación actualizada");
+    state.reloadCount = (state.reloadCount || 0) + 1;
+    if (typeof win.__upaOnReload === "function") {
+      win.__upaOnReload();
+      return;
+    }
+    if (win.location && typeof win.location.reload === "function") {
+      try {
+        win.location.reload();
+      } catch (_) {
+        /* el entorno no permite recargar automaticamente */
+      }
+    }
+  }
+
+  function maybeCompletePendingSwReload() {
+    if (!pendingSwReload || swRefreshing) return false;
+    if (!Core.canAutoReload(doc)) return false;
+    performSwReload();
+    return true;
+  }
+
+  function watchInstallingWorker(installing, sw) {
+    if (!installing || typeof installing.addEventListener !== "function") return;
+    if (watchedSwObjects.has(installing)) return;
+    watchedSwObjects.add(installing);
+    installing.addEventListener("statechange", () => {
+      const hasExistingController = Boolean(
+        (sw && sw.controller) || swHadController || (swRegistration && swRegistration.active),
+      );
+      if (installing.state === "installed" && hasExistingController) {
+        activateWaitingWorker((swRegistration && swRegistration.waiting) || installing);
+      }
+    });
+  }
+
+  function bindSwRegistration(reg, sw) {
+    if (!reg) return;
+    swRegistration = reg;
+    if (reg.waiting) {
+      activateWaitingWorker(reg.waiting);
+    }
+    if (reg.installing) {
+      watchInstallingWorker(reg.installing, sw);
+    }
+    if (typeof reg.addEventListener === "function" && !watchedSwObjects.has(reg)) {
+      watchedSwObjects.add(reg);
+      reg.addEventListener("updatefound", () => {
+        if (reg.installing) watchInstallingWorker(reg.installing, sw);
+        if (reg.waiting) activateWaitingWorker(reg.waiting);
+      });
+    }
+  }
+
+  function checkForSwUpdate() {
+    if (maybeCompletePendingSwReload()) return Promise.resolve();
+    if (!("serviceWorker" in win.navigator)) return Promise.resolve();
+    const sw = win.navigator.serviceWorker;
+    const runUpdate = (reg) => {
+      if (!reg) return Promise.resolve();
+      bindSwRegistration(reg, sw);
+      if (typeof reg.update === "function") {
+        return Promise.resolve()
+          .then(() => reg.update())
+          .then((updatedReg) => {
+            const activeReg = updatedReg || reg;
+            bindSwRegistration(activeReg, sw);
+          })
+          .catch(() => {});
+      }
+      return Promise.resolve();
+    };
+    if (swRegistration) return track(runUpdate(swRegistration));
+    if (typeof sw.getRegistration === "function") {
+      return track(
+        Promise.resolve()
+          .then(() => sw.getRegistration())
+          .then((reg) => (reg ? runUpdate(reg) : undefined))
+          .catch(() => {}),
+      );
+    }
+    return Promise.resolve();
+  }
+
+  function onAppReactivated() {
+    checkForSwUpdate();
+    if (state.token && Date.now() - state.lastRefresh > REFRESH_AFTER_MS) {
+      track(refreshAll());
+    }
+  }
+
   function registerServiceWorker() {
     if (!("serviceWorker" in win.navigator)) return;
     const secure = win.isSecureContext || /^(localhost|127\.0\.0\.1)$/.test(win.location.hostname);
     if (!secure) return;
     const sw = win.navigator.serviceWorker;
-    const hadController = Boolean(sw.controller);
-    let refreshing = false;
-    if (typeof sw.addEventListener === "function") {
+    if (sw.controller) swHadController = true;
+    if (!swControllerBound && typeof sw.addEventListener === "function") {
+      swControllerBound = true;
       sw.addEventListener("controllerchange", () => {
-        if (refreshing) return;
-        refreshing = true;
-        toast("Nueva versión disponible");
-        if (hadController && win.location && typeof win.location.reload === "function") {
-          try {
-            win.location.reload();
-          } catch (_) {
-            /* el entorno no permite recargar automaticamente */
-          }
+        if (!swHadController) {
+          swHadController = true;
+          return;
+        }
+        const lastReloadAt = Number(session.getItem(SW_RELOAD_TS_KEY)) || 0;
+        const decision = Core.shouldReloadOnControllerChange({
+          hadController: swHadController,
+          refreshing: swRefreshing,
+          lastReloadAt,
+          now: Date.now(),
+          idle: Core.canAutoReload(doc),
+        });
+        if (decision.reload) {
+          performSwReload();
+        } else if (decision.defer) {
+          pendingSwReload = true;
+          toast("Aplicación actualizada");
         }
       });
     }
-    sw.register("/sw.js", { scope: "/" })
-      .then((reg) => {
-        if (!reg) return;
-        swRegistration = reg;
-        if (typeof reg.update === "function") {
-          reg.update().catch(() => {});
-        }
-        if (reg.waiting && typeof reg.waiting.postMessage === "function") {
-          toast("Nueva versión disponible");
-          reg.waiting.postMessage({ type: "SKIP_WAITING" });
-        }
-        if (typeof reg.addEventListener === "function") {
-          reg.addEventListener("updatefound", () => {
-            const installing = reg.installing;
-            if (!installing || typeof installing.addEventListener !== "function") return;
-            installing.addEventListener("statechange", () => {
-              if (installing.state === "installed" && sw.controller) {
-                toast("Nueva versión disponible");
-                if (typeof installing.postMessage === "function") {
-                  installing.postMessage({ type: "SKIP_WAITING" });
-                }
-              }
-            });
-          });
-        }
-      })
-      .catch(() => {
-        /* sin service worker la app sigue funcionando en linea */
-      });
+    track(
+      Promise.resolve()
+        .then(() => sw.register("/sw.js", { scope: "/", updateViaCache: "none" }))
+        .then((reg) => {
+          if (!reg) return;
+          bindSwRegistration(reg, sw);
+          return checkForSwUpdate();
+        })
+        .catch(() => {
+          /* sin service worker la app sigue funcionando en linea */
+        }),
+    );
   }
 
   let eventsBound = false;
@@ -1491,7 +1596,10 @@
       renderInstallBanner();
     });
 
-    win.addEventListener("online", () => track(refreshAll()));
+    win.addEventListener("online", () => {
+      checkForSwUpdate();
+      track(refreshAll());
+    });
     win.addEventListener("offline", () => setOffline(true, state.feed.posts.length > 0));
     win.addEventListener("beforeinstallprompt", (event) => {
       event.preventDefault();
@@ -1505,12 +1613,20 @@
     doc.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && overlays && overlays.depth()) overlays.close();
     });
+    doc.addEventListener("focusout", () => {
+      setTimeout(() => maybeCompletePendingSwReload(), 0);
+    });
     doc.addEventListener("visibilitychange", () => {
       if (doc.visibilityState === "visible") {
-        if (swRegistration && typeof swRegistration.update === "function") {
-          swRegistration.update().catch(() => {});
-        }
-        if (state.token && Date.now() - state.lastRefresh > REFRESH_AFTER_MS) track(refreshAll());
+        onAppReactivated();
+      }
+    });
+    win.addEventListener("focus", () => {
+      onAppReactivated();
+    });
+    win.addEventListener("pageshow", (event) => {
+      if (event && event.persisted) {
+        onAppReactivated();
       }
     });
     win.addEventListener("resize", () => {
@@ -1541,8 +1657,11 @@
     registerServiceWorker();
     renderInstallBanner();
     renderAll();
+    const swJustUpdated = session.getItem(SW_UPDATED_KEY) === "1";
+    if (swJustUpdated) session.removeItem(SW_UPDATED_KEY);
     if (auth && auth.error) toast(Core.translateAuthError(auth.error));
     else if (auth && auth.token) toast("Sesión iniciada.");
+    else if (swJustUpdated) toast("Aplicación actualizada");
     if (!win.navigator.onLine) setOffline(true, false);
     await refreshAll();
   }
@@ -1577,6 +1696,7 @@
     },
     openDetail: (detail) => openDetail(detail),
     refresh: () => track(refreshAll()),
+    checkForSwUpdate: () => checkForSwUpdate(),
     renderAgendaTimeline,
     renderAgendaSingleDay,
     scrollToAgendaDay,

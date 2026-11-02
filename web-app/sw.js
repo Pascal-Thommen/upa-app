@@ -7,15 +7,15 @@
  */
 "use strict";
 
-const VERSION = "1.0.2";
+const VERSION = "1.0.3";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
 const SHELL_FILES = [
   "/",
   "/manifest.webmanifest",
-  "/campus/campus.css?v=1.0.2",
-  "/campus/campus-core.js?v=1.0.2",
-  "/campus/vendor/qrcode.js?v=1.0.2",
-  "/campus/campus.js?v=1.0.2",
+  "/campus/campus.css?v=1.0.3",
+  "/campus/campus-core.js?v=1.0.3",
+  "/campus/vendor/qrcode.js?v=1.0.3",
+  "/campus/campus.js?v=1.0.3",
   "/campus/icons/favicon.svg",
   "/campus/icons/favicon-32.png",
   "/campus/icons/apple-touch-icon.png",
@@ -24,11 +24,44 @@ const SHELL_FILES = [
   "/campus/icons/icon-maskable-512.png",
 ];
 
+async function precacheShell(cache) {
+  if (typeof fetch === "function" && typeof cache.put === "function") {
+    await Promise.all(
+      SHELL_FILES.map(async (url) => {
+        const response = await fetch(url, { cache: "no-cache" });
+        if (!response || !response.ok) {
+          throw new Error(`No se pudo precachear ${url}`);
+        }
+        await cache.put(url, typeof response.clone === "function" ? response.clone() : response);
+      }),
+    );
+    return;
+  }
+  if (typeof cache.addAll === "function") {
+    await cache.addAll(SHELL_FILES);
+  }
+}
+
+async function putAndInvalidateOldVersions(cache, request, response) {
+  await cache.put(request, response);
+  if (typeof cache.keys !== "function" || typeof cache.delete !== "function") return;
+  const targetUrl = new URL(typeof request === "string" ? request : request.url, self.location.origin);
+  const keys = await cache.keys();
+  await Promise.all(
+    keys
+      .filter((entry) => {
+        const entryUrl = new URL(typeof entry === "string" ? entry : entry.url, self.location.origin);
+        return entryUrl.pathname === targetUrl.pathname && entryUrl.search !== targetUrl.search;
+      })
+      .map((entry) => cache.delete(entry)),
+  );
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL_FILES))
+      .then((cache) => precacheShell(cache))
       .then(() => self.skipWaiting()),
   );
 });
@@ -43,15 +76,22 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((k) => k.startsWith("upa-campus-") && k !== SHELL_CACHE).map((k) => caches.delete(k))),
-      )
+      .then((keys) => Promise.all(keys.filter((k) => k !== SHELL_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
 
 function isCampusAsset(pathname) {
   return pathname === "/manifest.webmanifest" || pathname.startsWith("/campus/");
+}
+
+function isShellCodeOrStyleAsset(pathname) {
+  return (
+    pathname === "/manifest.webmanifest" ||
+    pathname.endsWith(".js") ||
+    pathname.endsWith(".css") ||
+    pathname.endsWith(".webmanifest")
+  );
 }
 
 function isNavigationToApp(request, pathname) {
@@ -67,30 +107,55 @@ self.addEventListener("fetch", (event) => {
 
   if (isNavigationToApp(request, url.pathname)) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(SHELL_CACHE).then((cache) => cache.put("/", copy));
+      caches.open(SHELL_CACHE).then(async (cache) => {
+        try {
+          const response = await fetch(request, { cache: "no-cache" });
+          if (response && response.ok) {
+            await cache.put("/", response.clone());
+            return response;
           }
-          return response;
-        })
-        .catch(() => caches.open(SHELL_CACHE).then((cache) => cache.match("/", { ignoreSearch: true }))),
+          const fallback = await cache.match("/", { ignoreSearch: true });
+          return fallback || response;
+        } catch (_) {
+          return cache.match("/", { ignoreSearch: true });
+        }
+      }),
     );
     return;
   }
 
   if (isCampusAsset(url.pathname)) {
+    if (isShellCodeOrStyleAsset(url.pathname)) {
+      event.respondWith(
+        caches.open(SHELL_CACHE).then(async (cache) => {
+          const cached = (await cache.match(request)) || (await cache.match(url.pathname, { ignoreSearch: true }));
+          try {
+            const response = await fetch(request, { cache: "no-cache" });
+            if (response && response.ok) {
+              await putAndInvalidateOldVersions(cache, request, response.clone());
+              return response;
+            }
+            return cached || response;
+          } catch (_) {
+            return cached;
+          }
+        }),
+      );
+      return;
+    }
+
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
-        const cached = await cache.match(request);
-        try {
-          const response = await fetch(request);
-          if (response.ok) cache.put(request, response.clone());
-          return response;
-        } catch (_) {
-          return cached;
-        }
+        const cached = (await cache.match(request)) || (await cache.match(url.pathname, { ignoreSearch: true }));
+        const networkFetch = fetch(request, { cache: "no-cache" })
+          .then(async (response) => {
+            if (response && response.ok) {
+              await putAndInvalidateOldVersions(cache, request, response.clone());
+            }
+            return response;
+          })
+          .catch(() => cached);
+        return cached || networkFetch;
       }),
     );
   }
