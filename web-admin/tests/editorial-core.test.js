@@ -229,8 +229,10 @@ test("renderParticipantsTable muestra datos reales y estados vacios", () => {
     {
       title: "Charla",
       attending_count: 1,
+      declined_count: 1,
       registrations: [
         { full_name: "Ana <i>", email: "ana@upa.edu.py", status: "attending", registered_at: "2030-06-01T10:00:00Z" },
+        { full_name: "Luis", email: "luis@upa.edu.py", status: "declined", registered_at: "2030-06-01T11:00:00Z" },
       ],
     },
     { timeZone: "UTC" }
@@ -238,6 +240,8 @@ test("renderParticipantsTable muestra datos reales y estados vacios", () => {
   assert.ok(table.includes("ana@upa.edu.py"));
   assert.ok(table.includes("Ana &lt;i&gt;"));
   assert.ok(table.includes("1 inscritos"));
+  assert.ok(table.includes("1 no asisten"));
+  assert.ok(table.includes("No asiste"));
   assert.ok(Core.renderParticipantsTable({ title: "X", attending_count: 0, registrations: [] }).includes("Todavía no hay"));
 });
 
@@ -401,7 +405,7 @@ test("renderPublicationRows y renderHistoryEntries muestran etiquetas, metricas 
   assert.ok(html.includes("Instagram"));
   assert.ok(html.includes("Pendiente"));
   assert.ok(html.includes("18 vistas"));
-  assert.ok(html.includes("9 inscritos / 2 bajas"));
+  assert.ok(html.includes("9 inscritos / 2 no asisten"));
 
   const aiHtml = Core.renderPublicationRows(
     [

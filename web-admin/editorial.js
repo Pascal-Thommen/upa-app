@@ -706,7 +706,7 @@
         );
         $("ed-metric-views").textContent = `${viewsCount} vistas`;
         $("ed-metric-attending").textContent = `${Number(values.attendingCount || 0)} inscritos`;
-        $("ed-metric-declined").textContent = `${Number(values.declinedCount || 0)} bajas`;
+        $("ed-metric-declined").textContent = `${Number(values.declinedCount || 0)} no asisten`;
         const badge = $("ed-metric-edited");
         if (badge) {
           if (values.isAiGenerated && !values.isEdited) {

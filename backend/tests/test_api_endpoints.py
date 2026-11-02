@@ -112,7 +112,7 @@ def test_filter_by_group():
     assert len(data) == 2
 
 
-def _assert_no_null_values(obj, path="root", nullable_keys=frozenset({"event_end"})):
+def _assert_no_null_values(obj, path="root", nullable_keys=frozenset({"event_end", "registration_status"})):
     """Verifica recursivamente que ningun campo de un payload JSON sea None (salvo campos explicitamente opcionales)."""
     assert obj is not None, f"Null value found at {path}"
     if isinstance(obj, dict):
@@ -339,13 +339,15 @@ def test_event_rsvp_register_unregister_idempotency_and_errors():
     unreg1 = client.delete("/api/events/700/register", headers=h1)
     assert unreg1.status_code == 200
     assert unreg1.json()["is_registered"] is False
+    assert unreg1.json()["registration_status"] == "declined"
     assert unreg1.json()["registered_count"] == 0
     assert client.get("/api/publications/700/registrations", headers=h_admin).json()["attending_count"] == 1
 
-    # 5. Cancelar sin inscripcion activa falla de forma segura con 400 Bad Request
+    # 5. Repetir cancelacion cuando ya esta declined es idempotente (200 OK)
     unreg1_dup = client.delete("/api/events/700/register", headers=h1)
-    assert unreg1_dup.status_code == 400
-    assert "inscripción activa" in unreg1_dup.json()["detail"].lower()
+    assert unreg1_dup.status_code == 200
+    assert unreg1_dup.json()["is_registered"] is False
+    assert unreg1_dup.json()["registration_status"] == "declined"
 
     # 6. Errores de autenticacion (401), autorizacion (403) y recurso inexistente (404)
     assert client.post("/api/events/700/register").status_code == 401
