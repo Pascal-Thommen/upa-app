@@ -1,12 +1,14 @@
 """Cliente de Google Gemini (Google AI Studio): almacenamiento de la clave, prueba de conexion y autocompletado multimodal."""
 
 import base64
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -18,6 +20,7 @@ GEMINI_SYSTEM_PROMPT_SETTING = "GEMINI_SYSTEM_PROMPT"
 GEMINI_SYSTEM_PROMPT_AUTOCOMPLETE_SETTING = "GEMINI_SYSTEM_PROMPT_AUTOCOMPLETE"
 GEMINI_SYSTEM_PROMPT_INSTAGRAM_SETTING = "GEMINI_SYSTEM_PROMPT_INSTAGRAM"
 AUTOCOMPLETE_ERROR_PREFIX = "No se pudo autocompletar: Verifique la clave de IA en Control de IA"
+ENCRYPTED_KEY_PREFIX = "enc:v1:"
 
 DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE = (
     "Eres el asistente editorial inteligente de la Universidad Paraguayo Alemana (UPA). "
@@ -40,9 +43,90 @@ PREFERRED_FLASH_MODELS: tuple[str, ...] = (
 )
 DEFAULT_FLASH_MODEL = "gemini-2.0-flash"
 
+# Modelos Gemini Flash actuales en Google Generative Language API v1beta (ordenados por estabilidad y velocidad)
+MODERN_FLASH_MODELS: tuple[str, ...] = (
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3-flash-preview",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-flash-latest",
+)
+
+# Modelos 2.5 retirados para claves nuevas en Google AI Studio que deben ignorarse
+RETIRED_FLASH_MODELS: frozenset[str] = frozenset(
+    {
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash-preview",
+    }
+)
+
+EXCLUDED_MODEL_KEYWORDS: tuple[str, ...] = (
+    "image",
+    "tts",
+    "audio",
+    "live",
+    "thinking",
+    "vision",
+    "omni",
+    "robotics",
+    "computer-use",
+    "transcribe",
+)
+
+
+def _build_fernet() -> Fernet:
+    secret_material = (getattr(settings, "JWT_SECRET", "") or "upa-default-jwt-secret").encode("utf-8")
+    digest = hashlib.sha256(secret_material).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def encrypt_api_key(raw_key: str) -> str:
+    """Cifra simetricamente la clave de API antes de persistirla en la base de datos."""
+    clean = (raw_key or "").strip()
+    if not clean:
+        return ""
+    if clean.startswith(ENCRYPTED_KEY_PREFIX):
+        return clean
+    token = _build_fernet().encrypt(clean.encode("utf-8")).decode("ascii")
+    return f"{ENCRYPTED_KEY_PREFIX}{token}"
+
+
+def decrypt_api_key(stored_value: str) -> str:
+    """Descifra la clave almacenada en la base de datos (compatible con valores legados)."""
+    clean = (stored_value or "").strip()
+    if not clean:
+        return ""
+    if not clean.startswith(ENCRYPTED_KEY_PREFIX):
+        return clean
+    ciphertext = clean[len(ENCRYPTED_KEY_PREFIX) :].strip()
+    if not ciphertext:
+        return ""
+    try:
+        return _build_fernet().decrypt(ciphertext.encode("ascii")).decode("utf-8").strip()
+    except (InvalidToken, ValueError):
+        return ""
+
+
+def _is_valid_flash_model(model_name: str) -> bool:
+    clean = (model_name or "").removeprefix("models/").strip().lower()
+    if not clean or clean in RETIRED_FLASH_MODELS or clean.startswith("gemini-2.5-"):
+        return False
+    if clean in PREFERRED_FLASH_MODELS or clean in MODERN_FLASH_MODELS:
+        return True
+    if not clean.startswith("gemini-") or "flash" not in clean:
+        return False
+    if any(keyword in clean for keyword in EXCLUDED_MODEL_KEYWORDS):
+        return False
+    return True
+
 
 def mask_key(key: str) -> str:
-    """Enmascara la clave dejando visibles solo los ultimos 4 caracteres."""
+    """Enmascara la clave dejando visibles solo los primeros 4 y ultimos 4 caracteres."""
     clean = (key or "").strip()
     if not clean:
         return ""
@@ -53,7 +137,9 @@ def mask_key(key: str) -> str:
 
 def get_stored_key(db: Session) -> str:
     row = db.get(AppSetting, GEMINI_KEY_SETTING)
-    return (row.value or "").strip() if row else ""
+    if not row or not (row.value or "").strip():
+        return ""
+    return decrypt_api_key(row.value)
 
 
 def get_stored_model(db: Session | None) -> str:
@@ -66,10 +152,10 @@ def get_stored_model(db: Session | None) -> str:
 def resolve_active_model(db: Session | None = None) -> str:
     """Devuelve el modelo Gemini Flash activo (guardado tras deteccion o predeterminado en configuracion)."""
     stored_model = get_stored_model(db)
-    if stored_model in PREFERRED_FLASH_MODELS:
+    if _is_valid_flash_model(stored_model):
         return stored_model
     configured = (settings.GEMINI_MODEL or "").strip()
-    if configured in PREFERRED_FLASH_MODELS:
+    if _is_valid_flash_model(configured):
         return configured
     return DEFAULT_FLASH_MODEL
 
@@ -161,37 +247,40 @@ def resolve_api_key(db: Session) -> tuple[str, str]:
 
 
 def save_api_key(db: Session, key: str, updated_by: str) -> None:
+    encrypted_value = encrypt_api_key(key)
     row = db.get(AppSetting, GEMINI_KEY_SETTING)
     if row is None:
-        db.add(AppSetting(key=GEMINI_KEY_SETTING, value=key, updated_by=updated_by))
+        db.add(AppSetting(key=GEMINI_KEY_SETTING, value=encrypted_value, updated_by=updated_by))
     else:
-        row.value = key
+        row.value = encrypted_value
         row.updated_by = updated_by
     db.commit()
 
 
-def _parse_flash_model_sort_key(model_id: str) -> tuple[int, int, int, int, str]:
+def _parse_flash_model_sort_key(model_id: str) -> tuple[int, int, int, int, int, str]:
     """
-    Ordena los modelos Gemini Flash gratuitos priorizando la version estable oficial mas reciente
-    (gemini-2.0-flash > gemini-1.5-flash) y dejando variantes -lite o -preview detras.
+    Ordena los modelos Gemini Flash gratuitos priorizando los modelos estables rapidos verificados
+    en Google AI Studio y dejando variantes pesadas o experimentales detras.
     """
     clean = model_id.removeprefix("models/").strip().lower()
+    if clean in MODERN_FLASH_MODELS:
+        priority_rank = len(MODERN_FLASH_MODELS) - MODERN_FLASH_MODELS.index(clean)
+        return (1, priority_rank, 0, 0, 0, clean)
     m = re.match(r"^gemini-(\d+)(?:\.(\d+))?-flash(.*)$", clean)
     if not m:
-        return (0, 0, 0, 0, clean)
+        return (0, 0, 0, 0, 0, clean)
     major = int(m.group(1))
     minor = int(m.group(2) or 0)
     suffix = (m.group(3) or "").strip()
-    # Priorizar modelo base exacto ("") o "-latest" sobre "-lite", "-exp", "-preview" o "-001"
     is_exact_base = 2 if suffix in ("", "-latest") else (1 if not ("lite" in suffix or "8b" in suffix) else 0)
     is_stable = 1 if ("exp" not in suffix and "preview" not in suffix) else 0
-    return (major, minor, is_exact_base, is_stable, clean)
+    return (0, major, minor, is_exact_base, is_stable, clean)
 
 
 def discover_available_flash_models(api_key: str, base_url: str | None = None) -> list[str]:
     """
     Consulta el catalogo de modelos disponibles para la clave en Google AI Studio (GET /v1beta/models)
-    y devuelve los modelos oficiales Gemini Flash compatibles con generateContent (gemini-2.0-flash, gemini-1.5-flash).
+    y devuelve los modelos oficiales Gemini Flash compatibles con generateContent.
     """
     clean_key = (api_key or "").strip()
     if not clean_key:
@@ -219,7 +308,7 @@ def discover_available_flash_models(api_key: str, base_url: str | None = None) -
         if not isinstance(item, dict):
             continue
         name = str(item.get("name") or "").removeprefix("models/").strip()
-        if not name or name not in PREFERRED_FLASH_MODELS:
+        if not _is_valid_flash_model(name):
             continue
         methods = item.get("supportedGenerationMethods")
         if isinstance(methods, list) and methods and "generateContent" not in methods:
@@ -239,24 +328,28 @@ def build_candidate_flash_models(
 ) -> list[str]:
     """
     Construye la lista priorizada de modelos Gemini Flash en el contingente gratuito (15 RPM):
-    1. Si el servidor expone /v1beta/models, prioriza el Flash oficial mas reciente descubierto (gemini-2.0-flash > gemini-1.5-flash).
-    2. Añade el modelo preferido/configurado y la cadena de respaldo oficial (gemini-2.0-flash, gemini-1.5-flash).
+    1. Si el servidor expone /v1beta/models, prioriza el Flash oficial mas reciente descubierto.
+    2. Añade el modelo preferido/configurado y la cadena de respaldo oficial (2.0/1.5 y 3.x Flash).
     """
     base_url = settings.GEMINI_API_BASE_URL.rstrip("/")
     candidates: list[str] = []
 
     discovered = discover_available_flash_models(api_key, base_url=base_url)
     for m in discovered:
-        if m in PREFERRED_FLASH_MODELS and m not in candidates:
+        if _is_valid_flash_model(m) and m not in candidates:
             candidates.append(m)
 
     initial = (preferred_model or resolve_active_model(db) or settings.GEMINI_MODEL or "").strip()
-    if initial in PREFERRED_FLASH_MODELS and initial not in candidates:
+    if _is_valid_flash_model(initial) and initial not in candidates:
         candidates.append(initial)
 
     for fallback in PREFERRED_FLASH_MODELS:
         if fallback not in candidates:
             candidates.append(fallback)
+
+    for modern in MODERN_FLASH_MODELS:
+        if modern not in candidates:
+            candidates.append(modern)
 
     return candidates
 
@@ -317,8 +410,12 @@ def check_connection(api_key: str, *, db: Session | None = None) -> ConnectionRe
             return ConnectionResult(
                 False, "NETWORK", "Error de red con Google: no se pudo establecer la conexión.", active_model
             )
+        except Exception:
+            return ConnectionResult(
+                False, "INVALID_KEY", "Clave de API inválida o expirada.", active_model
+            )
 
-        if response.status_code in (404, 429) and idx < len(candidate_models) - 1:
+        if response.status_code in (404, 429, 503) and idx < len(candidate_models) - 1:
             continue
         break
 
@@ -389,8 +486,12 @@ def _extract_candidate_json(payload: Any) -> dict[str, Any] | None:
     parts = content.get("parts") if isinstance(content.get("parts"), list) else []
     raw_text = ""
     for part in parts:
-        if isinstance(part, dict) and isinstance(part.get("text"), str):
+        if isinstance(part, dict) and isinstance(part.get("text"), str) and not part.get("thought"):
             raw_text += part["text"]
+    if not raw_text.strip():
+        for part in parts:
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                raw_text += part["text"]
     cleaned = raw_text.strip()
     if not cleaned:
         return None
@@ -706,8 +807,16 @@ def autocomplete_publication(
                 active_model,
                 {},
             )
+        except Exception:
+            return AutocompleteResult(
+                False,
+                "INVALID_KEY",
+                f"{AUTOCOMPLETE_ERROR_PREFIX}.",
+                active_model,
+                {},
+            )
 
-        if response.status_code in (404, 429) and idx < len(candidate_models) - 1:
+        if response.status_code in (404, 429, 503) and idx < len(candidate_models) - 1:
             continue
         break
 

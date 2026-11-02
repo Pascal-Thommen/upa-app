@@ -540,13 +540,14 @@ async def autocomplete_publication_ai(
                 )
             if data_bytes:
                 sniffed = sniff_content_type(data_bytes)
-                if sniffed not in AI_SUPPORTED_MIME_TYPES:
+                if sniffed in AI_SUPPORTED_MIME_TYPES:
+                    uploaded_bytes = data_bytes
+                    uploaded_mime = sniffed
+                elif sniffed not in ("video/mp4", "video/webm"):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="El archivo adjunto no coincide con un formato válido (JPG, PNG, WEBP, PDF).",
                     )
-                uploaded_bytes = data_bytes
-                uploaded_mime = sniffed
     else:
         body_bytes = await request.body()
         if body_bytes.strip():

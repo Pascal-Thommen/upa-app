@@ -950,6 +950,9 @@
 
   async function autocompletePublicationWithAi() {
     if (!state.aiConfigured) {
+      await syncAiAvailability();
+    }
+    if (!state.aiConfigured) {
       showNotice(
         "warning",
         (Core.TEXTS && Core.TEXTS.aiAutocompleteDisabledTooltip) ||
@@ -991,7 +994,12 @@
       has_registration: values.hasRegistration,
     };
 
-    const file = state.dropzones.pub && state.dropzones.pub.getFile ? state.dropzones.pub.getFile() : null;
+    const rawFile = state.dropzones.pub && state.dropzones.pub.getFile ? state.dropzones.pub.getFile() : null;
+    const rawMime = rawFile && rawFile.type ? String(rawFile.type).split(";")[0].trim().toLowerCase() : "";
+    const file =
+      rawFile && ["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(rawMime)
+        ? rawFile
+        : null;
     setAiBusy(button, true);
     try {
       const suggestions = await getClient().autocompletePublicationAi(reqPayload, file);

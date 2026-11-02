@@ -1558,6 +1558,14 @@ async function runAiConnectionTest(candidateKey) {
         if (body.model && document.getElementById("ai-model-info")) {
           document.getElementById("ai-model-info").textContent = body.model;
         }
+        if (state.aiConfig && body.model) {
+          state.aiConfig.model = body.model;
+        }
+        const badge = document.getElementById("ai-status-badge");
+        if (badge) {
+          badge.textContent = "Configurado";
+          badge.className = "ed-badge ed-badge-ok";
+        }
         if (window.UpaCockpit && typeof window.UpaCockpit.setAiConfigured === "function") {
           window.UpaCockpit.setAiConfigured(true);
         }
@@ -1636,6 +1644,9 @@ function setupAiFormHandlers() {
   }
 
   if (input) {
+    if (input.type !== "password") {
+      input.type = "password";
+    }
     input.addEventListener("input", () => {
       setInlineFieldError("ai-key-error", "ai-input-api-key", "");
     });
@@ -1683,7 +1694,7 @@ function setupAiFormHandlers() {
         setAiConnectionBanner("error", msg);
         return;
       }
-      if ((rawKey.length > 0 && (key.length < 10 || /\s/.test(rawKey))) || (!key && !hasStoredKey)) {
+      if ((rawKey.length > 0 && (key.length < 10 || /\s/.test(rawKey) || key.includes("****"))) || (!key && !hasStoredKey)) {
         const msg = "La clave de API no es válida: debe tener al menos 10 caracteres y no contener espacios.";
         setInlineFieldError("ai-key-error", "ai-input-api-key", msg);
         setAiConnectionBanner("error", msg);

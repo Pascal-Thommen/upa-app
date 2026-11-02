@@ -242,20 +242,25 @@ def _build_extraction_prompt(
 
 def _extract_json_text(response_payload: dict[str, Any]) -> str:
     candidates = response_payload.get("candidates") or []
-    for candidate in candidates:
-        content = candidate.get("content") if isinstance(candidate, dict) else None
-        parts = content.get("parts") if isinstance(content, dict) else None
-        for part in parts or []:
-            if isinstance(part, dict) and isinstance(part.get("text"), str) and part["text"].strip():
-                raw_text = part["text"].strip()
-                if raw_text.startswith("```"):
-                    lines = raw_text.splitlines()
-                    if lines and lines[0].startswith("```"):
-                        lines = lines[1:]
-                    if lines and lines[-1].strip().startswith("```"):
-                        lines = lines[:-1]
-                    raw_text = "\n".join(lines).strip()
-                return raw_text
+    for ignore_thought in (True, False):
+        for candidate in candidates:
+            content = candidate.get("content") if isinstance(candidate, dict) else None
+            parts = content.get("parts") if isinstance(content, dict) else None
+            for part in parts or []:
+                if not isinstance(part, dict):
+                    continue
+                if ignore_thought and part.get("thought"):
+                    continue
+                if isinstance(part.get("text"), str) and part["text"].strip():
+                    raw_text = part["text"].strip()
+                    if raw_text.startswith("```"):
+                        lines = raw_text.splitlines()
+                        if lines and lines[0].startswith("```"):
+                            lines = lines[1:]
+                        if lines and lines[-1].strip().startswith("```"):
+                            lines = lines[:-1]
+                        raw_text = "\n".join(lines).strip()
+                    return raw_text
     return ""
 
 
@@ -340,7 +345,7 @@ def extract_event_from_instagram_post(
             logger.warning("[AI Extractor] Error inesperado en llamada a Gemini: %s", exc)
             return AIEventExtractionResult(is_event=False)
 
-        if response.status_code in (404, 429) and idx < len(candidate_models) - 1:
+        if response.status_code in (404, 429, 503) and idx < len(candidate_models) - 1:
             continue
         break
 
