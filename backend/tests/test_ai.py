@@ -227,3 +227,141 @@ def test_default_prompts_exposed_and_one_click_save_with_fallback_from_2_0_to_1_
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_encrypted_token_persistence_and_modern_flash_discovery_with_503_fallback(monkeypatch):
+    """
+    SRV-225:
+    1. La clave de API se guarda cifrada (enc:v1:...) en app_settings y nunca en texto plano.
+    2. Ningun endpoint expone el token en texto plano, y usuarios sin permiso 'ia'/'apis' no ven ni siquiera masked_key.
+    3. Rechaza intentos de sobreescribir la clave con una mascara 'AIza********1234'.
+    4. Descubre modelos actuales de Google AI Studio (ej. gemini-3.6-flash, gemini-3.5-flash) y hace fallback ante 404 o 503.
+    """
+    called_paths: list[str] = []
+
+    class ModernGoogleStudioStub(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.startswith("/v1beta/models"):
+                payload = json.dumps(
+                    {
+                        "models": [
+                            {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+                            {"name": "models/gemini-3.8-flash", "supportedGenerationMethods": ["generateContent"]},
+                            {"name": "models/gemini-3.6-flash", "supportedGenerationMethods": ["generateContent"]},
+                            {"name": "models/gemini-3.5-flash", "supportedGenerationMethods": ["generateContent"]},
+                        ]
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):
+            called_paths.append(self.path)
+            if "gemini-3.6-flash" in self.path:
+                err = json.dumps({"error": {"code": 503, "message": "High demand", "status": "UNAVAILABLE"}}).encode(
+                    "utf-8"
+                )
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            payload = json.dumps(
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {"thought": True, "text": "Razonamiento interno que debe ignorarse"},
+                                    {"text": json.dumps({"caption": "Resumen IA 3.5 Flash", "location": "Aula Magna"})},
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), ModernGoogleStudioStub)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    try:
+        monkeypatch.setattr(settings, "GEMINI_API_BASE_URL", f"http://127.0.0.1:{port}")
+        admin_headers = auth(ADMIN_ID, ADMIN_EMAIL, "admin")
+
+        raw_secret_key = "AQ.Ab8RN6L_TestGoogleAiStudioKey2026_Sy7Q"
+        save_res = client.post(
+            "/api/ai/config",
+            json={"api_key": raw_secret_key},
+            headers=admin_headers,
+        )
+        assert save_res.status_code == 200
+        body = save_res.json()
+        assert body["configured"] is True
+        assert body["masked_key"] == "AQ.A********Sy7Q"
+        assert raw_secret_key not in json.dumps(body)
+
+        # Verificar que en la base de datos el valor esta cifrado y no en texto plano
+        db = TestingSessionLocal()
+        row = db.get(AppSetting, gemini.GEMINI_KEY_SETTING)
+        assert row is not None
+        assert row.value.startswith(gemini.ENCRYPTED_KEY_PREFIX)
+        assert raw_secret_key not in row.value
+        assert gemini.get_stored_key(db) == raw_secret_key
+
+        # Usuario solo con permiso 'publicaciones' ve configured=True pero NO ve masked_key
+        db.add(User(id=9, email="redactor.pub@upa.edu.py", full_name="Redactor", role="editor"))
+        db.add(UserRole(id=9, email="redactor.pub@upa.edu.py", name="Redactor", permissions=["publicaciones"]))
+        db.commit()
+        db.close()
+
+        pub_headers = auth(9, "redactor.pub@upa.edu.py", "editor")
+        pub_cfg = client.get("/api/ai/config", headers=pub_headers).json()
+        assert pub_cfg["configured"] is True
+        assert pub_cfg["masked_key"] == ""
+
+        # Intentar guardar una clave enmascarada con '****' se rechaza con 422
+        masked_attempt = client.post(
+            "/api/ai/config",
+            json={"api_key": "AQ.A********Sy7Q"},
+            headers=admin_headers,
+        )
+        assert masked_attempt.status_code == 422
+
+        # Probar conexion en vivo: intenta gemini-3.6-flash (503) y hace fallback a gemini-3.5-flash (200)
+        test_conn = client.post("/api/ai/test-connection", headers=admin_headers).json()
+        assert test_conn["ok"] is True
+        assert test_conn["model"] == "gemini-3.5-flash"
+        assert called_paths == [
+            "/v1beta/models/gemini-3.6-flash:generateContent",
+            "/v1beta/models/gemini-3.5-flash:generateContent",
+        ]
+
+        # Autocompletar ignora partes con thought=True y extrae el JSON limpio
+        auto_res = client.post(
+            "/api/publications/autocomplete-ai",
+            json={"title": "Foro IA", "caption": "", "location": ""},
+            headers=pub_headers,
+        )
+        assert auto_res.status_code == 200
+        assert auto_res.json()["caption"] == "Resumen IA 3.5 Flash"
+        assert auto_res.json()["location"] == "Aula Magna"
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -77,15 +77,15 @@ def require_ai_write(
     return current_user
 
 
-def _config_response(db: Session) -> AiConfigResponse:
+def _config_response(db: Session, *, include_sensitive_meta: bool = True) -> AiConfigResponse:
     key, source = gemini.resolve_api_key(db)
     active_model = gemini.resolve_active_model(db)
     sys_prompt_auto = gemini.get_system_prompt_autocomplete(db)
     sys_prompt_ig = gemini.get_system_prompt_instagram(db)
     return AiConfigResponse(
         configured=bool(key),
-        masked_key=gemini.mask_key(key),
-        source=source,
+        masked_key=gemini.mask_key(key) if include_sensitive_meta else "",
+        source=source if include_sensitive_meta else ("configured" if key else "none"),
         model=active_model,
         system_prompt=sys_prompt_auto,
         system_prompt_autocomplete=sys_prompt_auto,
@@ -107,8 +107,13 @@ def _validate_prompt_length(prompt_text: str) -> str:
 
 
 @router.get("/config", response_model=AiConfigResponse, summary="Estado de la clave y configuración de Gemini")
-def get_ai_config(db: Session = Depends(get_db), _: User = Depends(require_ai_read)) -> AiConfigResponse:
-    return _config_response(db)
+def get_ai_config(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_ai_read),
+) -> AiConfigResponse:
+    perms = effective_permissions(db, current_user)
+    can_view_key_meta = "ia" in perms or "apis" in perms
+    return _config_response(db, include_sensitive_meta=can_view_key_meta)
 
 
 @router.post("/config", response_model=AiConfigResponse, summary="Guardar clave o prompts de Gemini (permiso ia)")
@@ -126,7 +131,7 @@ def set_ai_config(
     has_key_field = (raw_key is not None and len(raw_key) > 0) or not has_prompt_fields
     if has_key_field:
         key = (raw_key or "").strip()
-        if len(key) < 10 or any(c.isspace() for c in key):
+        if len(key) < 10 or any(c.isspace() for c in key) or "****" in key:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="La clave de API no es válida: debe tener al menos 10 caracteres y no contener espacios.",
@@ -183,6 +188,14 @@ def test_ai_connection(
 ) -> AiTestResponse:
     candidate = (payload.api_key or "").strip() if payload and payload.api_key else ""
     if candidate:
+        if len(candidate) < 10 or any(c.isspace() for c in candidate) or "****" in candidate:
+            return AiTestResponse(
+                ok=False,
+                code="INVALID_KEY",
+                message="Clave de API inválida o expirada.",
+                model=gemini.resolve_active_model(db),
+                quota_rpm=gemini.FREE_TIER_QUOTA_RPM,
+            )
         key = candidate
     else:
         key, _source = gemini.resolve_api_key(db)

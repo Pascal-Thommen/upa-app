@@ -655,9 +655,14 @@ test("modulo ia: index.html renombra reiter a IA, consolida 1-Klick-Save, precar
   form.dispatchEvent({ type: "submit" });
   assert.ok(igErr.textContent.includes("4000 caracteres"));
 
-  // Validación de clave inválida (corta o con espacios)
+  // Validación de clave inválida (corta, con espacios o máscara con asteriscos) y campo enmascarado type="password"
+  assert.equal(keyInput.type, "password");
   btnRestore.click();
   keyInput.value = "corta";
+  form.dispatchEvent({ type: "submit" });
+  assert.ok(keyErr.textContent.includes("al menos 10 caracteres"));
+
+  keyInput.value = "AIza********1234";
   form.dispatchEvent({ type: "submit" });
   assert.ok(keyErr.textContent.includes("al menos 10 caracteres"));
 });
