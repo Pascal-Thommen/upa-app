@@ -512,3 +512,79 @@ test("createApi: clasifica timeout, puerto cerrado (offline), HTTP 500 y HTTP 40
     srv.close();
   }
 });
+
+test("SW Auto-Update helpers: canAutoReload, shouldReloadOnControllerChange y requestSkipWaiting", () => {
+  assert.equal(Core.APP_VERSION, "1.0.3");
+  assert.equal(Core.canAutoReload(null), true);
+  assert.equal(Core.canAutoReload({ activeElement: { tagName: "BUTTON" }, querySelectorAll: () => [] }), true);
+  assert.equal(
+    Core.canAutoReload({
+      activeElement: { tagName: "INPUT", type: "checkbox" },
+      querySelectorAll: () => [{ tagName: "INPUT", type: "checkbox", value: "on" }],
+    }),
+    true,
+  );
+  assert.equal(
+    Core.canAutoReload({
+      activeElement: { tagName: "INPUT", type: "text", value: "" },
+      querySelectorAll: () => [],
+    }),
+    false,
+  );
+  assert.equal(
+    Core.canAutoReload({
+      activeElement: { tagName: "BODY" },
+      querySelectorAll: () => [{ tagName: "TEXTAREA", value: "Borrador sin guardar" }],
+    }),
+    false,
+  );
+
+  const now = 1_700_000_000_000;
+  assert.deepEqual(Core.shouldReloadOnControllerChange({ hadController: false, now }), {
+    reload: false,
+    defer: false,
+    reason: "initial_install",
+  });
+  assert.deepEqual(Core.shouldReloadOnControllerChange({ hadController: true, refreshing: true, now }), {
+    reload: false,
+    defer: false,
+    reason: "already_refreshing",
+  });
+  assert.deepEqual(
+    Core.shouldReloadOnControllerChange({
+      hadController: true,
+      refreshing: false,
+      lastReloadAt: now - 1000,
+      now,
+      idle: true,
+    }),
+    { reload: false, defer: false, reason: "cooldown" },
+  );
+  assert.deepEqual(
+    Core.shouldReloadOnControllerChange({
+      hadController: true,
+      refreshing: false,
+      lastReloadAt: 0,
+      now,
+      idle: false,
+    }),
+    { reload: false, defer: true, reason: "user_busy" },
+  );
+  assert.deepEqual(
+    Core.shouldReloadOnControllerChange({
+      hadController: true,
+      refreshing: false,
+      lastReloadAt: now - Core.SW_UPDATE_COOLDOWN_MS - 10,
+      now,
+      idle: true,
+    }),
+    { reload: true, defer: false, reason: "ready" },
+  );
+
+  const sent = new Set();
+  const messages = [];
+  const worker = { postMessage: (msg) => messages.push(msg) };
+  assert.equal(Core.requestSkipWaiting(worker, sent), true);
+  assert.equal(Core.requestSkipWaiting(worker, sent), false);
+  assert.deepEqual(messages, [{ type: "SKIP_WAITING" }]);
+});

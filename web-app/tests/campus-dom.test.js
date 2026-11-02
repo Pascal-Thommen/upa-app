@@ -82,6 +82,12 @@ async function openCampus(options) {
   }
   if (opts.token) window.localStorage.setItem("upa_campus_token", opts.token);
 
+  let reloads = 0;
+  window.__upaOnReload = () => {
+    reloads += 1;
+    if (typeof opts.onReload === "function") opts.onReload();
+  };
+
   for (const file of ["campus-core.js", "vendor/qrcode.js", "campus.js"]) {
     window.eval(fs.readFileSync(path.join(WEB_APP, file), "utf8"));
   }
@@ -93,6 +99,9 @@ async function openCampus(options) {
     window,
     document,
     $: (id) => document.getElementById(id),
+    get reloads() {
+      return reloads;
+    },
     setNetworkTarget: (target) => {
       networkTarget = target;
     },
@@ -797,7 +806,8 @@ test("Resiliencia: modo sin conexion con datos guardados, fallo sin cache y toke
   }
 });
 
-test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona updatefound/controllerchange", live, async () => {
+test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona updatefound, visibilitychange, focus y controllerchange sin bucles", live, async () => {
+  const vm = require("node:vm");
   const swListeners = {};
   const regListeners = {};
   const installingWorker = {
@@ -811,22 +821,34 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
       this.postMessages.push(msg);
     },
   };
+  const waitingWorkerOnFocus = {
+    postMessages: [],
+    postMessage(msg) {
+      this.postMessages.push(msg);
+    },
+  };
   let updateCalled = 0;
+  let registerOptions = null;
+  const registrationObj = {
+    installing: installingWorker,
+    waiting: null,
+    update: async () => {
+      updateCalled += 1;
+      return registrationObj;
+    },
+    addEventListener(ev, fn) {
+      regListeners[ev] = fn;
+    },
+  };
   const fakeSw = {
     controller: {},
     addEventListener(ev, fn) {
       swListeners[ev] = fn;
     },
-    register: async () => ({
-      installing: installingWorker,
-      waiting: null,
-      update: async () => {
-        updateCalled += 1;
-      },
-      addEventListener(ev, fn) {
-        regListeners[ev] = fn;
-      },
-    }),
+    register: async (_url, opts) => {
+      registerOptions = opts;
+      return registrationObj;
+    },
   };
 
   const betaApp = await openCampus({ url: "/?env=beta", serviceWorker: fakeSw });
@@ -834,23 +856,215 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
     assert.equal(betaApp.$("beta-badge").hidden, false, "En instancia Beta debe mostrarse el badge BETA en la barra superior");
     assert.equal(betaApp.$("beta-badge").textContent, "BETA");
     assert.equal(betaApp.$("profile-beta-badge").hidden, false, "En instancia Beta debe mostrarse el badge BETA en el perfil");
+    assert.equal(registerOptions.updateViaCache, "none", "Debe registrar el Service Worker con updateViaCache: none");
     assert.equal(updateCalled >= 1, true, "Debe invocar reg.update() al registrar el Service Worker");
 
-    // Simular nueva version detectada por el Service Worker (updatefound -> installed -> SKIP_WAITING)
+    // 1. Reactivacion por visibilitychange (visible) y window.focus ejecuta registration.update()
+    const beforeVisibility = updateCalled;
+    Object.defineProperty(betaApp.document, "visibilityState", { value: "visible", configurable: true });
+    betaApp.document.dispatchEvent(new betaApp.window.Event("visibilitychange"));
+    await betaApp.window.UpaCampus.idle();
+    assert.equal(updateCalled, beforeVisibility + 1, "visibilitychange -> visible debe ejecutar reg.update()");
+
+    registrationObj.waiting = waitingWorkerOnFocus;
+    betaApp.window.dispatchEvent(new betaApp.window.Event("focus"));
+    await betaApp.window.UpaCampus.idle();
+    assert.equal(updateCalled, beforeVisibility + 2, "window.focus debe ejecutar reg.update()");
+    assert.equal(waitingWorkerOnFocus.postMessages.length, 1, "Si hay un SW en waiting al reactivar, debe enviar SKIP_WAITING");
+    assert.equal(waitingWorkerOnFocus.postMessages[0].type, "SKIP_WAITING");
+    registrationObj.waiting = null;
+
+    // 2. Simular nueva version detectada por el Service Worker (updatefound -> installed -> SKIP_WAITING)
     assert.ok(regListeners.updatefound, "Debe escuchar el evento updatefound");
     regListeners.updatefound();
     installingWorker.state = "installed";
     installingWorker.listeners.statechange();
     assert.equal(betaApp.$("toast").hidden, false);
-    assert.match(betaApp.$("toast").textContent, /Nueva versión disponible/);
+    assert.match(betaApp.$("toast").textContent, /Aplicación actualizada/);
     assert.equal(installingWorker.postMessages.length, 1);
     assert.equal(installingWorker.postMessages[0].type, "SKIP_WAITING");
 
-    // Simular cambio de controlador (controllerchange)
+    // 3. Proteccion de entrada activa (Idle-Pruefung): si el usuario escribe en un campo, controllerchange difiere el reload
     assert.ok(swListeners.controllerchange, "Debe escuchar el evento controllerchange");
+    const draftInput = betaApp.document.createElement("input");
+    draftInput.type = "text";
+    draftInput.value = "texto en edicion";
+    betaApp.document.body.appendChild(draftInput);
+    draftInput.focus();
+
     swListeners.controllerchange();
-    assert.match(betaApp.$("toast").textContent, /Nueva versión disponible/);
+    assert.equal(betaApp.reloads, 0, "No debe recargar mientras exista texto sin guardar en edicion");
+
+    // Al limpiar/terminar la edicion y perder foco, se ejecuta el reload pendiente exactamente una vez
+    draftInput.value = "";
+    draftInput.blur();
+    betaApp.document.body.removeChild(draftInput);
+    betaApp.document.dispatchEvent(new betaApp.window.Event("focusout"));
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(betaApp.reloads, 1, "Debe ejecutar reload automaticamente al quedar inactivo");
+    assert.match(betaApp.$("toast").textContent, /Aplicación actualizada/);
+
+    // 4. Prevencion de bucle infinito: multiples controllerchange consecutivos no vuelven a recargar
+    swListeners.controllerchange();
+    swListeners.controllerchange();
+    assert.equal(betaApp.reloads, 1, "No debe entrar en un bucle de recarga ante multiples controllerchange");
   } finally {
     betaApp.close();
   }
+
+  // 5. Prueba real de ciclo de vida y cache en web-app/sw.js (install, activate con limpieza, Network-First y fallback offline)
+  const swEvents = {};
+  const cacheStore = new Map();
+  let skipWaitingCount = 0;
+  let claimCount = 0;
+  let swOnline = true;
+  let assetRevision = "v-inicial";
+
+  function createMemoryCache() {
+    const entries = new Map();
+    const normKey = (req) => (typeof req === "string" ? new URL(req, BASE_URL).href : new URL(req.url, BASE_URL).href);
+    return {
+      entries,
+      async put(req, res) {
+        entries.set(normKey(req), res);
+      },
+      async match(req, opts) {
+        const target = new URL(typeof req === "string" ? req : req.url, BASE_URL);
+        if (entries.has(target.href)) return entries.get(target.href);
+        if (opts && opts.ignoreSearch) {
+          for (const [k, v] of entries.entries()) {
+            if (new URL(k).pathname === target.pathname) return v;
+          }
+        }
+        return undefined;
+      },
+      async keys() {
+        return [...entries.keys()].map((url) => ({ url }));
+      },
+      async delete(req) {
+        return entries.delete(normKey(req));
+      },
+    };
+  }
+
+  // Preexistencia de caches obsoletos que activate debe eliminar
+  cacheStore.set("upa-campus-shell-1.0.0", createMemoryCache());
+  cacheStore.set("upa-campus-shell-1.0.2", createMemoryCache());
+
+  const swContext = vm.createContext({
+    URL,
+    Promise,
+    self: {
+      location: new URL(BASE_URL),
+      addEventListener(type, handler) {
+        swEvents[type] = handler;
+      },
+      skipWaiting() {
+        skipWaitingCount += 1;
+        return Promise.resolve();
+      },
+      clients: {
+        claim() {
+          claimCount += 1;
+          return Promise.resolve();
+        },
+        matchAll: async () => [],
+        openWindow: async () => {},
+      },
+    },
+    caches: {
+      async open(name) {
+        if (!cacheStore.has(name)) cacheStore.set(name, createMemoryCache());
+        return cacheStore.get(name);
+      },
+      async keys() {
+        return [...cacheStore.keys()];
+      },
+      async delete(name) {
+        return cacheStore.delete(name);
+      },
+    },
+    fetch: async (req, init) => {
+      if (!swOnline) throw new Error("Red desconectada");
+      const rawUrl = typeof req === "string" ? req : req.url;
+      const u = new URL(rawUrl, BASE_URL);
+      const body = `contenido:${u.pathname}${u.search}:${assetRevision}:${init && init.cache ? init.cache : "default"}`;
+      return {
+        ok: true,
+        status: 200,
+        body,
+        clone() {
+          return { ...this };
+        },
+      };
+    },
+  });
+
+  vm.runInContext(fs.readFileSync(path.join(WEB_APP, "sw.js"), "utf8"), swContext);
+
+  // Ejecutar install
+  let installPromise = null;
+  swEvents.install({
+    waitUntil(p) {
+      installPromise = p;
+    },
+  });
+  await installPromise;
+  assert.equal(skipWaitingCount, 1, "install debe invocar self.skipWaiting()");
+  assert.equal(cacheStore.has("upa-campus-shell-1.0.3"), true, "install debe crear el cache versionado 1.0.3");
+
+  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.3
+  let activatePromise = null;
+  swEvents.activate({
+    waitUntil(p) {
+      activatePromise = p;
+    },
+  });
+  await activatePromise;
+  assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
+  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.3"], "activate debe limpiar todos los caches antiguos");
+
+  // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset
+  const activeCache = cacheStore.get("upa-campus-shell-1.0.3");
+  await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
+
+  // Ejecutar fetch online para /campus/campus.js?v=1.0.3 (Network-First + invalidacion de ?v=1.0.2)
+  assetRevision = "v-nueva-red";
+  let fetchPromise = null;
+  swEvents.fetch({
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.3` },
+    respondWith(p) {
+      fetchPromise = p;
+    },
+  });
+  const onlineResp = await fetchPromise;
+  assert.match(onlineResp.body, /v-nueva-red:no-cache/);
+  assert.equal(
+    await activeCache.match(`${BASE_URL}/campus/campus.js?v=1.0.2`),
+    undefined,
+    "Debe invalidar variantes con query antigua del mismo archivo estatico",
+  );
+
+  // Ejecutar fetch offline: debe entregar inmediatamente el asset desde el cache sin fallar
+  swOnline = false;
+  let offlineAssetPromise = null;
+  swEvents.fetch({
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.3` },
+    respondWith(p) {
+      offlineAssetPromise = p;
+    },
+  });
+  const offlineAssetResp = await offlineAssetPromise;
+  assert.ok(offlineAssetResp, "En modo offline debe responder desde el cache del Service Worker");
+  assert.match(offlineAssetResp.body, /v-nueva-red/);
+
+  let offlineNavPromise = null;
+  swEvents.fetch({
+    request: { method: "GET", mode: "navigate", url: `${BASE_URL}/?source=pwa` },
+    respondWith(p) {
+      offlineNavPromise = p;
+    },
+  });
+  const offlineNavResp = await offlineNavPromise;
+  assert.ok(offlineNavResp, "La navegacion principal debe funcionar sin conexion al reabrir la PWA");
 });
