@@ -887,6 +887,29 @@ video.card-media {
   background: var(--surface-2);
 }
 
+.rsvp-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.card-actions .btn-rsvp,
+.rsvp-actions .btn-rsvp {
+  flex: 1 1 0;
+}
+
+.btn-rsvp.btn-secondary.is-active {
+  background: var(--surface-2);
+  border-color: var(--muted);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.btn-rsvp.btn-subtle {
+  opacity: 0.78;
+}
+
 .pin {
   color: var(--brand);
   font-weight: 700;
