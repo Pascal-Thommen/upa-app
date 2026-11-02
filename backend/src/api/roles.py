@@ -7,6 +7,7 @@ from ..permissions import (
     PERMISSION_KEYS,
     find_unknown_permissions,
     normalize_permissions,
+    normalize_role_record_permissions,
     require_permission,
 )
 from ..schemas.role import UserRoleCreate, UserRoleResponse, UserRoleUpdate
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/api/roles", tags=["Roles"])
 
 def _to_response(record: UserRole) -> UserRoleResponse:
     """Respuesta con permisos siempre expresados como claves canonicas de modulo."""
-    perms = normalize_permissions(record.permissions)
+    perms = normalize_role_record_permissions(record)
     derived_role = "admin" if "roles" in perms else "editor"
     return UserRoleResponse(
         id=record.id,

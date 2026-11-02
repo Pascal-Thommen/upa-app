@@ -580,9 +580,9 @@ test("grupos y matriz de roles en vivo contra SQLite/PostgreSQL", live, async ()
   assert.deepEqual(assigned.permissions, ["publicaciones", "grupos"]);
 
   const updatedRole = await ctx.admin.updateRole("coordinador.test@upa.edu.py", {
-    permissions: ["grupos", "apis"],
+    permissions: ["grupos", "apis", "ia"],
   });
-  assert.deepEqual(updatedRole.permissions, ["grupos", "apis"]);
+  assert.deepEqual(updatedRole.permissions, ["grupos", "apis", "ia"]);
   await ctx.admin.revokeRole("coordinador.test@upa.edu.py");
 
   // Control de IA: guardar clave y prompts separados de Gemini y consultar clave enmascarada

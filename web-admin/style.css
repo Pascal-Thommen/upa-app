@@ -192,3 +192,24 @@ body {
   cursor: default;
   background-color: transparent !important;
 }
+
+/* Jerarquía visual de la barra lateral (Publicaciones vs Configuración) */
+.sidebar-settings-section {
+  padding-top: 0.15rem;
+}
+
+.sidebar-section-divider {
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+  margin: 0.5rem 0.25rem;
+}
+
+.sidebar-section-heading {
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  padding: 0.25rem 0.875rem 0.125rem;
+  user-select: none;
+}

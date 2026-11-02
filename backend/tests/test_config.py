@@ -121,5 +121,6 @@ def test_index_html_asset_version_busts_cache_and_roles_header_matches_permissio
     versions = set(re.findall(r"/dashboard/[\w.-]+\.(?:js|css)\?v=([\d.]+)", html))
     assert versions == {"2.4.0"}
     thead = html.split('<tbody id="admin-table-rows"')[0].split('aria-label="Roles"')[1]
-    assert thead.count("<th ") == 7
+    assert thead.count("<th ") == 8
+    assert "IA</th>" in thead
     assert "Historial</th>" in thead
