@@ -227,15 +227,17 @@ def _build_extraction_prompt(
         "combinando el texto del pie de foto y la imagen adjunta (afiche/flyer).\n"
         f"Fecha de referencia de la publicación: {ref_iso}\n"
         f"Grupos institucionales disponibles: [{groups_str}]\n\n"
-        "Instrucciones estrictas:\n"
-        "1. Determina si la publicación anuncia un evento, charla, taller, conferencia o actividad con fecha/hora concreta (is_event).\n"
-        "2. Si es un evento, extrae event_title, start_time (ISO-8601), end_time (ISO-8601 o null), location y allow_registration.\n"
-        "3. REGLA DE PLAUSIBILIDAD: start_time y end_time DEBEN estar en el mismo día calendario. "
+        "Instrucciones estrictas (CERO ALUCINACIONES / GROUNDING):\n"
+        "1. Utiliza ÚNICAMENTE hechos explícitos que aparezcan en la imagen adjunta (afiche/flyer) o en el texto del pie de foto. Está terminantemente prohibido inventar fechas, horas o ubicaciones.\n"
+        "2. El texto original de Instagram permanece inalterado en la publicación; tu función se limita a extraer metadatos de calendario y configurar destinatarios.\n"
+        "3. Determina si la publicación anuncia un evento, charla, taller, conferencia o actividad con fecha/hora concreta explícita (is_event). Si falta fecha u hora en el material fuente, devuelve is_event: false y start_time: null.\n"
+        "4. Si es un evento confirmado, extrae event_title, start_time (ISO-8601), end_time (ISO-8601 o null), location (null si no se menciona explícitamente) y allow_registration.\n"
+        "5. REGLA DE PLAUSIBILIDAD: start_time y end_time DEBEN estar en el mismo día calendario. "
         "Si la hora de finalización cae en otro día o no se menciona claramente, devuelve end_time como null (NO inventes horas de fin).\n"
-        "4. SELECCIÓN CONSERVADORA DE GRUPOS (target_groups): Elige etiquetas de grupo de forma extremadamente conservadora. "
+        "6. SELECCIÓN CONSERVADORA DE GRUPOS (target_groups): Elige etiquetas de grupo de forma extremadamente conservadora. "
         "Es preferible devolver pocos grupos o una lista vacía [] antes que seleccionar demasiados grupos.\n"
-        "5. notify_push: Activa true solo si es un evento institucional importante con fecha próxima confirmada.\n"
-        "6. Responde únicamente con un objeto JSON válido que cumpla el esquema solicitado.\n\n"
+        "7. notify_push: Activa true solo si es un evento institucional importante con fecha próxima confirmada.\n"
+        "8. Responde únicamente con un objeto JSON válido que cumpla el esquema solicitado.\n\n"
         f"Texto de la publicación (caption):\n{caption or '(sin texto)'}"
     )
 
@@ -290,10 +292,14 @@ def extract_event_from_instagram_post(
         if fetched is not None:
             resolved_bytes, resolved_mime = fetched
 
+    clean_caption = (caption or "").strip()
+    if not clean_caption and not resolved_bytes:
+        return AIEventExtractionResult(is_event=False)
+
     group_tags = _available_group_tags(db)
     resolved_system_prompt = gemini.get_system_prompt_instagram(db)
     prompt = _build_extraction_prompt(
-        caption,
+        clean_caption,
         group_tags,
         reference_date=reference_date,
         system_prompt=resolved_system_prompt,
@@ -313,7 +319,7 @@ def extract_event_from_instagram_post(
     body: dict[str, Any] = {
         "contents": [{"parts": parts}],
         "generationConfig": {
-            "temperature": 0.1,
+            "temperature": 0.0,
             "responseMimeType": "application/json",
         },
     }
@@ -368,7 +374,10 @@ def extract_event_from_instagram_post(
         parsed_data = json.loads(raw_json_text)
         if not isinstance(parsed_data, dict):
             return AIEventExtractionResult(is_event=False)
-        return AIEventExtractionResult.model_validate(parsed_data)
+        result = AIEventExtractionResult.model_validate(parsed_data)
+        if not resolved_bytes and not gemini.has_temporal_grounding(clean_caption):
+            return AIEventExtractionResult(is_event=False)
+        return result
     except Exception as exc:
         logger.warning("[AI Extractor] Respuesta JSON de Gemini invalida (%s); aplicando fallback.", exc)
         return AIEventExtractionResult(is_event=False)

@@ -1000,10 +1000,22 @@
       rawFile && ["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(rawMime)
         ? rawFile
         : null;
+    const hasSourceContext = Core.hasAutocompleteSourceContext
+      ? Core.hasAutocompleteSourceContext(values, file)
+      : Boolean(
+          String(values.imageUrl || "").trim() ||
+            file ||
+            String(values.caption || "").trim() ||
+            String(values.content || "").trim()
+        );
     setAiBusy(button, true);
     try {
       const suggestions = await getClient().autocompletePublicationAi(reqPayload, file);
-      const baseForMerge = { ...values, targetGroups: effectiveTargetGroups };
+      const baseForMerge = {
+        ...values,
+        targetGroups: effectiveTargetGroups,
+        hasImageContext: Boolean(String(values.imageUrl || "").trim() || file),
+      };
       const merged = Core.applyAiSuggestionsToFormValues(baseForMerge, suggestions);
 
       const titleEl = $("ed-pub-title");
@@ -1079,7 +1091,15 @@
 
       showFieldErrors("pub", {});
       applyTypeAndSectionRules();
-      showNotice("success", (Core.TEXTS && Core.TEXTS.aiAutocompleteSuccess) || "Campos completados por IA");
+      if (!hasSourceContext) {
+        showNotice(
+          "info",
+          (Core.TEXTS && Core.TEXTS.aiAutocompleteContextHint) ||
+            "Para resultados óptimos con IA, suba primero una foto/afiche o ingrese un texto base antes de autocompletar."
+        );
+      } else {
+        showNotice("success", (Core.TEXTS && Core.TEXTS.aiAutocompleteSuccess) || "Campos completados por IA");
+      }
       return suggestions;
     } catch (error) {
       const fallbackMsg =

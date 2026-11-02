@@ -99,6 +99,8 @@
     aiAutocompleteDisabledTooltip:
       "Configure un token válido de Gemini en la pestaña IA para habilitar el autocompletado.",
     aiAutocompleteEnabledTooltip: "Autocompletar campos vacíos con Google Gemini Flash",
+    aiAutocompleteContextHint:
+      "Para resultados óptimos con IA, suba primero una foto/afiche o ingrese un texto base antes de autocompletar.",
   };
 
   // ---------------------------------------------------------------------------
@@ -656,6 +658,15 @@
     return isoToTime24(clean);
   }
 
+  function hasAutocompleteSourceContext(values, file) {
+    const v = values || {};
+    if (file || v.hasImageContext) return true;
+    if (String(v.imageUrl || v.media_url || v.image_url || "").trim()) return true;
+    if (String(v.caption || "").trim()) return true;
+    if (String(v.content || "").trim()) return true;
+    return false;
+  }
+
   function applyAiSuggestionsToFormValues(currentValues, suggestions) {
     const cur = currentValues || {};
     const sug = suggestions && typeof suggestions === "object" ? suggestions : {};
@@ -667,15 +678,11 @@
       reminders: Array.isArray(cur.reminders) ? cur.reminders.slice() : [30],
     };
 
-    if (!String(next.title || "").trim() && typeof sug.title === "string" && sug.title.trim()) {
-      next.title = sug.title.trim().slice(0, LIMITS.title);
-    }
-    if (!String(next.caption || "").trim() && typeof sug.caption === "string" && sug.caption.trim()) {
-      next.caption = sug.caption.trim().slice(0, LIMITS.teaser);
-    }
-    if (!String(next.content || "").trim() && typeof sug.content === "string" && sug.content.trim()) {
-      next.content = sug.content.trim().slice(0, LIMITS.content);
-    }
+    const postType = String(next.postType || POST_TYPE_NORMAL).toUpperCase();
+    const isInstagram = postType === POST_TYPE_INSTAGRAM;
+    const isTitleOnlyWithoutContext =
+      Boolean(String(cur.title || "").trim()) && !hasAutocompleteSourceContext(cur);
+
     if (
       !String(next.category || "").trim() &&
       typeof sug.category === "string" &&
@@ -683,12 +690,37 @@
     ) {
       next.category = sug.category.trim();
     }
+
+    const currentGroups = cleanGroups(next.targetGroups);
+    const suggestedGroups = cleanGroups(sug.target_groups !== undefined ? sug.target_groups : sug.targetGroups);
+    if (currentGroups.length === 0 && suggestedGroups.length > 0) {
+      next.targetGroups = suggestedGroups;
+    }
+
+    if (isTitleOnlyWithoutContext) {
+      return next;
+    }
+
+    if (!String(next.title || "").trim() && typeof sug.title === "string" && sug.title.trim()) {
+      next.title = sug.title.trim().slice(0, LIMITS.title);
+    }
+    if (!isInstagram && !String(next.caption || "").trim() && typeof sug.caption === "string" && sug.caption.trim()) {
+      next.caption = sug.caption.trim().slice(0, LIMITS.teaser);
+    }
+    if (!isInstagram && !String(next.content || "").trim() && typeof sug.content === "string" && sug.content.trim()) {
+      next.content = sug.content.trim().slice(0, LIMITS.content);
+    }
     const rawLinkLabel = sug.link_label !== undefined ? sug.link_label : sug.linkLabel;
-    if (!String(next.linkLabel || "").trim() && typeof rawLinkLabel === "string" && rawLinkLabel.trim()) {
+    if (
+      !isInstagram &&
+      !String(next.linkLabel || "").trim() &&
+      typeof rawLinkLabel === "string" &&
+      rawLinkLabel.trim()
+    ) {
       next.linkLabel = rawLinkLabel.trim().slice(0, LIMITS.linkLabel);
     }
     const rawLinkUrl = sug.link_url !== undefined ? sug.link_url : sug.linkUrl;
-    if (!String(next.linkUrl || "").trim() && typeof rawLinkUrl === "string" && rawLinkUrl.trim()) {
+    if (!isInstagram && !String(next.linkUrl || "").trim() && typeof rawLinkUrl === "string" && rawLinkUrl.trim()) {
       next.linkUrl = rawLinkUrl.trim().slice(0, LIMITS.linkUrl);
     }
     if (!String(next.location || "").trim() && typeof sug.location === "string" && sug.location.trim()) {
@@ -707,13 +739,6 @@
       if (formattedEnd) next.eventEnd = formattedEnd;
     }
 
-    const currentGroups = cleanGroups(next.targetGroups);
-    const suggestedGroups = cleanGroups(sug.target_groups !== undefined ? sug.target_groups : sug.targetGroups);
-    if (currentGroups.length === 0 && suggestedGroups.length > 0) {
-      next.targetGroups = suggestedGroups;
-    }
-
-    const postType = String(next.postType || POST_TYPE_NORMAL).toUpperCase();
     if (postType !== POST_TYPE_URGENT && !next.isEvent) {
       const eventInferred =
         sug.is_event === true ||
@@ -1073,6 +1098,7 @@
     publicationToFormValues,
     normalizeAiDatetimeLocal,
     normalizeAiTime24,
+    hasAutocompleteSourceContext,
     applyAiSuggestionsToFormValues,
     renderPublicationRows,
     renderHistoryEntries,

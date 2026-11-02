@@ -324,11 +324,13 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert result["created_count"] == 3
         assert result["ai_events_count"] == 2
 
-        # Verificar que Gemini recibio el system_prompt_instagram personalizado, el texto y los bytes de la imagen
+        # Verificar que Gemini recibio el system_prompt_instagram personalizado, temperature 0.0, el texto y los bytes de la imagen
         assert len(captured_gemini_calls) == 3
+        assert captured_gemini_calls[0]["body"]["generationConfig"]["temperature"] == 0.0
         first_parts = captured_gemini_calls[0]["body"]["contents"][0]["parts"]
         assert len(first_parts) == 2
         assert "Directriz personalizada de extracción de eventos en Instagram UPA." in first_parts[0]["text"]
+        assert "CERO ALUCINACIONES" in first_parts[0]["text"]
         assert "Prompt exclusivo de autocompletado" not in first_parts[0]["text"]
         assert (
             captured_gemini_calls[0]["body"]["systemInstruction"]["parts"][0]["text"]
@@ -385,6 +387,46 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert pubs_by_ig["ig_ai_event_2"]["event_end"] is None
         assert pubs_by_ig["ig_regular_news_3"]["is_ai_generated"] is False
         assert pubs_by_ig["ig_regular_news_3"]["status"] == "pending"
+
+        # Verificar que un caption minimo sin fecha ni imagen nunca genera un evento alucinado
+        gemini_json_queue.append(
+            (
+                200,
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": json.dumps(
+                                            {
+                                                "is_event": True,
+                                                "event_title": "Evento Alucinado",
+                                                "start_time": "2026-12-01T18:00:00Z",
+                                                "end_time": None,
+                                                "location": "Lugar Inventado",
+                                                "allow_registration": True,
+                                                "target_groups": ["estudiantes"],
+                                                "notify_push": True,
+                                            }
+                                        )
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+            )
+        )
+        db2 = TestingSessionLocal()
+        ungrounded_res = extract_event_from_instagram_post(
+            caption="Bienvenidos al campus UPA",
+            media_url=None,
+            db=db2,
+        )
+        assert ungrounded_res.is_event is False
+        assert ungrounded_res.start_time is None
+        db2.close()
     finally:
         server.shutdown()
         server.server_close()

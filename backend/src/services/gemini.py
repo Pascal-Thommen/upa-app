@@ -24,13 +24,20 @@ ENCRYPTED_KEY_PREFIX = "enc:v1:"
 
 DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE = (
     "Eres el asistente editorial inteligente de la Universidad Paraguayo Alemana (UPA). "
-    "Redacta en español formal institucional, claro y conciso, respetando estrictamente "
-    "los datos confirmados, el horario en formato de 24 horas (HH:mm) y la fecha en formato DD/MM/YYYY."
+    "Redacta en español formal institucional, claro y conciso. "
+    "REGLA ESTRICTA CERO ALUCINACIONES (GROUNDING): Extrae y utiliza ÚNICAMENTE hechos, fechas, horas, "
+    "lugares y detalles que aparezcan explícitamente en la imagen adjunta (afiche/flyer) o en el texto "
+    "proporcionado. Está terminantemente PROHIBIDO inventar, suponer o extrapolar fechas, horarios "
+    "(24h HH:mm), ubicaciones o descripciones de otros eventos. Si faltan fecha, hora o lugar en el "
+    "material fuente, esos campos deben quedar obligatoriamente null o vacíos. Respeta el horario en "
+    "formato de 24 horas (HH:mm) y la fecha en formato DD/MM/YYYY."
 )
 DEFAULT_SYSTEM_PROMPT_INSTAGRAM = (
     "Eres el analizador multimodal de eventos de la Universidad Paraguayo Alemana (UPA) para publicaciones e imágenes de Instagram. "
-    "Extrae únicamente eventos confirmados del texto y afiche, respetando horarios del mismo día calendario "
-    "y seleccionando grupos destinatarios de forma conservadora."
+    "REGLA ESTRICTA CERO ALUCINACIONES (GROUNDING): Extrae únicamente eventos y datos (fecha, hora de inicio, "
+    "hora de fin, lugar) que estén explícitamente confirmados en el texto del pie de foto o en el afiche adjunto. "
+    "Si faltan fecha, hora o lugar en el material fuente, devuelve null sin inventar datos. "
+    "Respeta estrictamente horarios del mismo día calendario y selecciona grupos destinatarios de forma conservadora."
 )
 DEFAULT_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
 
@@ -520,6 +527,39 @@ def _clean_group_list(raw_groups: Any) -> list[str]:
     return seen
 
 
+_TEMPORAL_GROUNDING_RE = re.compile(
+    r"(\d|"
+    r"\b(?:hoy|mañana|manana|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|"
+    r"enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|"
+    r"próximo|proximo|mediodía|mediodia)\b)",
+    re.IGNORECASE,
+)
+
+
+def has_temporal_grounding(text: str | None) -> bool:
+    """Verifica si el texto fuente contiene referencias explicitas de fecha, hora o numeros."""
+    clean = (text or "").strip()
+    if not clean:
+        return False
+    return bool(_TEMPORAL_GROUNDING_RE.search(clean))
+
+
+def has_autocomplete_source_context(form_data: dict[str, Any], *, has_image: bool = False) -> bool:
+    """
+    Determina si la solicitud de autocompletado cuenta con material fuente suficiente
+    (imagen/afiche adjunto o texto base en caption/content) mas alla de un simple titulo.
+    """
+    if has_image:
+        return True
+    if str(form_data.get("media_url") or form_data.get("image_url") or form_data.get("image_base64") or "").strip():
+        return True
+    if str(form_data.get("caption") or "").strip():
+        return True
+    if str(form_data.get("content") or "").strip():
+        return True
+    return False
+
+
 def _build_autocomplete_prompt(
     form_data: dict[str, Any],
     empty_fields: list[str],
@@ -552,14 +592,39 @@ def _build_autocomplete_prompt(
     }
 
     active_system_prompt = (system_prompt or "").strip() or DEFAULT_SYSTEM_PROMPT
+    has_text_body = bool(str(form_data.get("caption") or "").strip() or str(form_data.get("content") or "").strip())
+
+    if has_image:
+        workflow_instruction = (
+            "MODO AFICHE/IMAGEN ADJUNTA: Extrae prioritariamente los hechos visibles en la imagen adjunta "
+            "(título, fecha, hora de inicio, hora de fin si figura en el mismo día, lugar y detalles del evento) "
+            "combinándolos únicamente con los datos ya presentes en el formulario.\n"
+        )
+    elif not has_text_body:
+        workflow_instruction = (
+            "ADVERTENCIA DE CONTEXTO INSUFICIENTE (SOLO TÍTULO SIN IMAGEN NI TEXTO): "
+            "No se adjuntó ninguna imagen ni texto descriptivo (caption/content). "
+            "Está ESTRICTAMENTE PROHIBIDO generar un evento de calendario (is_event debe ser false), "
+            "inventar fechas u horas (event_start, event_date, event_start_time, event_end, event_end_time deben ser null) "
+            "o inventar ubicaciones (location: null) o textos descriptivos libres (caption: null, content: null).\n"
+        )
+    else:
+        workflow_instruction = (
+            "MODO TEXTO SIN IMAGEN: Extrae únicamente hechos explícitos presentes en el texto ingresado. "
+            "Si el texto no menciona explícitamente una fecha, hora o lugar, deja esos campos en null o vacíos.\n"
+        )
 
     return (
         f"{active_system_prompt}\n"
         "Analiza los datos actuales del formulario"
-        + (" y la imagen adjunta" if has_image else "")
+        + (" y la imagen adjunta (afiche/flyer)" if has_image else "")
         + " para sugerir valores ÚNICAMENTE para los campos que están vacíos.\n"
+        + workflow_instruction
+        + "REGLAS ESTRICTAS DE GROUNDING (CERO ALUCINACIONES):\n"
+        "- Solo pueden asumirse hechos que estén explícitamente escritos en la imagen (flyer) o en el texto entregado.\n"
+        "- Si faltan fecha, hora de inicio, hora de finalización o lugar en el material fuente, esos campos DEBEN quedar null o vacíos. Está prohibido inventar datos de eventos.\n"
         f"Datos actuales ya ingresados (NO modificar): {json.dumps(existing_summary, ensure_ascii=False)}\n"
-        f"Campos vacíos a completar si hay información suficiente: {', '.join(empty_fields)}\n"
+        f"Campos vacíos a completar si hay información explícita suficiente: {', '.join(empty_fields)}\n"
         f"Grupos destinatarios válidos en UPA: {groups_desc}\n"
         "Categorías válidas: MELDUNG, ANKUENDIGUNG, VERANSTALTUNG, STELLENANGEBOT.\n"
         "Regla estricta para fin del evento: event_end es estrictamente opcional y debe corresponder a una "
@@ -641,8 +706,53 @@ def _normalize_suggested_end(start_str: str, end_str: str) -> tuple[str, str]:
     return "", ""
 
 
-def _filter_only_empty_fields(form_data: dict[str, Any], raw_suggestions: dict[str, Any]) -> dict[str, Any]:
-    """Garantiza que solo se devuelvan valores para los campos que estaban vacios en el formulario."""
+def _filter_only_empty_fields(
+    form_data: dict[str, Any],
+    raw_suggestions: dict[str, Any],
+    *,
+    has_image: bool | None = None,
+) -> dict[str, Any]:
+    """
+    Garantiza que solo se devuelvan valores para los campos que estaban vacios en el formulario
+    y aplica las barreras Cero Alucinaciones cuando falta contexto fuente (imagen o texto base).
+    """
+    effective_has_image = (
+        bool(has_image)
+        if has_image is not None
+        else bool(
+            str(
+                form_data.get("media_url")
+                or form_data.get("image_url")
+                or form_data.get("image_base64")
+                or ""
+            ).strip()
+        )
+    )
+    has_source_context = has_autocomplete_source_context(form_data, has_image=effective_has_image)
+    title_val = str(form_data.get("title") or "").strip()
+    caption_val = str(form_data.get("caption") or "").strip()
+    content_val = str(form_data.get("content") or "").strip()
+    post_type = str(form_data.get("post_type") or "MANUAL").strip().upper()
+
+    # Si no hay imagen ni texto alguno (ni siquiera titulo), no hay nada que inferir
+    if not has_source_context and not title_val:
+        return {}
+
+    # Si solo se ingreso un titulo sin imagen ni texto (caption/content), bloquear cualquier
+    # evento de calendario inventado, fechas/horas, ubicaciones o textos descriptivos libres
+    if not has_source_context:
+        filtered_minimal: dict[str, Any] = {}
+        existing_cat = str(form_data.get("category") or "").strip()
+        cand_cat = raw_suggestions.get("category")
+        if not existing_cat and isinstance(cand_cat, str) and cand_cat.strip():
+            filtered_minimal["category"] = cand_cat.strip()
+        existing_groups = _clean_group_list(form_data.get("target_groups"))
+        if not existing_groups:
+            suggested_groups = _clean_group_list(raw_suggestions.get("target_groups"))
+            if suggested_groups:
+                filtered_minimal["target_groups"] = suggested_groups
+        return filtered_minimal
+
     filtered: dict[str, Any] = {}
     text_fields = (
         "title",
@@ -656,13 +766,25 @@ def _filter_only_empty_fields(form_data: dict[str, Any], raw_suggestions: dict[s
         "link_label",
         "link_url",
     )
+    readonly_instagram_fields = {"caption", "content", "link_label", "link_url"}
     for field_name in text_fields:
+        if post_type == "INSTAGRAM" and field_name in readonly_instagram_fields:
+            continue
         existing_val = str(form_data.get(field_name) or "").strip()
         if existing_val:
             continue
         candidate_val = raw_suggestions.get(field_name)
         if isinstance(candidate_val, str) and candidate_val.strip():
             filtered[field_name] = candidate_val.strip()
+
+    # Sin imagen adjunta, exigir anclaje temporal explicito en el texto antes de aceptar fechas/horas
+    combined_source_text = f"{title_val} {caption_val} {content_val}".strip()
+    has_existing_temporal = bool(
+        str(form_data.get("event_start") or form_data.get("event_date") or "").strip()
+    )
+    if not effective_has_image and not has_existing_temporal and not has_temporal_grounding(combined_source_text):
+        for temporal_key in ("event_start", "event_date", "event_start_time"):
+            filtered.pop(temporal_key, None)
 
     # Derivar event_date (DD/MM/YYYY) y event_start_time (HH:mm) si se sugirio event_start
     effective_start = str(form_data.get("event_start") or filtered.get("event_start") or "").strip()
@@ -676,7 +798,7 @@ def _filter_only_empty_fields(form_data: dict[str, Any], raw_suggestions: dict[s
 
     # Validar estrictamente event_end / event_end_time (opcional, mismo dia, posterior al inicio)
     existing_end = str(form_data.get("event_end") or form_data.get("event_end_time") or "").strip()
-    if not existing_end:
+    if not existing_end and effective_start:
         raw_end_cand = str(
             raw_suggestions.get("event_end") or raw_suggestions.get("event_end_time") or ""
         ).strip()
@@ -693,10 +815,15 @@ def _filter_only_empty_fields(form_data: dict[str, Any], raw_suggestions: dict[s
         if suggested_groups:
             filtered["target_groups"] = suggested_groups
 
-    post_type = str(form_data.get("post_type") or "MANUAL").strip().upper()
     if post_type != "EMERGENCY_BANNER":
         if not form_data.get("is_event"):
-            if (
+            has_grounded_event_date = bool(
+                effective_start
+                or filtered.get("event_start")
+                or filtered.get("event_date")
+                or str(form_data.get("event_date") or "").strip()
+            )
+            if has_grounded_event_date and (
                 raw_suggestions.get("is_event") is True
                 or "event_start" in filtered
                 or "event_date" in filtered
@@ -704,7 +831,11 @@ def _filter_only_empty_fields(form_data: dict[str, Any], raw_suggestions: dict[s
             ):
                 filtered["is_event"] = True
 
-    if not form_data.get("has_registration") and raw_suggestions.get("has_registration") is True:
+    if (
+        not form_data.get("has_registration")
+        and raw_suggestions.get("has_registration") is True
+        and (form_data.get("is_event") or filtered.get("is_event") is True)
+    ):
         filtered["has_registration"] = True
 
     return filtered
@@ -769,7 +900,7 @@ def autocomplete_publication(
     body: dict[str, Any] = {
         "contents": [{"parts": parts}],
         "generationConfig": {
-            "temperature": 0.2,
+            "temperature": 0.0,
             "responseMimeType": "application/json",
         },
     }
@@ -869,5 +1000,9 @@ def autocomplete_publication(
         )
 
     save_active_model(db, active_model)
-    suggestions = _filter_only_empty_fields(form_data, parsed_suggestions)
+    suggestions = _filter_only_empty_fields(
+        form_data,
+        parsed_suggestions,
+        has_image=bool(image_bytes and image_mime_type),
+    )
     return AutocompleteResult(True, "OK", "Campos completados por IA", active_model, suggestions)
