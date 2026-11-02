@@ -29,6 +29,7 @@
     reminders: [30],
     participantsPubId: null,
     dropzones: {},
+    sort: "created",
     noticeTimer: null,
     aiConfigured: false,
   };
@@ -320,6 +321,63 @@
     const status = zone.querySelector("[data-dz-status]");
     const preview = zone.querySelector("[data-dz-preview]");
     const pick = zone.querySelector("[data-dz-pick]");
+    const empty = zone.querySelector("[data-dz-empty]");
+    let currentObjectUrl = "";
+    let activeUploadId = 0;
+
+    function revokeCurrentObjectUrl() {
+      if (currentObjectUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+        try {
+          URL.revokeObjectURL(currentObjectUrl);
+        } catch (_) {
+          /* ignorar errores de revocacion */
+        }
+      }
+      currentObjectUrl = "";
+    }
+
+    function renderPreview(rawUrl, label, mimeHint) {
+      if (!preview) return;
+      const hasMedia = Boolean(rawUrl);
+      zone.classList.toggle("has-media", hasMedia);
+      if (empty) empty.classList.toggle("hidden", hasMedia);
+      if (!hasMedia) {
+        preview.classList.add("hidden");
+        preview.innerHTML = "";
+        return;
+      }
+      const safe = Core.safeUrl(rawUrl);
+      const mime = String(mimeHint || "").toLowerCase();
+      const isVideo =
+        mime.startsWith("video/") ||
+        Boolean(Core.isVideoUrl && Core.isVideoUrl(safe)) ||
+        Boolean(Core.isVideoUrl && Core.isVideoUrl(label));
+      const isImage =
+        mime.startsWith("image/") || Core.isImageUrl(safe) || Core.isImageUrl(label);
+      let media = "";
+      if (isVideo) {
+        media = `<video src="${Core.escapeHtml(safe)}" controls class="max-h-56 w-full rounded-lg"></video>`;
+      } else if (isImage) {
+        media = `<img src="${Core.escapeHtml(safe)}" alt="Vista previa">`;
+      } else {
+        media = `<a class="ed-link" href="${Core.escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${Core.escapeHtml(
+          label || "Documento adjunto"
+        )}</a>`;
+      }
+      const hideRemove = dz.readOnly ? " hidden" : "";
+      preview.innerHTML = `${media}<button type="button" class="ed-dz-remove${hideRemove}" data-dz-remove aria-label="Quitar archivo" title="Quitar archivo">&times;</button>`;
+      preview.classList.remove("hidden");
+      preview.querySelector("[data-dz-remove]").addEventListener("click", () => {
+        if (dz.readOnly) return;
+        activeUploadId += 1;
+        dz.uploading = false;
+        zone.classList.remove("is-uploading");
+        dz.lastFile = null;
+        if (input) input.value = "";
+        dz.setUrl("");
+        dz.setStatus("", "");
+      });
+    }
 
     const dz = {
       uploading: false,
@@ -342,37 +400,17 @@
           if (removeBtn) removeBtn.classList.toggle("hidden", dz.readOnly);
         }
       },
-      setUrl(url, label) {
+      setUrl(url, label, mimeHint) {
+        revokeCurrentObjectUrl();
         if (urlField) urlField.value = url || "";
-        if (!preview) return;
-        if (!url) {
-          preview.classList.add("hidden");
-          preview.innerHTML = "";
-          return;
-        }
-        const safe = Core.safeUrl(url);
-        let media = "";
-        if (Core.isVideoUrl && Core.isVideoUrl(safe)) {
-          media = `<video src="${Core.escapeHtml(safe)}" controls class="max-h-56 w-full rounded-lg"></video>`;
-        } else if (Core.isImageUrl(safe)) {
-          media = `<img src="${Core.escapeHtml(safe)}" alt="Vista previa">`;
-        } else {
-          media = `<a class="ed-link" href="${Core.escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${Core.escapeHtml(
-            label || "Documento adjunto"
-          )}</a>`;
-        }
-        const hideRemove = dz.readOnly ? " hidden" : "";
-        preview.innerHTML = `${media}<button type="button" class="ed-btn ed-btn-secondary ed-btn-sm${hideRemove}" data-dz-remove>Quitar</button>`;
-        preview.classList.remove("hidden");
-        preview.querySelector("[data-dz-remove]").addEventListener("click", () => {
-          if (dz.readOnly) return;
-          dz.lastFile = null;
-          dz.setUrl("");
-          dz.setStatus("", "");
-        });
+        renderPreview(url, label, mimeHint);
       },
       reset() {
+        activeUploadId += 1;
+        dz.uploading = false;
+        zone.classList.remove("is-uploading");
         dz.lastFile = null;
+        if (input) input.value = "";
         dz.setUrl("");
         dz.setStatus("", "");
       },
@@ -385,19 +423,35 @@
         dz.setStatus("error", check.message);
         return;
       }
+      const myUploadId = ++activeUploadId;
       dz.uploading = true;
       dz.lastFile = file;
       zone.classList.add("is-uploading");
+      revokeCurrentObjectUrl();
+      if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+        try {
+          currentObjectUrl = URL.createObjectURL(file);
+          renderPreview(currentObjectUrl, file.name, file.type);
+        } catch (_) {
+          currentObjectUrl = "";
+        }
+      }
       dz.setStatus("", `Subiendo ${file.name}...`);
       try {
         const result = await getClient().uploadMedia(file);
-        dz.setUrl(result.url, file.name);
+        if (myUploadId !== activeUploadId) return;
+        dz.setUrl(result.url, file.name, file.type);
         dz.setStatus("ok", `Archivo subido: ${file.name}`);
       } catch (error) {
+        if (myUploadId !== activeUploadId) return;
+        dz.lastFile = null;
+        dz.setUrl("");
         dz.setStatus("error", Core.describeError(error));
       } finally {
-        dz.uploading = false;
-        zone.classList.remove("is-uploading");
+        if (myUploadId === activeUploadId) {
+          dz.uploading = false;
+          zone.classList.remove("is-uploading");
+        }
       }
     }
 
@@ -860,6 +914,7 @@
     } else if (state.filter === "events") {
       items = items.filter((p) => Boolean(p.is_event));
     }
+    items = Core.sortPublications(items, state.sort);
     tbody.innerHTML = Core.renderPublicationRows(items);
   }
 
@@ -1260,6 +1315,13 @@
     state.ready = true;
 
     document.querySelectorAll("[data-dropzone]").forEach(bindDropzone);
+    const sortSelect = $("ed-pub-sort");
+    if (sortSelect) {
+      sortSelect.addEventListener("change", () => {
+        state.sort = sortSelect.value === "event" ? "event" : "created";
+        renderFilteredRows();
+      });
+    }
 
     ["all", "news", "events"].forEach((key) => {
       const btn = $(`ed-filter-${key}`);
