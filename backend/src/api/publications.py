@@ -9,7 +9,6 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request, status
-from sqlalchemy import asc, desc
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
@@ -72,12 +71,12 @@ def record_post_views(db: Session, post_ids: Iterable[int], user_id: int | None)
         stmt = pg_insert(PostView).values(rows).on_conflict_do_nothing(index_elements=["post_id", "user_id"])
         result = db.execute(stmt)
         db.commit()
-        return max(0, int(result.rowcount or 0))
+        return max(0, int(getattr(result, "rowcount", 0) or 0))
     if dialect_name == "sqlite":
         stmt = sqlite_insert(PostView).values(rows).on_conflict_do_nothing(index_elements=["post_id", "user_id"])
         result = db.execute(stmt)
         db.commit()
-        return max(0, int(result.rowcount or 0))
+        return max(0, int(getattr(result, "rowcount", 0) or 0))
 
     existing_ids = {
         int(row[0])
@@ -363,7 +362,7 @@ def list_publications(
     elif kind == "pending":
         query = query.filter(Post.is_edited.is_(False))
 
-    rows = query.order_by(desc(Post.is_pinned), desc(Post.created_at), desc(Post.id)).limit(limit).all()
+    rows = query.order_by(Post.is_pinned.desc(), Post.created_at.desc(), Post.id.desc()).limit(limit).all()
     return [PublicationResponse.from_orm_post(row) for row in rows]
 
 
@@ -581,7 +580,7 @@ async def autocomplete_publication_ai(
                 if isinstance(val, str):
                     raw_dict[key] = val
         upload_obj = form.get("file") or form.get("image")
-        if upload_obj is not None and hasattr(upload_obj, "read"):
+        if upload_obj is not None and not isinstance(upload_obj, str):
             data_bytes = await upload_obj.read(settings.MAX_UPLOAD_SIZE_BYTES + 1)
             if len(data_bytes) > settings.MAX_UPLOAD_SIZE_BYTES:
                 raise HTTPException(
@@ -870,7 +869,7 @@ def get_publication_registrations(
         db.query(EventRegistration, User)
         .join(User, User.id == EventRegistration.user_id)
         .filter(EventRegistration.post_id == publication_id)
-        .order_by(asc(EventRegistration.created_at), asc(EventRegistration.id))
+        .order_by(EventRegistration.created_at.asc(), EventRegistration.id.asc())
         .all()
     )
     entries = [

@@ -123,8 +123,13 @@ def get_current_user(
             detail="Token de sesion invalido o expirado",
         )
     user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de sesion invalido o expirado",
+        )
     if str(user_id).isdigit():
-        user = db.query(User).filter(User.id == int(user_id)).first()
+        user = db.query(User).filter(User.id == int(str(user_id))).first()
     else:
         user = db.query(User).filter(User.email == str(user_id).lower()).first()
     if not user:

@@ -489,8 +489,10 @@ def _extract_candidate_json(payload: Any) -> dict[str, Any] | None:
     if not isinstance(candidates, list) or not candidates:
         return None
     first = candidates[0] if isinstance(candidates[0], dict) else {}
-    content = first.get("content") if isinstance(first.get("content"), dict) else {}
-    parts = content.get("parts") if isinstance(content.get("parts"), list) else []
+    raw_content = first.get("content")
+    content = raw_content if isinstance(raw_content, dict) else {}
+    raw_parts = content.get("parts")
+    parts = raw_parts if isinstance(raw_parts, list) else []
     raw_text = ""
     for part in parts:
         if isinstance(part, dict) and isinstance(part.get("text"), str) and not part.get("thought"):

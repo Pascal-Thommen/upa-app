@@ -124,3 +124,67 @@ def test_index_html_asset_version_busts_cache_and_roles_header_matches_permissio
     assert thead.count("<th ") == 8
     assert "IA</th>" in thead
     assert "Historial</th>" in thead
+
+
+def test_pyright_configuration_in_pyproject_toml():
+    import tomllib
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    backend_pyproject = repo_root / "backend" / "pyproject.toml"
+    root_pyproject = repo_root / "pyproject.toml"
+
+    assert backend_pyproject.is_file()
+    backend_cfg = tomllib.loads(backend_pyproject.read_text(encoding="utf-8"))
+    pyright_backend = backend_cfg.get("tool", {}).get("pyright", {})
+    assert pyright_backend.get("typeCheckingMode") == "basic"
+    assert "src" in pyright_backend.get("include", [])
+
+    root_cfg = tomllib.loads(root_pyproject.read_text(encoding="utf-8"))
+    pyright_root = root_cfg.get("tool", {}).get("pyright", {})
+    assert pyright_root.get("typeCheckingMode") == "basic"
+    assert "backend/src" in pyright_root.get("include", [])
+
+
+def test_pyright_passes_on_backend_and_catches_type_errors(tmp_path: Path):
+    import shutil
+    import subprocess
+
+    pyright_bin = shutil.which("pyright")
+    if not pyright_bin:
+        return
+
+    backend_dir = Path(__file__).resolve().parent.parent
+    clean_run = subprocess.run(
+        [pyright_bin],
+        cwd=str(backend_dir),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert clean_run.returncode == 0, f"Pyright failed on backend/src:\n{clean_run.stdout}\n{clean_run.stderr}"
+    assert "0 errors" in clean_run.stdout
+
+    # Verify that signature/model type errors are reliably caught with non-zero exit code
+    sample_project = tmp_path / "sample_pkg"
+    src_dir = sample_project / "src"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    (sample_project / "pyproject.toml").write_text(
+        '[tool.pyright]\ninclude = ["src"]\ntypeCheckingMode = "basic"\n',
+        encoding="utf-8",
+    )
+    (src_dir / "broken_types.py").write_text(
+        "def compute_ user_id(raw_id: int | None) -> int:\n"
+        "    return raw_id + 1\n".replace("compute_ user_id", "compute_user_id"),
+        encoding="utf-8",
+    )
+    broken_run = subprocess.run(
+        [pyright_bin],
+        cwd=str(sample_project),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert broken_run.returncode != 0
+    assert "error:" in broken_run.stdout

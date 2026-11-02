@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import asc, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 
@@ -131,7 +131,7 @@ def _query_upcoming_events(
         # Incluir eventos del mes en curso y ultimos 35 dias para visibilidad completa en calendario y agenda
         query = query.filter(Post.event_start >= now - timedelta(days=35))
 
-    raw_events = query.order_by(asc(Post.event_start), asc(Post.id)).all()
+    raw_events = query.order_by(Post.event_start.asc(), Post.id.asc()).all()
     user_id = current_user.id if current_user is not None else None
 
     result: list[EventResponse] = []
