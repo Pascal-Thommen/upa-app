@@ -291,14 +291,21 @@ def test_assign_role_new_account_normalizes_permissions():
     payload = {
         "email": "nuevo.admin@upa.edu.py",
         "name": "Nuevo Administrador",
-        "permissions": ["Publicaciones y Eventos", "Gestión de Roles", "Historial"],
+        "permissions": ["Publicaciones y Eventos", "Gestión de Roles", "IA", "Historial"],
     }
     res = client.post("/api/roles", json=payload, headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin"))
     assert res.status_code == 200
     data = res.json()
     assert data["email"] == "nuevo.admin@upa.edu.py"
     assert data["role"] == "admin"
-    assert data["permissions"] == ["publicaciones", "roles", "historial"]
+    assert data["permissions"] == ["publicaciones", "roles", "ia", "historial"]
+
+    # Rol de administrador existente pre-IA (con los 4 modulos base) conserva 'ia' por defecto
+    legacy_admin_list = client.get("/api/roles", headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin")).json()
+    primary_row = next(r for r in legacy_admin_list if r["email"] == ADMIN_EMAIL)
+    assert "ia" in primary_row["permissions"]
+    me_initial = client.get("/api/auth/me", headers=auth(ADMIN_ID, ADMIN_EMAIL, "admin")).json()
+    assert "ia" in me_initial["permissions"]
 
     # Al crear un rol sin especificar permisos, inicia con todas las casillas vacías ([])
     empty_res = client.post(

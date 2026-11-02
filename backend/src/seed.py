@@ -151,18 +151,31 @@ def seed_database():
             primary_admin_role = UserRole(
                 email="pascal.thommen@upa.edu.py",
                 name="Pascal Thommen",
-                permissions=["publicaciones", "grupos", "roles", "apis", "historial"],
+                permissions=["publicaciones", "grupos", "roles", "apis", "ia", "historial"],
                 is_primary=True,
             )
             db.add(primary_admin_role)
             print("[Seed] Rol inicial creado: pascal.thommen@upa.edu.py")
-        elif primary_admin_role.is_primary and primary_admin_role.permissions == [
-            "publicaciones",
-            "grupos",
-            "roles",
-            "apis",
-        ]:
-            primary_admin_role.permissions = ["publicaciones", "grupos", "roles", "apis", "historial"]
+        elif primary_admin_role.is_primary and primary_admin_role.permissions in (
+            ["publicaciones", "grupos", "roles", "apis"],
+            ["publicaciones", "grupos", "roles", "apis", "historial"],
+        ):
+            primary_admin_role.permissions = ["publicaciones", "grupos", "roles", "apis", "ia", "historial"]
+
+        for existing_role in db.query(UserRole).all():
+            raw_perms = existing_role.permissions if isinstance(existing_role.permissions, list) else []
+            if (
+                "ia" not in raw_perms
+                and "roles" in raw_perms
+                and ("apis" in raw_perms or existing_role.is_primary)
+            ):
+                updated_perms = list(raw_perms)
+                if "historial" in updated_perms:
+                    hist_idx = updated_perms.index("historial")
+                    updated_perms.insert(hist_idx, "ia")
+                else:
+                    updated_perms.append("ia")
+                existing_role.permissions = updated_perms
 
         db.commit()
         print("[Seed] Carga inicial finalizada correctamente.")

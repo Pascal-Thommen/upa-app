@@ -148,6 +148,9 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
 
   const elementIds = [
     "sidebar-menu",
+    "sidebar-settings-group",
+    "sidebar-settings-divider",
+    "sidebar-settings-heading",
     "nav-mod-publications",
     "nav-mod-groups",
     "nav-mod-admins",
@@ -242,7 +245,7 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
             email: "pascal.thommen@upa.edu.py",
             full_name: "Pascal Thommen",
             role: "admin",
-            permissions: ["publicaciones", "grupos", "roles", "apis"],
+            permissions: ["publicaciones", "grupos", "roles", "apis", "ia"],
             groups: ["ALL"],
             google_groups: [],
             has_classroom_token: false,
@@ -437,12 +440,47 @@ test("permisos dinamicos: sidebar muestra solo las pestanas autorizadas y rediri
   });
 
   assert.ok(!elements["sidebar-menu"].classList.contains("hidden"));
+  assert.ok(!elements["sidebar-settings-group"].classList.contains("hidden"));
+  assert.ok(!elements["sidebar-settings-divider"].classList.contains("hidden"));
   assert.ok(!elements["nav-mod-publications"].classList.contains("hidden"));
   assert.ok(!elements["nav-mod-groups"].classList.contains("hidden"));
   assert.ok(elements["nav-mod-admins"].classList.contains("hidden"), "Roles debe ocultarse sin permiso");
   assert.ok(elements["nav-mod-students"].classList.contains("hidden"), "APIs debe ocultarse sin permiso");
+  assert.ok(elements["nav-mod-ai"].classList.contains("hidden"), "IA debe ocultarse sin permiso ia");
   assert.equal(router.getCurrentRoute(), "publicaciones");
   assert.equal(window.location.pathname, "/dashboard/publicaciones");
+
+  // Cuenta solo con Publicaciones (sin permisos de Configuración): oculta el bloque Configuración y la línea divisoria
+  router.applyUserPermissions({
+    email: "redactor@upa.edu.py",
+    role: "editor",
+    permissions: ["publicaciones"],
+  });
+  assert.ok(!elements["sidebar-menu"].classList.contains("hidden"));
+  assert.ok(elements["sidebar-settings-group"].classList.contains("hidden"));
+  assert.ok(elements["sidebar-settings-divider"].classList.contains("hidden"));
+
+  // Cuenta con permiso en APIs pero sin permiso en IA: no puede abrir ni permanecer en /dashboard/ia
+  router.applyUserPermissions({
+    email: "operador.apis@upa.edu.py",
+    role: "editor",
+    permissions: ["publicaciones", "apis"],
+  });
+  assert.ok(!elements["nav-mod-students"].classList.contains("hidden"));
+  assert.ok(elements["nav-mod-ai"].classList.contains("hidden"), "IA requiere su propio permiso 'ia'");
+  router.navigate("/dashboard/ia");
+  assert.equal(router.getCurrentRoute(), "publicaciones", "Sin permiso 'ia' no puede abrir /dashboard/ia");
+
+  // Al otorgar el permiso 'ia', el usuario puede acceder a /dashboard/ia
+  router.applyUserPermissions({
+    email: "operador.ia@upa.edu.py",
+    role: "editor",
+    permissions: ["publicaciones", "ia"],
+  });
+  assert.ok(!elements["nav-mod-ai"].classList.contains("hidden"));
+  router.navigate("/dashboard/ia");
+  assert.equal(router.getCurrentRoute(), "ia");
+  assert.equal(window.location.pathname, "/dashboard/ia");
 });
 
 test("permisos dinamicos: estudiante sin permisos administrativos oculta sidebar y aterriza en APIs/Campus", () => {
@@ -553,6 +591,11 @@ test("historial: Rollenmatrix enthält Historial-Spalte und verbirgt Audit-Log o
 test("modulo ia: index.html renombra reiter a IA, consolida 1-Klick-Save, precarga prompts UPA y restaura valores por defecto", async () => {
   const indexHtml = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf8");
   assert.ok(indexHtml.includes('id="nav-mod-ai"'));
+  assert.ok(indexHtml.includes('data-perm="ia"'));
+  assert.ok(indexHtml.includes('id="sidebar-settings-group"'));
+  assert.ok(indexHtml.includes('id="sidebar-settings-divider"'));
+  assert.ok(indexHtml.includes('id="sidebar-settings-heading"'));
+  assert.ok(indexHtml.includes("Configuración"));
   assert.ok(indexHtml.includes('<span class="flex-1">IA</span>'));
   assert.ok(!indexHtml.includes('<span class="flex-1">Control de IA</span>'));
   assert.ok(indexHtml.includes('aria-label="IA"'));

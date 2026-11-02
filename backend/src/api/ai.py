@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import User
-from ..permissions import effective_permissions, require_permission
+from ..permissions import effective_permissions
 from ..services import gemini
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
@@ -56,10 +56,23 @@ def require_ai_read(
     db: Session = Depends(get_db),
 ) -> User:
     perms = effective_permissions(db, current_user)
-    if "apis" not in perms and "publicaciones" not in perms:
+    if "ia" not in perms and "apis" not in perms and "publicaciones" not in perms:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado: su cuenta no tiene permiso para consultar la configuración de IA.",
+        )
+    return current_user
+
+
+def require_ai_write(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    perms = effective_permissions(db, current_user)
+    if "ia" not in perms and "apis" not in perms:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: su cuenta no tiene el permiso 'ia'.",
         )
     return current_user
 
@@ -98,11 +111,11 @@ def get_ai_config(db: Session = Depends(get_db), _: User = Depends(require_ai_re
     return _config_response(db)
 
 
-@router.post("/config", response_model=AiConfigResponse, summary="Guardar clave o prompts de Gemini (permiso apis)")
+@router.post("/config", response_model=AiConfigResponse, summary="Guardar clave o prompts de Gemini (permiso ia)")
 def set_ai_config(
     payload: AiConfigUpdate,
     db: Session = Depends(get_db),
-    operator: User = Depends(require_permission("apis")),
+    operator: User = Depends(require_ai_write),
 ) -> AiConfigResponse:
     raw_key = payload.api_key
     has_prompt_fields = (
@@ -141,7 +154,7 @@ def set_ai_config(
 def update_ai_system_prompt(
     payload: AiPromptUpdate,
     db: Session = Depends(get_db),
-    operator: User = Depends(require_permission("apis")),
+    operator: User = Depends(require_ai_write),
 ) -> AiConfigResponse:
     autocomplete_raw = (
         payload.system_prompt_autocomplete
@@ -166,7 +179,7 @@ def update_ai_system_prompt(
 def test_ai_connection(
     payload: AiTestRequest | None = Body(default=None),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("apis")),
+    _: User = Depends(require_ai_write),
 ) -> AiTestResponse:
     candidate = (payload.api_key or "").strip() if payload and payload.api_key else ""
     if candidate:

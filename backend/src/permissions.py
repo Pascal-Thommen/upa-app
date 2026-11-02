@@ -1,4 +1,4 @@
-"""Modelo de permisos por modulo del portal web-admin (Publicaciones, Grupos, Roles, APIs, Historial)."""
+"""Modelo de permisos por modulo del portal web-admin (Publicaciones, Grupos, Roles, APIs, IA, Historial)."""
 
 from typing import Any
 
@@ -10,7 +10,7 @@ from .database import get_db
 from .models import User, UserRole
 
 # Claves canonicas de permiso: una por cada modulo o funcion del portal.
-PERMISSION_KEYS: tuple[str, ...] = ("publicaciones", "grupos", "roles", "apis", "historial")
+PERMISSION_KEYS: tuple[str, ...] = ("publicaciones", "grupos", "roles", "apis", "ia", "historial")
 
 # Etiquetas historicas guardadas en la base de datos antes de las claves canonicas unificadas.
 LEGACY_PERMISSION_LABELS: dict[str, str] = {
@@ -27,6 +27,8 @@ LEGACY_PERMISSION_LABELS: dict[str, str] = {
     "control": "apis",
     "vista de estudiantes": "apis",
     "estudiantes": "apis",
+    "control de ia": "ia",
+    "inteligencia artificial": "ia",
     "historial de cambios": "historial",
     "auditoría": "historial",
     "auditoria": "historial",
@@ -52,6 +54,25 @@ def normalize_permissions(raw_values: Any) -> list[str]:
     return [key for key in PERMISSION_KEYS if key in found]
 
 
+def normalize_role_record_permissions(record: UserRole) -> list[str]:
+    """
+    Normaliza los permisos de un registro UserRole garantizando retrocompatibilidad:
+    los roles de administrador existentes que contengan los 4 modulos base pre-IA
+    ("publicaciones", "grupos", "roles", "apis") conservan automaticamente el permiso 'ia'
+    salvo que sus permisos ya hayan sido ajustados.
+    """
+    perms = normalize_permissions(record.permissions)
+    raw_list = record.permissions if isinstance(record.permissions, list) else []
+    raw_clean = {str(v or "").strip().lower() for v in raw_list}
+    if (
+        "ia" not in perms
+        and "ia" not in raw_clean
+        and {"publicaciones", "grupos", "roles", "apis"}.issubset(set(perms))
+    ):
+        perms = [key for key in PERMISSION_KEYS if key in (*perms, "ia")]
+    return perms
+
+
 def find_unknown_permissions(raw_values: list[str]) -> list[str]:
     """Permisos enviados por el cliente que no pertenecen al catalogo."""
     return [str(v) for v in raw_values if parse_permission(v) is None]
@@ -67,7 +88,7 @@ def effective_permissions(db: Session, user: User) -> list[str]:
     if clean_email:
         record = db.query(UserRole).filter(UserRole.email == clean_email).first()
         if record is not None:
-            return normalize_permissions(record.permissions)
+            return normalize_role_record_permissions(record)
 
     role = (user.role or "user").strip()
     if role == "admin":

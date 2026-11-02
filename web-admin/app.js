@@ -8,8 +8,9 @@
  */
 
 const STORAGE_KEY = "upa_access_token";
-const CANONICAL_PERMS = ["publicaciones", "grupos", "roles", "apis", "historial"];
-const MODULE_PERMS = ["publicaciones", "grupos", "roles", "apis"];
+const CANONICAL_PERMS = ["publicaciones", "grupos", "roles", "apis", "ia", "historial"];
+const MODULE_PERMS = ["publicaciones", "grupos", "roles", "apis", "ia"];
+const SETTINGS_PERMS = ["grupos", "roles", "apis", "ia"];
 
 const DOM_ELEMENTS = {
   viewLogin: document.getElementById("view-login"),
@@ -105,6 +106,9 @@ function normalizeUserPermissions(user) {
       apis: "apis",
       "diagnóstico de apis": "apis",
       "diagnostico de apis": "apis",
+      ia: "ia",
+      "control de ia": "ia",
+      "inteligencia artificial": "ia",
       historial: "historial",
       "historial de cambios": "historial",
       auditoría: "historial",
@@ -1320,7 +1324,7 @@ function renderAdminsTableRows(admins) {
   if (!tbody) return;
 
   if (!Array.isArray(admins) || admins.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-xs text-slate-400">No hay cuentas autorizadas.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-xs text-slate-400">No hay cuentas autorizadas.</td></tr>`;
     return;
   }
 
@@ -1765,7 +1769,7 @@ const ROUTE_CONFIG = {
     path: "/dashboard/ia",
     btnId: "nav-mod-ai",
     viewId: "view-ai",
-    perm: "apis",
+    perm: "ia",
   },
 };
 
@@ -1809,16 +1813,22 @@ function syncNavClasses(routeName) {
     const btn = document.getElementById(c.btnId);
     if (!btn) return;
     const isHidden = btn.classList.contains("hidden") && Array.isArray(allowedModulePerms);
+    const primaryClass = c.btnId === "nav-mod-publications" ? " sidebar-nav-primary" : "";
     btn.className =
-      "sidebar-nav-btn w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100" +
+      "sidebar-nav-btn" +
+      primaryClass +
+      " w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-slate-600 hover:text-slate-900 hover:bg-slate-100" +
       (isHidden ? " hidden" : "");
   });
 
   const activeBtn = document.getElementById(config.btnId);
   if (activeBtn) {
     const isHidden = activeBtn.classList.contains("hidden") && Array.isArray(allowedModulePerms);
+    const primaryClass = config.btnId === "nav-mod-publications" ? " sidebar-nav-primary" : "";
     activeBtn.className =
-      "sidebar-nav-btn is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs" +
+      "sidebar-nav-btn" +
+      primaryClass +
+      " is-active w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition text-left text-white bg-[#6c9339] shadow-2xs" +
       (isHidden ? " hidden" : "");
   }
 }
@@ -1843,6 +1853,16 @@ function applyUserPermissions(user, options = {}) {
   const sidebar = document.getElementById("sidebar-menu");
   if (sidebar) {
     sidebar.classList.toggle("hidden", !hasModulePerm);
+  }
+
+  const hasSettingsPerm = SETTINGS_PERMS.some((p) => perms.includes(p));
+  const settingsGroup = document.getElementById("sidebar-settings-group");
+  if (settingsGroup) {
+    settingsGroup.classList.toggle("hidden", !hasSettingsPerm);
+  }
+  const settingsDivider = document.getElementById("sidebar-settings-divider");
+  if (settingsDivider) {
+    settingsDivider.classList.toggle("hidden", !hasSettingsPerm || !perms.includes("publicaciones"));
   }
 
   Object.values(ROUTE_CONFIG).forEach((cfg) => {

@@ -104,12 +104,28 @@ def test_ai_config_permissions_and_persistence(monkeypatch):
     assert client.get("/api/ai/config", headers=student_headers).status_code == 403
     assert client.post("/api/ai/config", json={"api_key": "AIzaSyKey1234567890"}, headers=student_headers).status_code == 403
 
-    # Cuenta con permiso 'publicaciones' pero SIN 'apis' (incluso con role='admin' en User) -> puede leer GET (200), pero NO modificar ni probar (403)
+    # Cuenta con permiso 'publicaciones' pero SIN 'ia' ni 'apis' (incluso con role='admin' en User) -> puede leer GET (200), pero NO modificar ni probar (403)
     pub_only_headers = auth(PUB_ONLY_ID, PUB_ONLY_EMAIL, "admin")
     assert client.get("/api/ai/config", headers=pub_only_headers).status_code == 200
     assert client.post("/api/ai/config", json={"api_key": "AIzaSyKey1234567890"}, headers=pub_only_headers).status_code == 403
     assert client.post("/api/ai/system-prompt", json={"system_prompt_autocomplete": "Test"}, headers=pub_only_headers).status_code == 403
     assert client.post("/api/ai/test-connection", headers=pub_only_headers).status_code == 403
+
+    # Cuenta con permiso explícito 'ia' (sin 'apis') puede consultar y guardar configuración de IA (200)
+    db = TestingSessionLocal()
+    db.add(User(id=5, email="gestor.ia@upa.edu.py", full_name="Gestor IA", role="editor"))
+    db.add(UserRole(id=4, email="gestor.ia@upa.edu.py", name="Gestor IA", permissions=["ia"], is_primary=False))
+    db.commit()
+    db.close()
+    ia_only_headers = auth(5, "gestor.ia@upa.edu.py", "editor")
+    assert client.get("/api/ai/config", headers=ia_only_headers).status_code == 200
+    ia_save = client.post(
+        "/api/ai/config",
+        json={"api_key": "AIzaOperatorWithIaPerm12345"},
+        headers=ia_only_headers,
+    )
+    assert ia_save.status_code == 200
+    assert ia_save.json()["masked_key"] == "AIza********2345"
 
     # Editor con permiso 'apis' (role='editor', sin rol admin) PUEDE consultar y gestionar la configuracion de IA (200)
     editor_headers = auth(EDITOR_ID, EDITOR_EMAIL, "editor")
