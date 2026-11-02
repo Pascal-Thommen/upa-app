@@ -311,29 +311,36 @@ def test_event_rsvp_register_unregister_idempotency_and_errors():
         "Authorization": f"Bearer {create_access_token({'sub': '63', 'email': 'externo.admin@upa.edu.py', 'role': 'user'})}"
     }
 
-    # 1. Alumno 1 se inscribe (POST /api/events/700/register)
+    h_admin = {
+        "Authorization": f"Bearer {create_access_token({'sub': '1', 'email': 'test@upa.edu.py', 'role': 'admin'})}"
+    }
+
+    # 1. Alumno 1 se inscribe (POST /api/events/700/register); registered_count neutralizado por privacidad
     reg1 = client.post("/api/events/700/register", headers=h1)
     assert reg1.status_code == 200
     assert reg1.json()["is_registered"] is True
-    assert reg1.json()["registered_count"] == 1
+    assert reg1.json()["registered_count"] == 0
 
-    # 2. Idempotencia: Alumno 1 vuelve a inscribirse -> sigue en 1
+    # 2. Idempotencia: Alumno 1 vuelve a inscribirse -> mantiene inscripcion sin duplicar
     reg1_dup = client.post("/api/events/700/register", headers=h1)
     assert reg1_dup.status_code == 200
     assert reg1_dup.json()["is_registered"] is True
-    assert reg1_dup.json()["registered_count"] == 1
+    assert reg1_dup.json()["registered_count"] == 0
+    assert client.get("/api/publications/700/registrations", headers=h_admin).json()["attending_count"] == 1
 
-    # 3. Alumno 2 se inscribe -> registered_count sube a 2
+    # 3. Alumno 2 se inscribe -> attending_count administrativo sube a 2, pero estudiante ve registered_count == 0
     reg2 = client.post("/api/events/700/register", headers=h2)
     assert reg2.status_code == 200
     assert reg2.json()["is_registered"] is True
-    assert reg2.json()["registered_count"] == 2
+    assert reg2.json()["registered_count"] == 0
+    assert client.get("/api/publications/700/registrations", headers=h_admin).json()["attending_count"] == 2
 
     # 4. Alumno 1 cancela su inscripcion (DELETE /api/events/700/register)
     unreg1 = client.delete("/api/events/700/register", headers=h1)
     assert unreg1.status_code == 200
     assert unreg1.json()["is_registered"] is False
-    assert unreg1.json()["registered_count"] == 1
+    assert unreg1.json()["registered_count"] == 0
+    assert client.get("/api/publications/700/registrations", headers=h_admin).json()["attending_count"] == 1
 
     # 5. Cancelar sin inscripcion activa falla de forma segura con 400 Bad Request
     unreg1_dup = client.delete("/api/events/700/register", headers=h1)

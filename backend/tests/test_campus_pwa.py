@@ -257,7 +257,7 @@ def test_feed_includes_event_registration_status_for_user(isolated_db):
         after = client.get("/api/v1/feed", headers={"Authorization": f"Bearer {admin_token}"}).json()["posts"]
         item = next(p for p in after if p["id"] == event_id)
         assert item["is_registered"] is True
-        assert item["registered_count"] == 1
+        assert item["registered_count"] == 0
     finally:
         client.delete(f"/api/publications/{event_id}", headers={"Authorization": f"Bearer {admin_token}"})
 

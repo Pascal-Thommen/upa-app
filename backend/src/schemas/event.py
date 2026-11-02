@@ -38,7 +38,7 @@ class EventResponse(BaseModel):
                 "permalink": "",
                 "created_at": "2026-10-21T10:00:00Z",
                 "is_registered": False,
-                "registered_count": 12,
+                "registered_count": 0,
             }
         },
     )
@@ -96,7 +96,6 @@ class EventResponse(BaseModel):
 
         raw_regs = getattr(post, "registrations", None) or []
         attending_regs = [r for r in raw_regs if (getattr(r, "status", "attending") or "attending") == "attending"]
-        reg_count = len(attending_regs)
         is_reg = False
         if current_user_id is not None:
             is_reg = any(int(getattr(r, "user_id", 0) or 0) == int(current_user_id) for r in attending_regs)
@@ -123,7 +122,7 @@ class EventResponse(BaseModel):
             reminders=effective_reminders(post),
             created_at=created,
             is_registered=is_reg,
-            registered_count=reg_count,
+            registered_count=0,
         )
 
 

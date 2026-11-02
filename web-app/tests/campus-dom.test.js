@@ -433,12 +433,14 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     const check1 = await api("/api/v1/agenda", student);
     const ev1 = check1.body.events.find((e) => e.id === seeded.eventId);
     assert.equal(ev1.is_registered, true);
+    assert.equal(ev1.registered_count, 0, "El backend debe neutralizar registered_count a 0 para estudiantes");
 
     await app.click(updatedBtn);
     assert.equal(app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent, "Inscripción");
     const check2 = await api("/api/v1/agenda", student);
     const ev2 = check2.body.events.find((e) => e.id === seeded.eventId);
     assert.equal(ev2.is_registered, false);
+    assert.equal(ev2.registered_count, 0);
 
     // Detalle a pantalla completa, badge Campus flotante con "U" verde y enlace a la fuente original
     const openNews = app.document.querySelector(`[data-post-id="${seeded.newsId}"]`);
@@ -584,6 +586,11 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     const eventItem = highlighted;
     assert.ok(eventItem.querySelector(".badge.badge-campus.badge-event"), "El evento en Agenda debe mostrar el badge Campus-Event");
     assert.ok(eventItem.querySelector(".badge.badge-campus svg.upa-u-glyph"), "El badge del evento en Agenda debe incluir el icono UPA");
+    assert.ok(
+      eventItem.querySelector(".badge.badge-registration-open"),
+      "El evento con inscripcion abierta en Agenda debe mostrar el badge compacto Inscripción abierta",
+    );
+    assert.equal(eventItem.querySelector(".badge.badge-registration-open").textContent, "Inscripción abierta");
     assert.match(eventItem.querySelector(".agenda-room").textContent, /Auditorio Edificio 1/);
     assert.equal(eventItem.querySelector(".agenda-attendees"), null, "No debe mostrar contador de inscritos en el item de Agenda");
 
@@ -616,10 +623,43 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     // Cancelar inscripcion desde el mismo overlay de Agenda y verificar sincronizacion inversa
     await app.click(app.$("detail-register"));
     assert.equal(app.$("detail-register").textContent, "Inscripción");
+    assert.equal(app.$("detail-event-status").textContent, "Inscripción abierta");
     assert.equal(
       app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent,
       "Inscripción",
     );
+    assert.ok(
+      app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"] .badge-registration-open`),
+      "Tras cancelar la inscripcion, el item de Agenda vuelve a mostrar el badge Inscripción abierta",
+    );
+
+    // Usuario no autenticado: Inicio y Detalle guian limpiamente al login para inscribirse
+    const guestEventApp = await openCampus();
+    try {
+      guestEventApp.window.UpaCampus.openDetail({
+        postId: seeded.eventId,
+        eventId: seeded.eventId,
+        kind: "event",
+        origin: "campus",
+        isEvent: true,
+        kindLabel: "Campus",
+        title: "Foro de Ingeniería Empresarial 2026",
+        text: "Panel con egresados",
+        eventStart: new Date(Date.now() + 86400000).toISOString(),
+        location: "Auditorio Edificio 1",
+        hasRegistration: true,
+        isRegistered: false,
+        count: 0,
+        ended: false,
+      });
+      const guestDetailLogin = guestEventApp.$("detail-register");
+      assert.ok(guestDetailLogin, "El detalle para invitados debe incluir la accion de login para inscribirse");
+      assert.equal(guestDetailLogin.tagName.toLowerCase(), "a");
+      assert.equal(guestDetailLogin.getAttribute("href"), "/api/auth/login-google?return_to=campus");
+      assert.equal(guestDetailLogin.textContent, "Inicia sesión para inscribirte");
+    } finally {
+      guestEventApp.close();
+    }
 
     app.window.history.back();
     await new Promise((r) => setTimeout(r, 20));
