@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>UPA Campus &bull; Portal Institucional</title>
+  <link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/dashboard/favicon-32.png">
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -37,6 +39,9 @@
   <style>
     html.has-auth #view-login { display: none !important; }
     html.has-auth #view-dashboard { display: block !important; }
+    html.is-restricted #view-login { display: none !important; }
+    html.is-restricted #view-dashboard { display: none !important; }
+    html.is-restricted #view-restricted { display: block !important; }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
@@ -57,29 +62,35 @@
         </div>
       </div>
 
-      <!-- Acciones de sesión y menú compacto de perfil -->
-      <div id="auth-actions" class="hidden flex items-center gap-2.5">
-        <button id="btn-refresh" type="button" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          <span>Recargar datos</span>
-        </button>
+      <!-- Acciones de navegación y menú compacto de perfil -->
+      <div class="flex items-center gap-2.5">
+        <a href="/" id="link-campus-pwa" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#5a7b2e] border border-emerald-200 font-semibold rounded-xl text-xs transition inline-flex items-center gap-1.5">
+          <span>Ver Campus PWA ↗</span>
+        </a>
 
-        <div class="relative" id="user-menu-wrapper">
-          <button id="user-menu-btn" type="button" aria-expanded="false" aria-haspopup="true" class="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-full border border-slate-200 hover:border-slate-300 bg-white transition">
-            <span id="user-avatar" class="w-7 h-7 rounded-full bg-[#6c9339] text-white font-bold text-[11px] flex items-center justify-center">U</span>
-            <span id="user-full-name" class="text-xs font-semibold text-slate-800 hidden sm:inline max-w-[150px] truncate">Usuario</span>
-            <span id="user-role-badge" class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-700 uppercase">Rol</span>
-            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        <div id="auth-actions" class="hidden flex items-center gap-2.5">
+          <button id="btn-refresh" type="button" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            <span>Recargar datos</span>
           </button>
 
-          <div id="user-profile-dropdown" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-lg border border-slate-200 p-3.5 z-50 space-y-2.5">
-            <div class="pb-2.5 border-b border-slate-100">
-              <p id="user-email" class="text-xs font-mono text-slate-700 truncate">usuario@upa.edu.py</p>
-              <p id="user-classroom-sync-badge" class="text-[11px] text-slate-500 mt-1">Classroom: Sin configurar</p>
-            </div>
-            <button id="btn-logout" type="button" class="w-full px-3 py-1.5 text-left text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition">
-              Cerrar sesión
+          <div class="relative" id="user-menu-wrapper">
+            <button id="user-menu-btn" type="button" aria-expanded="false" aria-haspopup="true" class="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-full border border-slate-200 hover:border-slate-300 bg-white transition">
+              <span id="user-avatar" class="w-7 h-7 rounded-full bg-[#6c9339] text-white font-bold text-[11px] flex items-center justify-center">U</span>
+              <span id="user-full-name" class="text-xs font-semibold text-slate-800 hidden sm:inline max-w-[150px] truncate">Usuario</span>
+              <span id="user-role-badge" class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-700 uppercase">Rol</span>
+              <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </button>
+
+            <div id="user-profile-dropdown" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-lg border border-slate-200 p-3.5 z-50 space-y-2.5">
+              <div class="pb-2.5 border-b border-slate-100">
+                <p id="user-email" class="text-xs font-mono text-slate-700 truncate">usuario@upa.edu.py</p>
+                <p id="user-classroom-sync-badge" class="text-[11px] text-slate-500 mt-1">Classroom: Sin configurar</p>
+              </div>
+              <button id="btn-logout" type="button" class="w-full px-3 py-1.5 text-left text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition">
+                Cerrar sesión
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -146,6 +157,28 @@
 
         <div class="mt-8 text-center text-[11px] text-slate-400">
           Universidad Paraguayo Alemana &bull; Campus San Lorenzo
+        </div>
+      </div>
+    </section>
+
+    <!-- Vista de Aviso para Cuentas sin Permisos Administrativos -->
+    <section id="view-restricted" class="hidden max-w-md mx-auto my-12 bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden" aria-labelledby="restricted-title">
+      <div class="p-8 sm:p-10 text-center space-y-5">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+        </div>
+        <div class="space-y-2">
+          <h2 id="restricted-title" class="text-xl font-bold text-slate-900 tracking-tight">Acceso Restringido</h2>
+          <p id="restricted-message" class="text-xs text-slate-600 leading-relaxed">
+            Este panel administrativo está reservado para el equipo autorizado de redacción y gestión de la Universidad Paraguayo Alemana.
+          </p>
+        </div>
+        <div class="pt-2 flex flex-col gap-2.5">
+          <a href="/" id="btn-back-campus" class="ed-btn ed-btn-primary w-full justify-center">
+            Volver a UPA Campus
+          </a>
         </div>
       </div>
     </section>

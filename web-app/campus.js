@@ -275,7 +275,6 @@
     const result = Core.parseAuthFragment(win.location.hash);
     if (result.token) {
       local.setItem(TOKEN_KEY, result.token);
-      session.setItem(FORCE_APP_KEY, "1");
     }
     if (result.token || result.error || win.location.hash) {
       try {
@@ -517,20 +516,57 @@
     return Core.formatPublished(post.published_at);
   }
 
+  function playIcon(size) {
+    const px = String(size || 20);
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", px);
+    svg.setAttribute("height", px);
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("class", "play-glyph");
+    const path = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M8 5.5v13l11-6.5z");
+    path.setAttribute("fill", "currentColor");
+    svg.appendChild(path);
+    return svg;
+  }
+
   function mediaNode(post, className, controls) {
     const url = Core.safeUrl(post.media_url || post.image_url);
     if (!url && !Core.isVideoMedia(post)) return null;
     if (Core.isVideoMedia(post)) {
       const poster = Core.videoPosterUrl(post);
-      return h("video", {
-        class: className,
-        src: url || null,
-        poster,
-        muted: true,
-        playsinline: true,
-        preload: "metadata",
-        controls: controls ? true : null,
-      });
+      if (Core.hasPlayableVideoStream(post)) {
+        return h("video", {
+          class: className,
+          src: Core.safeUrl(post.media_url) || null,
+          poster,
+          muted: true,
+          playsinline: true,
+          preload: "metadata",
+          controls: controls ? true : null,
+        });
+      }
+      const extUrl = Core.videoExternalUrl(post);
+      const badge = h("span", { class: "video-play-badge", "aria-hidden": "true" }, playIcon(18));
+      const img = h("img", { class: className, src: poster, alt: "", loading: "lazy", decoding: "async" });
+      if (extUrl) {
+        const link = h(
+          "a",
+          {
+            class: "video-preview-link",
+            href: extUrl,
+            target: "_blank",
+            rel: "noopener noreferrer",
+            "aria-label": "Ver video en Instagram",
+          },
+          img,
+          badge,
+        );
+        link.addEventListener("click", (ev) => ev.stopPropagation());
+        return link;
+      }
+      return h("div", { class: "video-preview-link" }, img, badge);
     }
     return h("img", { class: className, src: url, alt: "", loading: "lazy", decoding: "async" });
   }
@@ -590,9 +626,7 @@
     const actions = urgent ? null : registrationButton(post);
     const article = h("article", { class: `card ${urgent ? "card-urgent" : ""}`.trim(), "data-kind": kind, "data-origin": origin }, open);
     if (actions) {
-      article.append(
-        h("div", { class: "card-actions" }, actions, post.registered_count > 0 ? h("span", { class: "count", text: `${post.registered_count} inscritos` }) : null),
-      );
+      article.append(h("div", { class: "card-actions" }, actions));
     }
     return article;
   }
@@ -745,10 +779,10 @@
       statusText = "Evento finalizado";
       statusClass += " detail-status-ended";
     } else if (d.isRegistered) {
-      statusText = d.count > 0 ? `Inscrito · ${d.count} inscritos` : "Inscrito";
+      statusText = "Inscrito";
       statusClass += " detail-status-registered";
     } else if (d.hasRegistration || d.eventId) {
-      statusText = d.count > 0 ? `Inscripción abierta · ${d.count} inscritos` : "Inscripción abierta";
+      statusText = "Inscripción abierta";
     }
 
     card.append(
@@ -798,7 +832,6 @@
       });
       button.addEventListener("click", () => track(toggleRegistration(regEventId, d.isRegistered, button)));
       box.append(button);
-      if (d.count > 0) box.append(h("p", { class: "muted small", text: `${d.count} personas inscritas` }));
     }
     const links = Core.resolveDetailLinks(d);
     for (const item of links) {
@@ -921,10 +954,7 @@
     } else {
       const timeText = entry.timeRange || entry.timeLabel;
       const roomText = entry.place || raw.location || "Campus UPA";
-      const regCount =
-        entry.registeredCount !== undefined ? entry.registeredCount : Number(raw.registered_count) || 0;
       const isReg = Boolean(entry.isRegistered !== undefined ? entry.isRegistered : raw.is_registered);
-      const attendeesText = `${regCount} inscritos`;
       infoNode = h(
         "div",
         { class: "agenda-info" },
@@ -941,8 +971,6 @@
           timeText ? h("span", { class: "agenda-time", text: `${timeText} hs` }) : null,
           timeText ? " · " : null,
           h("span", { class: "agenda-room", text: roomText }),
-          " · ",
-          h("span", { class: "agenda-attendees", text: attendeesText }),
         ),
       );
     }
@@ -1334,6 +1362,8 @@
   function mountAppLayout(framed) {
     const appEl = $("app");
     const screen = $("phone-screen");
+    const splash = $("pwa-splash");
+    if (splash) splash.hidden = true;
     if (framed && screen) {
       if (appEl.parentElement !== screen) screen.appendChild(appEl);
       appEl.classList.add("app-framed");

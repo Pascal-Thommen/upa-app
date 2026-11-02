@@ -45,6 +45,9 @@
   };
 
   function friendlyError(error) {
+    if (error && typeof error.message === "string" && error.message.trim() && error.kind === "validation") {
+      return error.message;
+    }
     if (error && error.kind && ERROR_MESSAGES[error.kind]) return ERROR_MESSAGES[error.kind];
     return ERROR_MESSAGES.http;
   }
@@ -98,6 +101,7 @@
         if (token) onUnauthorized();
         throw new ApiError("unauthorized", 401, ERROR_MESSAGES.unauthorized);
       }
+      if (response.status === 400) throw new ApiError("validation", 400, await readDetail(response, "http"));
       if (response.status === 403) throw new ApiError("forbidden", 403, await readDetail(response, "forbidden"));
       if (response.status === 404) throw new ApiError("notfound", 404, await readDetail(response, "notfound"));
       if (response.status >= 500) throw new ApiError("server", response.status, ERROR_MESSAGES.server);
@@ -448,6 +452,11 @@
     return /\.(mp4|webm|mov)(\?|#|$)/i.test(String(url || "").trim());
   }
 
+  function hasPlayableVideoStream(post) {
+    if (!post) return false;
+    return isVideoUrl(safeUrl(post.media_url));
+  }
+
   function isVideoMedia(post) {
     if (!post) return false;
     if (/VIDEO/i.test(String(post.media_type || ""))) return true;
@@ -461,6 +470,11 @@
     const mediaCandidate = safeUrl(post.media_url);
     if (mediaCandidate && !isVideoUrl(mediaCandidate)) return mediaCandidate;
     return DEFAULT_VIDEO_POSTER;
+  }
+
+  function videoExternalUrl(post) {
+    if (!post) return "";
+    return safeUrl(post.permalink || post.link_url);
   }
 
   function postKind(post) {
@@ -801,7 +815,7 @@
       if (entry.kind === "deadline" && prefs.deadlines && !seenSet.has(entry.key)) {
         out.push({ id: entry.key, title: "Tarea próxima a vencer", body: `${entry.title} vence hoy a las ${entry.timeLabel}.` });
       }
-      if (entry.kind === "event" && prefs.events && entry.raw.is_registered && !seenSet.has(entry.key)) {
+      if (entry.kind === "event" && prefs.events && Boolean(entry.isRegistered !== undefined ? entry.isRegistered : entry.raw && entry.raw.is_registered) && !seenSet.has(entry.key)) {
         out.push({ id: entry.key, title: "Tu evento comienza pronto", body: `${entry.title} a las ${entry.timeLabel}.` });
       }
     }
@@ -921,8 +935,10 @@
     safeUrl,
     DEFAULT_VIDEO_POSTER,
     isVideoUrl,
+    hasPlayableVideoStream,
     isVideoMedia,
     videoPosterUrl,
+    videoExternalUrl,
     postKind,
     postOrigin,
     originLabel,

@@ -207,6 +207,45 @@ test("preparacion: creacion de publicaciones reales (noticia, fijada, urgente y 
   });
   assert.equal(videoNoThumb.status, 201);
   seeded.videoNoThumbId = videoNoThumb.body.id;
+
+  const reelWebp = await api("/api/publications", admin, {
+    method: "POST",
+    json: {
+      title: "Reel de Instagram con vista previa WebP sin stream MP4",
+      caption: "Mirá el reel completo en Instagram.",
+      content: "Resumen de actividades del campus.",
+      media_url: "https://upa.edu.py/static/images/reel-preview.webp",
+      image_url: "https://upa.edu.py/static/images/reel-preview.webp",
+      media_type: "VIDEO",
+      permalink: "https://www.instagram.com/upalemana/reel/CwebpReel99/",
+      is_news: true,
+      is_event: false,
+      is_pinned: false,
+      target_groups: ["ALL"],
+    },
+  });
+  assert.equal(reelWebp.status, 201);
+  seeded.reelWebpId = reelWebp.body.id;
+
+  const nextMonthStart = new Date(Date.now() + 45 * 24 * 3600 * 1000);
+  nextMonthStart.setUTCHours(15, 0, 0, 0);
+  seeded.futureNextMonthTitle = "Congreso Internacional UPA Mes Siguiente";
+  const futureEvent = await api("/api/publications", admin, {
+    method: "POST",
+    json: {
+      title: seeded.futureNextMonthTitle,
+      caption: "Evento en el mes siguiente.",
+      content: "Visible directamente en la línea de tiempo sin cambiar de mes.",
+      is_news: false,
+      is_event: true,
+      event_start: nextMonthStart.toISOString(),
+      location: "Aula Magna",
+      has_registration: true,
+      target_groups: ["ALL"],
+    },
+  });
+  assert.equal(futureEvent.status, 201);
+  seeded.futureEventId = futureEvent.body.id;
 });
 
 test("Escritorio: muestra landing con telefono interactivo real en marco negro junto al codigo QR dinamico", live, async () => {
@@ -268,6 +307,21 @@ test("Escritorio: muestra landing con telefono interactivo real en marco negro j
       }
     }
     assert.equal(jsQR(rgba, side, side).data, `${BASE_URL}/`);
+
+    // Tras Google OAuth login en escritorio (/#token=...), regresa a la landing con el marco de telefono y actualiza el estado de sesion adentro
+    const studentToken = TEST_TOKENS["ana.gomez@upa.edu.py"];
+    const authedDesktop = await openCampus({ userAgent: DESKTOP_UA, url: `/#token=${studentToken}` });
+    try {
+      assert.equal(authedDesktop.$("landing").hidden, false, "En escritorio tras login debe permanecer visible la landing con QR");
+      assert.equal(authedDesktop.$("app").classList.contains("app-framed"), true, "En escritorio tras login la app debe seguir dentro del marco de telefono");
+      assert.equal(authedDesktop.document.querySelector(".phone-mockup .phone-frame #phone-screen #app"), authedDesktop.$("app"));
+      assert.equal(authedDesktop.$("login-prompt").hidden, true, "El estado de login debe actualizarse dentro del marco");
+      await authedDesktop.click(authedDesktop.document.querySelector('[data-tab="perfil"]'));
+      assert.equal(authedDesktop.$("profile-user").hidden, false);
+      assert.equal(authedDesktop.$("profile-name").textContent, "Ana Gomez");
+    } finally {
+      authedDesktop.close();
+    }
   } finally {
     app.close();
   }
@@ -460,6 +514,20 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
       "/campus/icons/icon-512.png",
       "Los videos sin thumbnail deben utilizar la imagen de respaldo estable en poster",
     );
+
+    // Reel de Instagram con imagen WebP (sin stream MP4 reproducible): muestra imagen + Play-Badge que abre Instagram
+    const webpVideoCardBtn = app.document.querySelector(`[data-post-id="${seeded.reelWebpId}"]`);
+    assert.ok(webpVideoCardBtn, "Debe existir la tarjeta de Reel con imagen WebP");
+    assert.equal(webpVideoCardBtn.querySelector("video"), null, "No debe renderizar <video> roto cuando media_url es WebP");
+    const previewLink = webpVideoCardBtn.querySelector("a.video-preview-link");
+    assert.ok(previewLink, "Debe renderizar un enlace con vista previa y Play-Badge hacia Instagram");
+    assert.equal(previewLink.getAttribute("href"), "https://www.instagram.com/upalemana/reel/CwebpReel99/");
+    assert.equal(previewLink.getAttribute("target"), "_blank");
+    assert.ok(previewLink.querySelector(".video-play-badge svg.play-glyph"), "Debe incluir el Play-Badge discreto");
+    assert.equal(previewLink.querySelector("img.card-media").getAttribute("src"), "https://upa.edu.py/static/images/reel-preview.webp");
+
+    // Privacidad: el numero de inscritos (registered_count) no debe ser visible en ninguna parte del feed para estudiantes
+    assert.equal(/inscritos|personas inscritas/i.test(app.$("feed-list").textContent), false);
   } finally {
     app.close();
   }
@@ -472,6 +540,16 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     await app.click(app.document.querySelector('[data-tab="agenda"]'));
     assert.equal(app.$("view-agenda").hidden, false);
     assert.match(app.$("agenda-list").textContent, /Foro de Ingeniería Empresarial 2026/);
+    assert.match(
+      app.$("agenda-list").textContent,
+      new RegExp(seeded.futureNextMonthTitle),
+      "Todos los eventos futuros (incluidos meses siguientes) deben mostrarse directamente en la linea de tiempo sin cambiar de mes",
+    );
+    assert.equal(
+      /inscritos|personas inscritas/i.test(app.$("agenda-list").textContent),
+      false,
+      "La cantidad de participantes inscritos no debe mostrarse en la Agenda por privacidad",
+    );
 
     // Navegar en el calendario hasta el mes del evento si cae en el mes siguiente
     const targetMonth = Number(seeded.eventDayKey.slice(5, 7)) - 1;
@@ -503,7 +581,7 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     assert.ok(eventItem.querySelector(".badge.badge-campus.badge-event"), "El evento en Agenda debe mostrar el badge Campus-Event");
     assert.ok(eventItem.querySelector(".badge.badge-campus svg.upa-u-glyph"), "El badge del evento en Agenda debe incluir el icono UPA");
     assert.match(eventItem.querySelector(".agenda-room").textContent, /Auditorio Edificio 1/);
-    assert.match(eventItem.querySelector(".agenda-attendees").textContent, /0 inscritos/);
+    assert.equal(eventItem.querySelector(".agenda-attendees"), null, "No debe mostrar contador de inscritos en el item de Agenda");
 
     await app.click(highlighted.querySelector(".agenda-open"));
     assert.equal(app.$("detail").hidden, false);
@@ -519,7 +597,8 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     // Inscripcion RSVP directamente desde el overlay de Agenda y sincronizacion con el feed de Inicio
     await app.click(detailRegBtn);
     assert.equal(app.$("detail-register").textContent, "Cancelar inscripción");
-    assert.match(app.$("detail-event-status").textContent, /Inscrito · 1 inscritos/);
+    assert.equal(app.$("detail-event-status").textContent, "Inscrito");
+    assert.equal(/inscritos|personas inscritas/i.test(app.$("detail").textContent), false, "El detalle no debe exponer el numero de inscritos");
     assert.equal(
       app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent,
       "Cancelar inscripción",
@@ -528,10 +607,6 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     assert.ok(
       app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"] .badge-registered`),
       "El item de la Agenda debe mostrar el badge Inscrito tras registrarse en el detalle",
-    );
-    assert.match(
-      app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"] .agenda-attendees`).textContent,
-      /1 inscritos/,
     );
 
     // Cancelar inscripcion desde el mismo overlay de Agenda y verificar sincronizacion inversa

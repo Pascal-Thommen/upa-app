@@ -213,3 +213,12 @@ body {
   padding: 0.25rem 0.875rem 0.125rem;
   user-select: none;
 }
+
+/* Enlace directo a Campus PWA y tarjeta de Acceso Restringido */
+#link-campus-pwa {
+  text-decoration: none;
+}
+
+#view-restricted {
+  transition: opacity 0.15s ease-in-out;
+}

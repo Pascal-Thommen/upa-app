@@ -379,12 +379,14 @@ test("participantes: inscripciones reales de estudiantes aparecen en la tabla de
   const html = Core.renderParticipantsTable(data);
   assert.ok(html.includes("ana.gomez@upa.edu.py") && html.includes("Luis Benitez") && html.includes("2 inscritos"));
 
-  // Baja de una inscripcion: la tabla se actualiza
+  // Baja de una inscripcion: pasa a estado "declined" para detener recordatorios y actualizar metricas
   const unregister = await rawFetch(`/api/events/${ctx.eventId}/register`, sessions.student2.access_token, "DELETE");
   assert.equal(unregister.status, 200);
   const after = await ctx.admin.getPublicationRegistrations(ctx.eventId);
   assert.equal(after.attending_count, 1);
-  assert.deepEqual(after.registrations.map((r) => r.email), ["ana.gomez@upa.edu.py"]);
+  assert.equal(after.declined_count, 1);
+  const luisAfter = after.registrations.find((r) => r.email === "luis.benitez@upa.edu.py");
+  assert.equal(luisAfter.status, "declined");
 });
 
 test("eventos: editar horario y lugar mantiene las inscripciones", live, async () => {

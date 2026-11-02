@@ -14,6 +14,7 @@ const SETTINGS_PERMS = ["grupos", "roles", "apis", "ia"];
 
 const DOM_ELEMENTS = {
   viewLogin: document.getElementById("view-login"),
+  viewRestricted: document.getElementById("view-restricted"),
   viewDashboard: document.getElementById("view-dashboard"),
   formLogin: document.getElementById("form-login"),
   inputToken: document.getElementById("input-token"),
@@ -210,14 +211,28 @@ function showModuleNotice(elementId, type, message) {
 
 function showLoginView() {
   if (window.UpaCockpit) window.UpaCockpit.reset();
+  document.documentElement.classList.remove("is-restricted");
   if (DOM_ELEMENTS.viewLogin) DOM_ELEMENTS.viewLogin.classList.remove("hidden");
+  if (DOM_ELEMENTS.viewRestricted) DOM_ELEMENTS.viewRestricted.classList.add("hidden");
   if (DOM_ELEMENTS.viewDashboard) DOM_ELEMENTS.viewDashboard.classList.add("hidden");
   if (DOM_ELEMENTS.authActions) DOM_ELEMENTS.authActions.classList.add("hidden");
 }
 
+function showRestrictedView(message) {
+  if (window.UpaCockpit) window.UpaCockpit.reset();
+  document.documentElement.classList.add("is-restricted");
+  const msgEl = document.getElementById("restricted-message");
+  if (msgEl && message) msgEl.textContent = message;
+  if (DOM_ELEMENTS.viewLogin) DOM_ELEMENTS.viewLogin.classList.add("hidden");
+  if (DOM_ELEMENTS.viewDashboard) DOM_ELEMENTS.viewDashboard.classList.add("hidden");
+  if (DOM_ELEMENTS.viewRestricted) DOM_ELEMENTS.viewRestricted.classList.remove("hidden");
+}
+
 function showDashboardView() {
   document.documentElement.classList.add("has-auth");
+  document.documentElement.classList.remove("is-restricted");
   if (DOM_ELEMENTS.viewLogin) DOM_ELEMENTS.viewLogin.classList.add("hidden");
+  if (DOM_ELEMENTS.viewRestricted) DOM_ELEMENTS.viewRestricted.classList.add("hidden");
   if (DOM_ELEMENTS.viewDashboard) DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
   if (DOM_ELEMENTS.authActions) DOM_ELEMENTS.authActions.classList.remove("hidden");
 }
@@ -761,6 +776,10 @@ async function refreshDashboard() {
   const [, user] = await Promise.all([checkHealth(), loadUserProfile({ deferRouteLoad: true })]);
   if (user) {
     const perms = normalizeUserPermissions(user);
+    const hasModulePerm = MODULE_PERMS.some((p) => perms.includes(p));
+    if (!hasModulePerm) {
+      return;
+    }
     const routeTask =
       window.UpaRouter && typeof window.UpaRouter.reapplyCurrentRoute === "function"
         ? Promise.resolve(window.UpaRouter.reapplyCurrentRoute())
@@ -805,7 +824,9 @@ window.handleGoogleCredentialResponse = async function (response) {
     }
     if (res.status === 403) {
       const err = await res.json().catch(() => ({}));
-      showLoginAlert(err.detail || "Acceso restringido a cuentas @upa.edu.py.", "error");
+      const msg = err.detail || "Acceso restringido a cuentas @upa.edu.py.";
+      showLoginAlert(msg, "error");
+      showRestrictedView(msg);
       return;
     }
     const errText = await res.text();
@@ -1866,6 +1887,20 @@ function applyUserPermissions(user, options = {}) {
     sidebar.classList.toggle("hidden", !hasModulePerm);
   }
 
+  if (!hasModulePerm) {
+    showRestrictedView();
+    if (currentActiveRoute !== "apis") {
+      applyRoute("apis", { updateUrl: true, replace: true, skipDataLoad: Boolean(options.skipDataLoad) });
+    }
+    return;
+  }
+
+  if (DOM_ELEMENTS.viewRestricted) DOM_ELEMENTS.viewRestricted.classList.add("hidden");
+  document.documentElement.classList.remove("is-restricted");
+  if (state.currentUser && DOM_ELEMENTS.viewDashboard) {
+    DOM_ELEMENTS.viewDashboard.classList.remove("hidden");
+  }
+
   const hasSettingsPerm = SETTINGS_PERMS.some((p) => perms.includes(p));
   const settingsGroup = document.getElementById("sidebar-settings-group");
   if (settingsGroup) {
@@ -1888,13 +1923,6 @@ function applyUserPermissions(user, options = {}) {
   const hasApisPerm = perms.includes("apis");
   if (apisOverview) apisOverview.classList.toggle("hidden", !hasApisPerm);
   if (apisJsonDetails) apisJsonDetails.classList.toggle("hidden", !hasApisPerm);
-
-  if (!hasModulePerm) {
-    if (currentActiveRoute !== "apis") {
-      applyRoute("apis", { updateUrl: true, replace: true, skipDataLoad: Boolean(options.skipDataLoad) });
-    }
-    return;
-  }
 
   const currentCfg = ROUTE_CONFIG[currentActiveRoute];
   if (!currentCfg || !perms.includes(currentCfg.perm)) {
@@ -2329,6 +2357,9 @@ function init() {
 
   if (authError) {
     showLoginAlert(translateOAuthError(authError), "error");
+    if (authError === "forbidden_domain" || authError === "access_denied") {
+      showRestrictedView(translateOAuthError(authError));
+    }
   }
 
   if (tokenFromUrl || authError) {
@@ -2440,7 +2471,11 @@ function init() {
   } else {
     checkHealth();
     document.documentElement.classList.remove("has-auth");
-    showLoginView();
+    if (authError === "forbidden_domain" || authError === "access_denied") {
+      showRestrictedView(translateOAuthError(authError));
+    } else {
+      showLoginView();
+    }
   }
 }
 
