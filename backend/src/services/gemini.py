@@ -632,6 +632,7 @@ def _build_autocomplete_prompt(
         "Regla estricta para fin del evento: event_end es estrictamente opcional y debe corresponder a una "
         "hora en el mismo día del inicio (sistema 24h HH:mm). Si la hora de finalización no se menciona "
         "explícitamente en el texto o afiche, NO la inventes y omítela o devuélvela vacía.\n"
+        "Si se detecta un evento (is_event: true), activa siempre has_registration: true por defecto.\n"
         "Devuelve exclusivamente un objeto JSON válido con las claves de los campos vacíos que puedas inferir "
         "(por ejemplo: title, caption, content, is_event, event_start en formato YYYY-MM-DDTHH:MM, "
         "event_date en formato DD/MM/YYYY, event_start_time en formato 24h HH:MM, "
@@ -833,10 +834,8 @@ def _filter_only_empty_fields(
             ):
                 filtered["is_event"] = True
 
-    if (
-        not form_data.get("has_registration")
-        and raw_suggestions.get("has_registration") is True
-        and (form_data.get("is_event") or filtered.get("is_event") is True)
+    if not form_data.get("has_registration") and (
+        form_data.get("is_event") or filtered.get("is_event") is True
     ):
         filtered["has_registration"] = True
 

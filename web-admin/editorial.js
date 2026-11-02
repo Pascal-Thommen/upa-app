@@ -27,6 +27,7 @@
     groupCatalog: [],
     editingItem: null,
     reminders: [30],
+    remindersCustomized: false,
     participantsPubId: null,
     dropzones: {},
     sort: "created",
@@ -280,6 +281,7 @@
       const unitSelect = row.querySelector("select[data-reminder-unit]");
       const updateIdx = () => {
         if (Number.isNaN(idx)) return;
+        state.remindersCustomized = true;
         const mins = Core.partsToReminderMinutes(
           valInput ? valInput.value : 30,
           unitSelect ? unitSelect.value : "minutes"
@@ -292,6 +294,7 @@
 
     container.querySelectorAll("button[data-remove-reminder]").forEach((btn) => {
       btn.addEventListener("click", () => {
+        state.remindersCustomized = true;
         syncRemindersFromDom();
         const idx = Number(btn.getAttribute("data-remove-reminder"));
         state.reminders.splice(idx, 1);
@@ -301,6 +304,7 @@
   }
 
   function addReminderRow() {
+    state.remindersCustomized = true;
     syncRemindersFromDom();
     const clean = Core.cleanReminders(state.reminders);
     let nextVal = 30;
@@ -309,6 +313,35 @@
     else if (clean.length > 0) nextVal = clean[clean.length - 1] + 60;
     state.reminders.push(nextVal);
     renderRemindersList(state.reminders);
+  }
+
+  function isDefaultReminderArray(rems) {
+    if (!Array.isArray(rems) || rems.length === 0) return true;
+    if (rems.length === 1 && Number(rems[0]) === 30) return true;
+    if (
+      rems.length === 2 &&
+      ((Number(rems[0]) === 1440 && Number(rems[1]) === 30) ||
+        (Number(rems[0]) === 30 && Number(rems[1]) === 1440))
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function syncDefaultRemindersForEventStart() {
+    if (state.remindersCustomized) return;
+    if (!isDefaultReminderArray(state.reminders)) return;
+    const startEl = $("ed-pub-event-start");
+    const rawStart = startEl ? startEl.value.trim() : "";
+    const targetReminders = Core.defaultRemindersForEventStart
+      ? Core.defaultRemindersForEventStart(rawStart)
+      : [30];
+    const same =
+      state.reminders.length === targetReminders.length &&
+      state.reminders.every((val, idx) => Number(val) === Number(targetReminders[idx]));
+    if (!same || state.reminders.length === 0) {
+      renderRemindersList(targetReminders);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -353,7 +386,7 @@
         Boolean(Core.isVideoUrl && Core.isVideoUrl(safe)) ||
         Boolean(Core.isVideoUrl && Core.isVideoUrl(label));
       const isImage =
-        mime.startsWith("image/") || Core.isImageUrl(safe) || Core.isImageUrl(label);
+        mime.startsWith("image/") || Core.isImageUrl(safe) || Core.isImageUrl(label) || /^blob:/i.test(safe);
       let media = "";
       if (isVideo) {
         media = `<video src="${Core.escapeHtml(safe)}" controls class="max-h-56 w-full rounded-lg"></video>`;
@@ -400,10 +433,13 @@
           if (removeBtn) removeBtn.classList.toggle("hidden", dz.readOnly);
         }
       },
-      setUrl(url, label, mimeHint) {
-        revokeCurrentObjectUrl();
+      setUrl(url, label, mimeHint, keepObjectUrl) {
+        if (!keepObjectUrl) {
+          revokeCurrentObjectUrl();
+        }
         if (urlField) urlField.value = url || "";
-        renderPreview(url, label, mimeHint);
+        const previewSrc = keepObjectUrl && currentObjectUrl ? currentObjectUrl : url;
+        renderPreview(previewSrc, label, mimeHint);
       },
       reset() {
         activeUploadId += 1;
@@ -430,8 +466,10 @@
       revokeCurrentObjectUrl();
       if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
         try {
-          currentObjectUrl = URL.createObjectURL(file);
-          renderPreview(currentObjectUrl, file.name, file.type);
+          currentObjectUrl = URL.createObjectURL(file) || "";
+          if (currentObjectUrl) {
+            renderPreview(currentObjectUrl, file.name, file.type);
+          }
         } catch (_) {
           currentObjectUrl = "";
         }
@@ -440,7 +478,8 @@
       try {
         const result = await getClient().uploadMedia(file);
         if (myUploadId !== activeUploadId) return;
-        dz.setUrl(result.url, file.name, file.type);
+        const isImg = String(file.type || "").toLowerCase().startsWith("image/");
+        dz.setUrl(result.url, file.name, file.type, isImg && Boolean(currentObjectUrl));
         dz.setStatus("ok", `Archivo subido: ${file.name}`);
       } catch (error) {
         if (myUploadId !== activeUploadId) return;
@@ -671,6 +710,9 @@
   // ---------------------------------------------------------------------------
 
   function readPublicationForm() {
+    if ($("ed-pub-is-event") && $("ed-pub-is-event").checked && !state.remindersCustomized) {
+      syncDefaultRemindersForEventStart();
+    }
     syncRemindersFromDom();
     const alreadyPublished = isEditingAlreadyPublished();
     const scheduled = !alreadyPublished && Boolean($("ed-pub-scheduled") && $("ed-pub-scheduled").checked);
@@ -746,7 +788,11 @@
     if ($("ed-pub-event-start")) $("ed-pub-event-start").value = values.eventStart || "";
     if ($("ed-pub-event-end")) $("ed-pub-event-end").value = values.eventEnd || "";
     if ($("ed-pub-location")) $("ed-pub-location").value = values.location || "";
-    renderRemindersList(Array.isArray(values.reminders) ? values.reminders : [30]);
+    state.remindersCustomized = Boolean(editing && values.isEvent);
+    const defaultStartRems = Core.defaultRemindersForEventStart
+      ? Core.defaultRemindersForEventStart(values.eventStart)
+      : [30];
+    renderRemindersList(Array.isArray(values.reminders) ? values.reminders : defaultStartRems);
 
     $("ed-pub-form-title").textContent = editing ? "Editar publicación" : "Nueva publicación";
     $("ed-btn-delete-pub").classList.toggle("hidden", !editing);
@@ -1113,14 +1159,19 @@
         renderSubsetGroupCheckboxes("ed-pub-event-notify-groups", targetList, targetList);
       }
 
-      if (!values.hasRegistration && merged.hasRegistration && $("ed-pub-rsvp")) {
+      const startEl = $("ed-pub-event-start");
+      if (startEl && !startEl.value.trim() && merged.eventStart) {
+        startEl.value = merged.eventStart;
+      }
+
+      if (!values.hasRegistration && (merged.hasRegistration || merged.isEvent) && $("ed-pub-rsvp")) {
         $("ed-pub-rsvp").checked = true;
       }
 
       if (!values.isEvent && merged.isEvent && $("ed-pub-is-event") && !$("ed-pub-is-event").disabled) {
         $("ed-pub-is-event").checked = true;
-        if (state.reminders.length === 0) {
-          renderRemindersList([30]);
+        if ($("ed-pub-rsvp")) {
+          $("ed-pub-rsvp").checked = true;
         }
         const currentTargets = readCheckedValues("ed-pub-target-groups");
         const currentEventNotify = readCheckedValues("ed-pub-event-notify-groups");
@@ -1129,9 +1180,12 @@
         }
       }
 
-      const startEl = $("ed-pub-event-start");
-      if (startEl && !startEl.value.trim() && merged.eventStart) {
-        startEl.value = merged.eventStart;
+      if ((merged.isEvent || ($("ed-pub-is-event") && $("ed-pub-is-event").checked)) && !state.remindersCustomized) {
+        if (Array.isArray(merged.reminders) && merged.reminders.length > 0) {
+          renderRemindersList(merged.reminders);
+        } else {
+          syncDefaultRemindersForEventStart();
+        }
       }
 
       const endEl = $("ed-pub-event-end");
@@ -1358,9 +1412,10 @@
     if ($("ed-pub-is-event")) {
       $("ed-pub-is-event").addEventListener("change", () => {
         if ($("ed-pub-is-event").checked) {
-          if (state.reminders.length === 0 && !state.editingItem) {
-            renderRemindersList([30]);
+          if ($("ed-pub-rsvp")) {
+            $("ed-pub-rsvp").checked = true;
           }
+          syncDefaultRemindersForEventStart();
           const currentTargets = readCheckedValues("ed-pub-target-groups");
           const currentEventNotify = readCheckedValues("ed-pub-event-notify-groups");
           if (currentEventNotify.length === 0 && currentTargets.length > 0) {
@@ -1378,6 +1433,12 @@
           const masked = Core.maskDateTimeInput(inputEl.value);
           if (masked !== inputEl.value) inputEl.value = masked;
         }
+        if (inputEl.id === "ed-pub-event-start") {
+          const val = inputEl.value.trim();
+          if (/^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/.test(val)) {
+            syncDefaultRemindersForEventStart();
+          }
+        }
       });
     });
 
@@ -1391,6 +1452,7 @@
     });
 
     const validateEventTimeFieldsLive = () => {
+      syncDefaultRemindersForEventStart();
       const isEv = Boolean($("ed-pub-is-event") && $("ed-pub-is-event").checked);
       if (!isEv) return;
       const values = readPublicationForm();

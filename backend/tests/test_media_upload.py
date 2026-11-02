@@ -132,7 +132,7 @@ def test_upload_returns_exact_business_payload_and_file_is_retrievable(
     assert body["filename"].endswith(extension)
     assert body["content_type"] == content_type
     assert body["size_bytes"] == len(content)
-    assert body["url"] == f"http://testserver/uploads/{body['filename']}"
+    assert body["url"] == f"/uploads/{body['filename']}"
 
     # Persistido en disco, identico byte a byte y sin restos temporales
     stored = get_upload_dir() / body["filename"]
@@ -140,7 +140,7 @@ def test_upload_returns_exact_business_payload_and_file_is_retrievable(
     assert [p.name for p in upload_dir_entries()] == [body["filename"]]
 
     # Accesible mediante la URL devuelta, con los encabezados correctos para clientes moviles
-    fetched = client.get(body["url"].replace("http://testserver", ""))
+    fetched = client.get(body["url"])
     assert fetched.status_code == 200
     assert fetched.content == content
     assert fetched.headers["content-type"].split(";")[0] == content_type
