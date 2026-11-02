@@ -186,7 +186,6 @@
   function safeUrl(url) {
     const clean = String(url || "").trim();
     if (/^https?:\/\//i.test(clean)) return clean;
-    if (/^blob:/i.test(clean)) return clean;
     if (clean.startsWith("/") && !clean.startsWith("//")) return clean;
     return "";
   }
@@ -810,37 +809,6 @@
     return next;
   }
 
-  /**
-   * Ordena publicaciones: "created" = creacion descendente (mas reciente primero);
-   * "event" = proximos eventos primero (ascendente), luego pasados y sin fecha.
-   */
-  function sortPublications(items, mode) {
-    const list = Array.isArray(items) ? items.slice() : [];
-    const ts = (v) => {
-      const t = v ? Date.parse(v) : NaN;
-      return Number.isNaN(t) ? null : t;
-    };
-    const byCreated = (a, b) => {
-      const d = (ts(b.created_at) || 0) - (ts(a.created_at) || 0);
-      return d !== 0 ? d : Number(b.id || 0) - Number(a.id || 0);
-    };
-    if (mode !== "event") return list.sort(byCreated);
-    const now = Date.now();
-    const bucket = (p) => {
-      const t = ts(p.event_start);
-      if (t === null) return 2;
-      return t >= now ? 0 : 1;
-    };
-    return list.sort((a, b) => {
-      const ba = bucket(a);
-      const bb = bucket(b);
-      if (ba !== bb) return ba - bb;
-      if (ba === 0) return ts(a.event_start) - ts(b.event_start) || byCreated(a, b);
-      if (ba === 1) return ts(b.event_start) - ts(a.event_start) || byCreated(a, b);
-      return byCreated(a, b);
-    });
-  }
-
   function renderPublicationRows(items, options) {
     const opts = options || {};
     if (!items || items.length === 0) {
@@ -1190,7 +1158,6 @@
     hasAutocompleteSourceContext,
     applyAiSuggestionsToFormValues,
     renderPublicationRows,
-    sortPublications,
     renderHistoryEntries,
     renderParticipantsTable,
     describeSyncResult,
