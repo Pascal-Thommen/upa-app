@@ -2,6 +2,7 @@
 
 import base64
 import json
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path as FilePath
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request, status
 from sqlalchemy import asc, desc
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
 
 from ..auth import get_current_user
@@ -53,18 +56,48 @@ router = APIRouter(prefix="/api/publications", tags=["Publications"])
 MANUAL_TYPES = {"MANUAL", "EMERGENCY_BANNER"}
 
 
+def record_post_views(db: Session, post_ids: Iterable[int], user_id: int | None) -> int:
+    """Registra de forma idempotente (ON CONFLICT DO NOTHING) el alcance unico de publicaciones para un usuario."""
+    if not user_id or int(user_id) <= 0:
+        return 0
+    uid = int(user_id)
+    unique_ids = sorted({int(pid) for pid in (post_ids or []) if pid is not None and int(pid) > 0})
+    if not unique_ids:
+        return 0
+
+    rows = [{"post_id": pid, "user_id": uid} for pid in unique_ids]
+    bind = db.get_bind()
+    dialect_name = (bind.dialect.name if bind is not None else "").lower()
+    if dialect_name == "postgresql":
+        stmt = pg_insert(PostView).values(rows).on_conflict_do_nothing(index_elements=["post_id", "user_id"])
+        result = db.execute(stmt)
+        db.commit()
+        return max(0, int(result.rowcount or 0))
+    if dialect_name == "sqlite":
+        stmt = sqlite_insert(PostView).values(rows).on_conflict_do_nothing(index_elements=["post_id", "user_id"])
+        result = db.execute(stmt)
+        db.commit()
+        return max(0, int(result.rowcount or 0))
+
+    existing_ids = {
+        int(row[0])
+        for row in db.query(PostView.post_id)
+        .filter(PostView.user_id == uid, PostView.post_id.in_(unique_ids))
+        .all()
+    }
+    inserted = 0
+    for pid in unique_ids:
+        if pid not in existing_ids:
+            db.add(PostView(post_id=pid, user_id=uid))
+            inserted += 1
+    if inserted:
+        db.commit()
+    return inserted
+
+
 def record_post_view(db: Session, post_id: int, user_id: int) -> bool:
     """Registra de forma idempotente la visualizacion unica de una publicacion por un usuario."""
-    existing = (
-        db.query(PostView)
-        .filter(PostView.post_id == post_id, PostView.user_id == user_id)
-        .first()
-    )
-    if existing is not None:
-        return False
-    db.add(PostView(post_id=post_id, user_id=user_id))
-    db.commit()
-    return True
+    return record_post_views(db, [post_id], user_id) > 0
 
 
 def _filter_subset_groups(selected: list[str], target_groups: list[str]) -> list[str]:
@@ -882,6 +915,7 @@ def mark_publication_viewed(
             detail="Acceso denegado: no pertenece al grupo destinatario de esta publicación.",
         )
     record_post_view(db, publication_id, current_user.id)
+    db.expire(post, ["views"])
     db.refresh(post)
     return PublicationResponse.from_orm_post(post)
 

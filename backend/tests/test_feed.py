@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from src.auth import create_access_token
 from src.database import Base, get_db
 from src.main import app
-from src.models import Post, User
+from src.models import Post, PostView, User
 
 # In-Memory SQLite Engine für isolierte Feed-Tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -217,3 +217,96 @@ def test_feed_pagination():
 def test_feed_sync_endpoint_removed():
     # El endpoint redundante /api/v1/feed/sync fue consolidado en /api/publications/sync-instagram
     assert client.post("/api/v1/feed/sync").status_code in (404, 405)
+
+
+def test_feed_automatic_impression_tracking_and_idempotency():
+    # Gastnutzer (ohne Auth) ruft Feed ab: kein Fehler und keine PostView-Einträge
+    guest_res = client.get("/api/v1/feed")
+    assert guest_res.status_code == 200
+    assert guest_res.json()["posts"][0]["views_count"] == 0
+
+    db = TestingSessionLocal()
+    assert db.query(PostView).count() == 0
+    student2 = User(id=3, email="student2@upa.edu.py", full_name="Student Two", role="user", groups=["TIE"])
+    db.add(student2)
+    db.commit()
+    db.close()
+
+    student1_headers = {"Authorization": f"Bearer {create_access_token({'sub': '2', 'email': 'student@upa.edu.py', 'role': 'user'})}"}
+    student2_headers = {"Authorization": f"Bearer {create_access_token({'sub': '3', 'email': 'student2@upa.edu.py', 'role': 'user'})}"}
+    admin_headers = {"Authorization": f"Bearer {create_access_token({'sub': '1', 'email': 'admin@upa.edu.py', 'role': 'admin'})}"}
+
+    # Eingeloggter Student 1 ruft Feed ab -> ausgelieferte Beiträge (10, 11, 12) erhalten je 1 Impression
+    res1 = client.get("/api/v1/feed", headers=student1_headers)
+    assert res1.status_code == 200
+    body1 = res1.json()
+    assert body1["urgent_banners"][0]["views_count"] == 1
+    assert [p["views_count"] for p in body1["posts"]] == [1, 1]
+
+    # Wiederholtes Neuladen desselben Studenten erhöht den Zähler nicht (Idempotenz)
+    res1_reload = client.get("/api/v1/feed", headers=student1_headers)
+    assert res1_reload.status_code == 200
+    body1_reload = res1_reload.json()
+    assert body1_reload["urgent_banners"][0]["views_count"] == 1
+    assert [p["views_count"] for p in body1_reload["posts"]] == [1, 1]
+
+    db = TestingSessionLocal()
+    assert db.query(PostView).filter(PostView.user_id == 2).count() == 3
+    assert db.query(PostView).filter(PostView.post_id == 13).count() == 0
+    db.close()
+
+    # Zweiter Student ruft Feed ab -> Zähler steigt auf 2
+    res2 = client.get("/api/v1/feed", headers=student2_headers)
+    assert res2.status_code == 200
+    body2 = res2.json()
+    assert body2["urgent_banners"][0]["views_count"] == 2
+    assert [p["views_count"] for p in body2["posts"]] == [2, 2]
+
+    # Dashboard (/api/publications) reflektiert views_count korrekt
+    pubs_res = client.get("/api/publications", headers=admin_headers)
+    assert pubs_res.status_code == 200
+    pubs_by_id = {p["id"]: p["views_count"] for p in pubs_res.json()}
+    assert pubs_by_id[10] == 2
+    assert pubs_by_id[11] == 2
+    assert pubs_by_id[12] == 2
+    assert pubs_by_id[13] == 0
+
+
+def test_feed_rapid_paging_and_empty_feed_without_sql_errors():
+    student_headers = {"Authorization": f"Bearer {create_access_token({'sub': '2', 'email': 'student@upa.edu.py', 'role': 'user'})}"}
+
+    # Schnelles Paging: Seite 1 zählt nur Banner (12) + ersten Post (11), noch nicht zweiten Post (10)
+    p1 = client.get("/api/v1/feed?limit=1&offset=0", headers=student_headers)
+    assert p1.status_code == 200
+    db = TestingSessionLocal()
+    viewed_after_p1 = {row.post_id for row in db.query(PostView).filter(PostView.user_id == 2).all()}
+    assert viewed_after_p1 == {11, 12}
+    db.close()
+
+    # Seite 2 zählt nun auch Post 10
+    p2 = client.get("/api/v1/feed?limit=1&offset=1", headers=student_headers)
+    assert p2.status_code == 200
+    db = TestingSessionLocal()
+    viewed_after_p2 = {row.post_id for row in db.query(PostView).filter(PostView.user_id == 2).all()}
+    assert viewed_after_p2 == {10, 11, 12}
+    db.close()
+
+    # Paging jenseits des Bestands (leere Post-Liste)
+    p_empty = client.get("/api/v1/feed?limit=10&offset=50", headers=student_headers)
+    assert p_empty.status_code == 200
+    assert p_empty.json()["posts"] == []
+
+    # Komplett leerer Feed (alle Posts entfernt) läuft für eingeloggte Nutzer und Gäste fehlerfrei durch
+    db = TestingSessionLocal()
+    db.query(PostView).delete()
+    db.query(Post).delete()
+    db.commit()
+    db.close()
+
+    empty_auth = client.get("/api/v1/feed", headers=student_headers)
+    assert empty_auth.status_code == 200
+    assert empty_auth.json() == {"urgent_banners": [], "posts": []}
+
+    empty_guest = client.get("/api/v1/feed")
+    assert empty_guest.status_code == 200
+    assert empty_guest.json() == {"urgent_banners": [], "posts": []}

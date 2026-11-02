@@ -387,8 +387,16 @@ class PublicationResponse(BaseModel):
         raw_start = getattr(post, "event_start", None)
         raw_end = getattr(post, "event_end", None)
 
-        raw_views = getattr(post, "views", None) or []
-        views_count = len(raw_views)
+        raw_views = getattr(post, "views", None)
+        if raw_views is not None:
+            unique_viewers = {
+                int(getattr(v, "user_id", 0) or 0)
+                for v in raw_views
+                if getattr(v, "user_id", None) is not None and int(getattr(v, "user_id", 0) or 0) > 0
+            }
+            views_count = len(unique_viewers) if unique_viewers else len(raw_views)
+        else:
+            views_count = int(getattr(post, "views_count", 0) or 0)
 
         raw_regs = getattr(post, "registrations", None) or []
         attending_count = sum(

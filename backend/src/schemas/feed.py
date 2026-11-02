@@ -76,6 +76,7 @@ class FeedItemResponse(BaseModel):
     link_label: str = Field(default="", description="Texto del boton de enlace opcional (cadena vacia si no aplica)")
     is_registered: bool = Field(default=False, description="Indica si el usuario autenticado esta inscrito (eventos)")
     registered_count: int = Field(default=0, ge=0, description="Total de inscritos al evento")
+    views_count: int = Field(default=0, ge=0, description="Total de impresiones unicas por estudiante")
     created_at: datetime = Field(..., description="Fecha de creacion en ISO-8601 UTC")
     published_at: datetime = Field(..., description="Fecha de publicacion en ISO-8601 UTC")
 
@@ -100,6 +101,16 @@ class FeedItemResponse(BaseModel):
         is_registered = current_user_id is not None and any(
             int(getattr(r, "user_id", 0) or 0) == int(current_user_id) for r in attending
         )
+        raw_views = getattr(post, "views", None)
+        if raw_views is not None:
+            unique_viewers = {
+                int(getattr(v, "user_id", 0) or 0)
+                for v in raw_views
+                if getattr(v, "user_id", None) is not None and int(getattr(v, "user_id", 0) or 0) > 0
+            }
+            views_count = len(unique_viewers) if unique_viewers else len(raw_views)
+        else:
+            views_count = int(getattr(post, "views_count", 0) or 0)
         return cls(
             id=int(getattr(post, "id", 0) or 0),
             title=raw_title,
@@ -125,6 +136,7 @@ class FeedItemResponse(BaseModel):
             **extra_detail_fields(post),
             is_registered=is_registered,
             registered_count=len(attending),
+            views_count=views_count,
             created_at=created,
             published_at=published,
         )
