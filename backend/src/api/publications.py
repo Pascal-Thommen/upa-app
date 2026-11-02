@@ -419,6 +419,48 @@ def _normalize_autocomplete_form(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _enforce_autocomplete_grounding(
+    normalized_form: dict[str, Any],
+    suggestions: dict[str, Any],
+    *,
+    has_image: bool,
+) -> dict[str, Any]:
+    """
+    Valida y sanea las sugerencias de autocompletado:
+    - Cuando solo se proporciona un titulo sin imagen ni texto (caption/content), impide que se
+      generen eventos de calendario con fechas/lugares inventados o textos descriptivos libres.
+    - Para publicaciones de Instagram, protege los campos de texto originales de solo lectura.
+    """
+    if not isinstance(suggestions, dict) or not suggestions:
+        return {}
+
+    cleaned = dict(suggestions)
+    post_type = str(normalized_form.get("post_type") or "MANUAL").strip().upper()
+    if post_type == "INSTAGRAM":
+        for ro_field in ("caption", "content", "link_label", "link_url"):
+            cleaned.pop(ro_field, None)
+
+    has_context = gemini.has_autocomplete_source_context(normalized_form, has_image=has_image)
+    if not has_context:
+        for ungrounded_field in (
+            "caption",
+            "content",
+            "is_event",
+            "event_start",
+            "event_date",
+            "event_start_time",
+            "event_end",
+            "event_end_time",
+            "location",
+            "has_registration",
+            "link_label",
+            "link_url",
+        ):
+            cleaned.pop(ungrounded_field, None)
+
+    return cleaned
+
+
 def _resolve_media_bytes(form_data: dict[str, Any]) -> tuple[bytes | None, str | None]:
     """Obtiene los bytes y el tipo MIME de la imagen desde base64, almacenamiento local (/uploads) o URL HTTP."""
     b64_raw = str(form_data.get("image_base64") or "").strip()
@@ -506,6 +548,12 @@ async def autocomplete_publication_ai(
             "eventStart",
             "event_end",
             "eventEnd",
+            "event_date",
+            "eventDate",
+            "event_start_time",
+            "eventStartTime",
+            "event_end_time",
+            "eventEndTime",
             "target_groups",
             "targetGroups",
             "category",
@@ -516,6 +564,8 @@ async def autocomplete_publication_ai(
             "media_url",
             "image_url",
             "imageUrl",
+            "image_base64",
+            "imageBase64",
             "post_type",
             "postType",
             "is_news",
@@ -594,7 +644,11 @@ async def autocomplete_publication_ai(
         )
         raise HTTPException(status_code=err_status, detail=result.message)
 
-    return result.suggestions
+    return _enforce_autocomplete_grounding(
+        normalized_form,
+        result.suggestions,
+        has_image=bool(uploaded_bytes and uploaded_mime),
+    )
 
 
 @router.get(

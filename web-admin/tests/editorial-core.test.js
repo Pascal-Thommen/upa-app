@@ -572,6 +572,30 @@ test("autocompletar con IA: applyAiSuggestionsToFormValues completa solo campos 
   const mergedPreserved = Core.applyAiSuggestionsToFormValues(withGroupsAndLoc, aiSuggestions);
   assert.deepEqual(mergedPreserved.targetGroups, ["PI"]);
   assert.equal(mergedPreserved.location, "Sala de Conferencias 2");
+
+  // SRV-229: Si solo hay título sin imagen ni texto base (caption/content), no se inventan eventos ni textos
+  const titleOnlyForm = {
+    title: "Solo un título mínimo",
+    postType: "MANUAL",
+    hasRegistration: false,
+    targetGroups: [],
+    isNews: true,
+    caption: "",
+    content: "",
+    imageUrl: "",
+    isEvent: false,
+    eventStart: "",
+    eventEnd: "",
+    location: "",
+  };
+  const mergedTitleOnly = Core.applyAiSuggestionsToFormValues(titleOnlyForm, aiSuggestions);
+  assert.equal(mergedTitleOnly.isEvent, false);
+  assert.equal(mergedTitleOnly.eventStart, "");
+  assert.equal(mergedTitleOnly.eventEnd, "");
+  assert.equal(mergedTitleOnly.location, "");
+  assert.equal(mergedTitleOnly.caption, "");
+  assert.equal(mergedTitleOnly.content, "");
+  assert.equal(mergedTitleOnly.hasRegistration, false);
 });
 
 test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de carga, rellena solo campos vacios y maneja errores", async () => {
@@ -704,6 +728,15 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   assert.equal(aiBtn.disabled, false);
   assert.equal(aiBtn.getAttribute("aria-disabled"), "false");
   assert.ok(!aiBtn.classList.contains("is-disabled"));
+
+  // Si el usuario pulsa Autocompletar con solo un título (sin afiche/foto ni texto base), recibe aviso informativo y no se inventan fechas
+  document.getElementById("ed-pub-title").value = "Solo título sin contexto";
+  aiBtn.click();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(document.getElementById("ed-pub-is-event").checked, false);
+  assert.equal(document.getElementById("ed-pub-event-start").value, "");
+  assert.equal(document.getElementById("ed-pub-caption").value, "");
+  assert.equal(document.getElementById("ed-notice").textContent, Core.TEXTS.aiAutocompleteContextHint);
 
   // El usuario ingresa título y contenido, dejando el resto vacío
   document.getElementById("ed-pub-title").value = "Seminario de Robótica (Usuario)";

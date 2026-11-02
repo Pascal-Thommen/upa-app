@@ -202,7 +202,12 @@ def test_default_prompts_exposed_and_one_click_save_with_fallback_from_2_0_to_1_
 
         auto_res = client.post(
             "/api/publications/autocomplete-ai",
-            json={"title": "Conferencia Anual UPA", "caption": "", "location": ""},
+            json={
+                "title": "Conferencia Anual UPA",
+                "caption": "",
+                "content": "El 28/11/2026 a las 18:00 en el Campus UPA San Lorenzo.",
+                "location": "",
+            },
             headers=headers,
         )
         assert auto_res.status_code == 200
@@ -356,12 +361,141 @@ def test_encrypted_token_persistence_and_modern_flash_discovery_with_503_fallbac
         # Autocompletar ignora partes con thought=True y extrae el JSON limpio
         auto_res = client.post(
             "/api/publications/autocomplete-ai",
-            json={"title": "Foro IA", "caption": "", "location": ""},
+            json={"title": "Foro IA", "caption": "", "content": "Foro en el Aula Magna.", "location": ""},
             headers=pub_headers,
         )
         assert auto_res.status_code == 200
         assert auto_res.json()["caption"] == "Resumen IA 3.5 Flash"
         assert auto_res.json()["location"] == "Aula Magna"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_zero_hallucination_grounding_title_only_vs_flyer_autocomplete(monkeypatch):
+    """
+    SRV-229:
+    1. Temperature en inferencia es 0.0 y los prompts exigen CERO ALUCINACIONES (grounding estricto).
+    2. Cuando solo se envia un titulo minimo sin imagen ni texto (caption/content), NO se generan
+       eventos de calendario con fechas u horas inventadas ni textos descriptivos inventados.
+    3. Cuando se sube un flyer/afiche, se extraen titulo, fecha (DD/MM/YYYY), hora (HH:mm) y lugar.
+    """
+    captured_bodies: list[dict] = []
+
+    class GroundingGeminiStub(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.startswith("/v1beta/models"):
+                payload = json.dumps(
+                    {
+                        "models": [
+                            {"name": "models/gemini-2.0-flash", "supportedGenerationMethods": ["generateContent"]},
+                        ]
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8") if length else "{}"
+            captured_bodies.append(json.loads(raw))
+
+            suggestion_json = json.dumps(
+                {
+                    "title": "Simposio de Ingeniería UPA 2026",
+                    "caption": "Simposio anual con ponentes internacionales.",
+                    "content": "Invitamos a toda la comunidad el 18/11/2026 de 15:00 a 17:30 en el Aula Magna.",
+                    "is_event": True,
+                    "event_start": "2026-11-18T15:00",
+                    "event_end": "2026-11-18T17:30",
+                    "location": "Aula Magna UPA",
+                    "target_groups": ["PI", "TI"],
+                    "category": "VERANSTALTUNG",
+                    "has_registration": True,
+                },
+                ensure_ascii=False,
+            )
+            payload = json.dumps(
+                {"candidates": [{"content": {"parts": [{"text": suggestion_json}]}}]}
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), GroundingGeminiStub)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    sample_png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\xcf\xc0"
+        b"\x00\x00\x03\x01\x01\x00\x18\xdd\x8d\xb0\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    try:
+        monkeypatch.setattr(settings, "GEMINI_API_BASE_URL", f"http://127.0.0.1:{port}")
+        headers = auth(EDITOR_ID, EDITOR_EMAIL, "editor")
+        client.post(
+            "/api/ai/config",
+            json={"api_key": "AIzaZeroHallucinationGuard2026"},
+            headers=headers,
+        )
+
+        # 1. Solo titulo sin imagen ni texto -> bloquea fechas, lugares, eventos y descripciones inventadas
+        title_only_res = client.post(
+            "/api/publications/autocomplete-ai",
+            json={"title": "Test", "caption": "", "content": "", "location": ""},
+            headers=headers,
+        )
+        assert title_only_res.status_code == 200
+        title_only_body = title_only_res.json()
+        assert "event_start" not in title_only_body
+        assert "event_date" not in title_only_body
+        assert "event_start_time" not in title_only_body
+        assert "event_end" not in title_only_body
+        assert "event_end_time" not in title_only_body
+        assert "location" not in title_only_body
+        assert "is_event" not in title_only_body
+        assert "has_registration" not in title_only_body
+        assert "caption" not in title_only_body
+        assert "content" not in title_only_body
+        assert captured_bodies[-1]["generationConfig"]["temperature"] == 0.0
+        prompt_sent = captured_bodies[-1]["contents"][0]["parts"][0]["text"]
+        assert "CERO ALUCINACIONES" in prompt_sent
+        assert "CONTEXTO INSUFICIENTE" in prompt_sent
+
+        # 2. Subida de flyer/afiche con formulario vacio -> extrae titulo, fecha, hora y lugar del flyer
+        flyer_res = client.post(
+            "/api/publications/autocomplete-ai",
+            data={"data": json.dumps({"title": "", "caption": "", "content": "", "location": ""})},
+            files={"file": ("flyer.png", sample_png, "image/png")},
+            headers=headers,
+        )
+        assert flyer_res.status_code == 200
+        flyer_body = flyer_res.json()
+        assert flyer_body["title"] == "Simposio de Ingeniería UPA 2026"
+        assert flyer_body["is_event"] is True
+        assert flyer_body["event_start"] == "2026-11-18T15:00"
+        assert flyer_body["event_date"] == "18/11/2026"
+        assert flyer_body["event_start_time"] == "15:00"
+        assert flyer_body["event_end"] == "2026-11-18T17:30"
+        assert flyer_body["event_end_time"] == "17:30"
+        assert flyer_body["location"] == "Aula Magna UPA"
+        assert flyer_body["caption"] == "Simposio anual con ponentes internacionales."
+        assert flyer_body["has_registration"] is True
+        assert captured_bodies[-1]["generationConfig"]["temperature"] == 0.0
+        assert "MODO AFICHE/IMAGEN ADJUNTA" in captured_bodies[-1]["contents"][0]["parts"][0]["text"]
     finally:
         server.shutdown()
         server.server_close()
