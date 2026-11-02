@@ -701,7 +701,10 @@
     if (metricsBar) {
       metricsBar.classList.toggle("hidden", !editing);
       if (editing) {
-        $("ed-metric-views").textContent = `${Number(values.viewsCount || 0)} vistas`;
+        const viewsCount = Number(
+          values.viewsCount !== undefined ? values.viewsCount : (rawItem && rawItem.views_count) || 0
+        );
+        $("ed-metric-views").textContent = `${viewsCount} vistas`;
         $("ed-metric-attending").textContent = `${Number(values.attendingCount || 0)} inscritos`;
         $("ed-metric-declined").textContent = `${Number(values.declinedCount || 0)} bajas`;
         const badge = $("ed-metric-edited");
@@ -789,6 +792,9 @@
     if (listHist) {
       listHist.classList.toggle("hidden", !state.isAdmin || !listHist.innerHTML);
     }
+    if (state.publicationsLoaded) {
+      renderFilteredRows();
+    }
   }
 
   async function openNewPublication() {
@@ -828,6 +834,12 @@
         return;
       }
     }
+    if (item && item.id !== undefined) {
+      const idx = state.publications.findIndex((p) => String(p.id) === String(item.id));
+      if (idx >= 0) {
+        state.publications[idx] = item;
+      }
+    }
     fillPublicationForm(Core.publicationToFormValues(item), item);
     const listHist = $("ed-list-history");
     if (listHist) listHist.classList.add("hidden");
@@ -839,7 +851,10 @@
   function renderFilteredRows() {
     const tbody = $("ed-pub-rows");
     if (!tbody) return;
-    let items = state.publications;
+    let items = state.publications.map((p) => ({
+      ...p,
+      views_count: Number(p && p.views_count !== undefined ? p.views_count : (p && p.viewsCount) || 0),
+    }));
     if (state.filter === "news") {
       items = items.filter((p) => Boolean(p.is_news));
     } else if (state.filter === "events") {
@@ -1404,6 +1419,7 @@
 
     applyMode,
     loadPanelData,
+    loadPublications,
     refreshGroupsCatalog,
     openEditPublication,
     openNewPublication,

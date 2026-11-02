@@ -9,6 +9,7 @@ from ..database import get_db
 from ..models import Post, User
 from ..schemas.feed import FeedItemResponse, FeedResponse
 from ..schemas.post import matches_group_filter, user_can_access_post
+from .publications import record_post_views
 
 router = APIRouter(prefix="/api/v1/feed", tags=["Feed"])
 
@@ -33,7 +34,7 @@ def get_feed(
     """
     now = datetime.now(UTC)
 
-    banners: list[FeedItemResponse] = []
+    banner_posts: list[Post] = []
     if user is not None:
         banners_query = (
             db.query(Post)
@@ -51,7 +52,7 @@ def get_feed(
                 continue
             if not matches_group_filter(b.target_groups, group):
                 continue
-            banners.append(FeedItemResponse.from_orm_post(b, current_user_id=user.id))
+            banner_posts.append(b)
 
     posts_query = db.query(Post).filter(
         Post.post_type != "EMERGENCY_BANNER",
@@ -66,17 +67,32 @@ def get_feed(
 
     posts_query = posts_query.order_by(desc(Post.is_pinned), desc(Post.created_at))
 
-    filtered_posts: list[FeedItemResponse] = []
+    filtered_posts: list[Post] = []
     for p in posts_query.all():
         if not user_can_access_post(user, p.target_groups):
             continue
         if not matches_group_filter(p.target_groups, group):
             continue
-        filtered_posts.append(FeedItemResponse.from_orm_post(p, current_user_id=user.id if user else None))
+        filtered_posts.append(p)
 
     paginated_posts = filtered_posts[offset : offset + limit]
 
+    if user is not None:
+        delivered_ids = [
+            int(post_obj.id)
+            for post_obj in (*banner_posts, *paginated_posts)
+            if getattr(post_obj, "id", None) is not None
+        ]
+        if delivered_ids:
+            record_post_views(db, delivered_ids, user.id)
+            for post_obj in (*banner_posts, *paginated_posts):
+                db.expire(post_obj, ["views"])
+
+    current_user_id = user.id if user is not None else None
+    banners = [FeedItemResponse.from_orm_post(b, current_user_id=current_user_id) for b in banner_posts]
+    posts = [FeedItemResponse.from_orm_post(p, current_user_id=current_user_id) for p in paginated_posts]
+
     return FeedResponse(
         urgent_banners=banners,
-        posts=paginated_posts,
+        posts=posts,
     )
