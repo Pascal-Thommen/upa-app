@@ -106,23 +106,36 @@ def test_event_registration_and_unregistration_lifecycle_and_idempotency():
     h_s2 = _headers(12, "luis.benitez@upa.edu.py")
     h_admin = _headers(1, "admin@upa.edu.py", role="admin")
 
-    # 1. Cancelar sin inscripción previa devuelve HTTP 400
-    no_prior = client.delete("/api/events/101/register", headers=h_s1)
-    assert no_prior.status_code == 400
-    assert "inscripción activa" in no_prior.json()["detail"].lower()
+    # 1. Opt-out directo (No asistiré) sin inscripción previa crea fila declined de forma idempotente
+    direct_optout = client.delete("/api/events/101/register", headers=h_s1)
+    assert direct_optout.status_code == 200
+    assert direct_optout.json()["is_registered"] is False
+    assert direct_optout.json()["registration_status"] == "declined"
+    assert direct_optout.json()["registered_count"] == 0
 
-    # 2. Estudiante 1 se inscribe (attending)
+    direct_optout_dup = client.delete("/api/events/101/register", headers=h_s1)
+    assert direct_optout_dup.status_code == 200
+    assert direct_optout_dup.json()["is_registered"] is False
+    assert direct_optout_dup.json()["registration_status"] == "declined"
+
+    admin_initial = client.get("/api/publications/101/registrations", headers=h_admin).json()
+    assert admin_initial["attending_count"] == 0
+    assert admin_initial["declined_count"] == 1
+
+    # 2. Estudiante 1 cambia de opinión y se inscribe (attending)
     reg1 = client.post("/api/events/101/register", headers=h_s1)
     assert reg1.status_code == 200
     body1 = reg1.json()
     assert body1["id"] == 101
     assert body1["is_registered"] is True
+    assert body1["registration_status"] == "attending"
     assert body1["registered_count"] == 0
 
     # 3. Repetir POST /register es idempotente y mantiene una sola fila en BD
     reg1_again = client.post("/api/events/101/register", headers=h_s1)
     assert reg1_again.status_code == 200
     assert reg1_again.json()["is_registered"] is True
+    assert reg1_again.json()["registration_status"] == "attending"
     assert reg1_again.json()["registered_count"] == 0
 
     db = TestingSessionLocal()
@@ -133,20 +146,24 @@ def test_event_registration_and_unregistration_lifecycle_and_idempotency():
     reg2 = client.post("/api/events/101/register", headers=h_s2)
     assert reg2.status_code == 200
     assert reg2.json()["is_registered"] is True
+    assert reg2.json()["registration_status"] == "attending"
     assert reg2.json()["registered_count"] == 0
 
     # 5. En Feed y Agenda para estudiantes, registered_count está neutralizado a 0
     feed_s1 = client.get("/api/v1/feed", headers=h_s1).json()
     ev_in_feed = next(p for p in feed_s1["posts"] if p["id"] == 101)
     assert ev_in_feed["is_registered"] is True
+    assert ev_in_feed["registration_status"] == "attending"
     assert ev_in_feed["registered_count"] == 0
 
     agenda_s1 = client.get("/api/v1/agenda", headers=h_s1).json()
     ev_in_agenda = next(e for e in agenda_s1["events"] if e["id"] == 101)
     item_in_agenda = next(i for i in agenda_s1["items"] if i["id"] == "101")
     assert ev_in_agenda["is_registered"] is True
+    assert ev_in_agenda["registration_status"] == "attending"
     assert ev_in_agenda["registered_count"] == 0
     assert item_in_agenda["is_registered"] is True
+    assert item_in_agenda["registration_status"] == "attending"
     assert item_in_agenda["registered_count"] == 0
 
     # 6. El panel administrativo conserva las métricas reales (2 attending, 0 declined)
@@ -158,11 +175,14 @@ def test_event_registration_and_unregistration_lifecycle_and_idempotency():
     unreg1 = client.delete("/api/events/101/register", headers=h_s1)
     assert unreg1.status_code == 200
     assert unreg1.json()["is_registered"] is False
+    assert unreg1.json()["registration_status"] == "declined"
     assert unreg1.json()["registered_count"] == 0
 
-    # 8. Segundo intento de cancelación cuando ya está declined devuelve HTTP 400
+    # 8. Segundo intento de cancelación cuando ya está declined es idempotente (HTTP 200)
     unreg1_dup = client.delete("/api/events/101/register", headers=h_s1)
-    assert unreg1_dup.status_code == 400
+    assert unreg1_dup.status_code == 200
+    assert unreg1_dup.json()["is_registered"] is False
+    assert unreg1_dup.json()["registration_status"] == "declined"
 
     admin_regs_after = client.get("/api/publications/101/registrations", headers=h_admin).json()
     assert admin_regs_after["attending_count"] == 1
@@ -172,6 +192,7 @@ def test_event_registration_and_unregistration_lifecycle_and_idempotency():
     rereg1 = client.post("/api/events/101/register", headers=h_s1)
     assert rereg1.status_code == 200
     assert rereg1.json()["is_registered"] is True
+    assert rereg1.json()["registration_status"] == "attending"
     assert rereg1.json()["registered_count"] == 0
 
     db = TestingSessionLocal()

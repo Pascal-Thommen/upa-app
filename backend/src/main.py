@@ -190,6 +190,7 @@ async def get_agenda(
                 link=ev.permalink,
                 is_registered=ev.is_registered,
                 registered_count=ev.registered_count,
+                registration_status=ev.registration_status,
             )
         )
 
@@ -207,6 +208,7 @@ async def get_agenda(
                 link=dl.alternate_link,
                 is_registered=False,
                 registered_count=0,
+                registration_status=None,
             )
         )
 

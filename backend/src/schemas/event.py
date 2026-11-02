@@ -76,6 +76,10 @@ class EventResponse(BaseModel):
         ge=0,
         description="Cantidad total de participantes inscritos en el evento",
     )
+    registration_status: str | None = Field(
+        default=None,
+        description="Estado RSVP del usuario actual: attending, declined o nulo",
+    )
 
     @classmethod
     def from_orm_post(cls, post: Any, current_user_id: int | None = None) -> "EventResponse":
@@ -95,10 +99,15 @@ class EventResponse(BaseModel):
         img = (getattr(post, "image_url", None) or media).strip()
 
         raw_regs = getattr(post, "registrations", None) or []
-        attending_regs = [r for r in raw_regs if (getattr(r, "status", "attending") or "attending") == "attending"]
-        is_reg = False
+        reg_status: str | None = None
         if current_user_id is not None:
-            is_reg = any(int(getattr(r, "user_id", 0) or 0) == int(current_user_id) for r in attending_regs)
+            for r in raw_regs:
+                if int(getattr(r, "user_id", 0) or 0) == int(current_user_id):
+                    st = (getattr(r, "status", None) or "attending").strip()
+                    if st in ("attending", "declined"):
+                        reg_status = st
+                    break
+        is_reg = reg_status == "attending"
 
         return cls(
             id=int(getattr(post, "id", 0) or 0),
@@ -123,6 +132,7 @@ class EventResponse(BaseModel):
             created_at=created,
             is_registered=is_reg,
             registered_count=0,
+            registration_status=reg_status,
         )
 
 

@@ -84,9 +84,8 @@ def register_for_event(
     "/{event_id}/register",
     response_model=EventResponse,
     status_code=status.HTTP_200_OK,
-    summary="Cancelar inscripcion a un evento institucional (RSVP)",
+    summary="Cancelar inscripcion o indicar no asistencia a un evento institucional (RSVP)",
     responses={
-        400: {"model": ErrorResponse, "description": "Sin inscripcion activa previa en el evento"},
         401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
         403: {"model": ErrorResponse, "description": "Sin permisos para el grupo destinatario del evento"},
         404: {"model": ErrorResponse, "description": "Evento no encontrado"},
@@ -98,8 +97,9 @@ def unregister_from_event(
     current_user: User = Depends(get_current_user),
 ) -> EventResponse:
     """
-    Cancela la inscripcion del usuario autenticado en el evento indicado
-    marcando el estado como declined en event_registrations y retornando el evento actualizado.
+    Registra de forma idempotente la baja o no asistencia (opt-out) del usuario autenticado
+    en el evento indicado marcando el estado como declined en event_registrations
+    (sin requerir inscripcion activa previa) y retornando el evento actualizado.
     """
     now = datetime.now(UTC)
     post = (
@@ -130,14 +130,18 @@ def unregister_from_event(
         )
         .first()
     )
-    if not existing or existing.status != "attending":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se encontró una inscripción activa para cancelar en este evento.",
+    if existing:
+        if existing.status != "declined":
+            existing.status = "declined"
+            existing.updated_at = now
+    else:
+        registration = EventRegistration(
+            post_id=event_id,
+            user_id=current_user.id,
+            status="declined",
         )
+        db.add(registration)
 
-    existing.status = "declined"
-    existing.updated_at = now
     db.commit()
     db.refresh(post)
 

@@ -930,14 +930,10 @@ def submit_publication_rsvp(
         .filter(EventRegistration.post_id == publication_id, EventRegistration.user_id == current_user.id)
         .first()
     )
-    if payload.status == "declined" and (not existing or existing.status != "attending"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se encontró una inscripción activa para cancelar en esta publicación.",
-        )
     if existing:
-        existing.status = payload.status
-        existing.updated_at = datetime.now(UTC)
+        if existing.status != payload.status:
+            existing.status = payload.status
+            existing.updated_at = datetime.now(UTC)
     else:
         db.add(
             EventRegistration(

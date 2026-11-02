@@ -261,8 +261,11 @@ def collect_recipient_tokens(db: Session, target_groups: Any) -> list[str]:
 
 def collect_event_reminder_tokens(db: Session, post_id: int, target_groups: Any) -> list[str]:
     """
-    Reune los device tokens para recordatorios de un evento excluyendo explicitamente a las personas
-    que cancelaron o rechazaron su asistencia (status == 'declined').
+    Reune los device tokens para recordatorios de un evento:
+    - Incluye a los usuarios del grupo destinatario inscritos (status == 'attending') y a los que
+      aun no han respondido (sin fila en event_registrations) para recordarles la actividad.
+    - Excluye estrictamente a las personas que indicaron que no asistiran o cancelaron su
+      inscripcion (status == 'declined').
     """
     declined_user_ids = {
         int(uid)
