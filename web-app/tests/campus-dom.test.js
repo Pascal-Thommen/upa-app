@@ -252,6 +252,10 @@ test("Escritorio: muestra landing con telefono interactivo real en marco negro j
   const app = await openCampus({ userAgent: DESKTOP_UA });
   try {
     assert.equal(app.$("landing").hidden, false);
+    assert.equal(app.$("pwa-splash"), null, "No debe existir el elemento #pwa-splash en el DOM");
+    assert.equal(app.document.querySelector(".pwa-splash"), null, "No debe existir contenedor .pwa-splash");
+    assert.equal(app.document.querySelector(".splash-signet"), null, "No debe existir logo .splash-signet duplicado arriba a la izquierda");
+    assert.equal(app.document.querySelector(".splash-title"), null, "No debe existir titulo .splash-title en la esquina superior");
     assert.equal(app.$("app").hidden, false);
     assert.equal(app.$("app").classList.contains("app-framed"), true);
     assert.equal(app.document.querySelector(".phone-mockup .phone-frame #phone-screen #app"), app.$("app"), "La app interactiva real debe vivir dentro del marco de smartphone en escritorio");
