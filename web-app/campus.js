@@ -1362,8 +1362,6 @@
   function mountAppLayout(framed) {
     const appEl = $("app");
     const screen = $("phone-screen");
-    const splash = $("pwa-splash");
-    if (splash) splash.hidden = true;
     if (framed && screen) {
       if (appEl.parentElement !== screen) screen.appendChild(appEl);
       appEl.classList.add("app-framed");
