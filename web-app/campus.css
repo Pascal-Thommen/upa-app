@@ -292,6 +292,31 @@ p {
   font-size: 0.7rem;
 }
 
+.badge-registration-open {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  font-size: 0.7rem;
+}
+
+.detail-status-badge {
+  padding: 3px 10px;
+  font-size: 0.78rem;
+}
+
+.detail-status-registered {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border: 1px solid rgba(108, 147, 57, 0.4);
+}
+
+.detail-status-ended {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
 .badge-campus .upa-u-glyph,
 .badge-classroom .classroom-glyph {
   flex: none;
@@ -1020,11 +1045,6 @@ video.card-media {
 .agenda-room {
   font-weight: 600;
   color: var(--text);
-}
-
-.agenda-attendees {
-  font-weight: 600;
-  color: var(--brand);
 }
 
 .agenda-due {

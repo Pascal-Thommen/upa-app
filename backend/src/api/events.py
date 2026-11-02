@@ -99,7 +99,7 @@ def unregister_from_event(
 ) -> EventResponse:
     """
     Cancela la inscripcion del usuario autenticado en el evento indicado
-    eliminando el registro de event_registrations y retornando el evento actualizado.
+    marcando el estado como declined en event_registrations y retornando el evento actualizado.
     """
     now = datetime.now(UTC)
     post = (

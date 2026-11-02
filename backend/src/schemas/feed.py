@@ -135,7 +135,7 @@ class FeedItemResponse(BaseModel):
             permalink=(getattr(post, "permalink", None) or "").strip(),
             **extra_detail_fields(post),
             is_registered=is_registered,
-            registered_count=len(attending),
+            registered_count=0,
             views_count=views_count,
             created_at=created,
             published_at=published,

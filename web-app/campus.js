@@ -460,12 +460,17 @@
 
   function applyRegistrationUpdate(updated) {
     const targetId = String(updated.id);
+    const isReg = Boolean(updated.is_registered);
     state.feed.posts = state.feed.posts.map((p) =>
       String(p.id) === targetId
-        ? { ...p, is_registered: updated.is_registered, registered_count: updated.registered_count }
+        ? { ...p, has_registration: true, is_registered: isReg, registered_count: 0 }
         : p,
     );
-    state.agenda.entries = Core.applyRegistration(state.agenda.entries, updated);
+    state.agenda.entries = Core.applyRegistration(state.agenda.entries, {
+      ...updated,
+      is_registered: isReg,
+      registered_count: 0,
+    });
     cache.set(`feed:${currentUserKey()}`, state.feed);
     const agendaKey = `agenda:${currentUserKey()}`;
     const cachedAgenda = cache.get(agendaKey);
@@ -474,9 +479,16 @@
         ...cachedAgenda.data,
         events: cachedAgenda.data.events.map((ev) =>
           String(ev.id) === targetId
-            ? { ...ev, is_registered: updated.is_registered, registered_count: updated.registered_count }
+            ? { ...ev, has_registration: true, is_registered: isReg, registered_count: 0 }
             : ev,
         ),
+        items: Array.isArray(cachedAgenda.data.items)
+          ? cachedAgenda.data.items.map((item) =>
+              item.item_type === "EVENT" && String(item.id) === targetId
+                ? { ...item, is_registered: isReg, registered_count: 0 }
+                : item,
+            )
+          : cachedAgenda.data.items,
       });
     }
     renderFeed();
@@ -487,8 +499,8 @@
     ) {
       state.detail.hasRegistration = true;
       state.detail.eventId = updated.id;
-      state.detail.isRegistered = Boolean(updated.is_registered);
-      state.detail.count = Number(updated.registered_count) || 0;
+      state.detail.isRegistered = isReg;
+      state.detail.count = 0;
       renderDetailEventCard();
       renderDetailActions();
     }
@@ -683,7 +695,7 @@
       hasRegistration: Boolean(isEvent && post.has_registration),
       eventId: isEvent && post.has_registration ? post.id : null,
       isRegistered: Boolean(post.is_registered),
-      count: post.registered_count || 0,
+      count: 0,
       ended: Boolean(isEvent && post.event_end && Date.parse(post.event_end) < Date.now()),
     };
   }
@@ -738,12 +750,6 @@
           ? raw.is_registered
           : feedPost.is_registered,
     );
-    const registeredCount =
-      entry.registeredCount !== undefined
-        ? entry.registeredCount
-        : raw.registered_count !== undefined
-          ? raw.registered_count
-          : feedPost.registered_count || 0;
     return detailFromPost({
       ...feedPost,
       ...raw,
@@ -764,7 +770,7 @@
       location: entry.place || raw.location || feedPost.location || "",
       has_registration: hasRegistration,
       is_registered: isRegistered,
-      registered_count: registeredCount,
+      registered_count: 0,
     });
   }
 
@@ -833,14 +839,25 @@
     if (!d) return;
     const regEventId = d.eventId || (d.hasRegistration ? d.postId : null);
     if (regEventId && !d.ended) {
-      const button = h("button", {
-        class: `btn btn-block ${d.isRegistered ? "btn-secondary" : "btn-primary"}`,
-        type: "button",
-        id: "detail-register",
-        text: d.isRegistered ? "Cancelar inscripción" : "Inscripción",
-      });
-      button.addEventListener("click", () => track(toggleRegistration(regEventId, d.isRegistered, button)));
-      box.append(button);
+      if (!state.token) {
+        box.append(
+          h("a", {
+            class: "btn btn-secondary btn-block",
+            id: "detail-register",
+            href: "/api/auth/login-google?return_to=campus",
+            text: "Inicia sesión para inscribirte",
+          }),
+        );
+      } else {
+        const button = h("button", {
+          class: `btn btn-block ${d.isRegistered ? "btn-secondary" : "btn-primary"}`,
+          type: "button",
+          id: "detail-register",
+          text: d.isRegistered ? "Cancelar inscripción" : "Inscripción",
+        });
+        button.addEventListener("click", () => track(toggleRegistration(regEventId, d.isRegistered, button)));
+        box.append(button);
+      }
     }
     const links = Core.resolveDetailLinks(d);
     for (const item of links) {
@@ -963,7 +980,30 @@
     } else {
       const timeText = entry.timeRange || entry.timeLabel;
       const roomText = entry.place || raw.location || "Campus UPA";
-      const isReg = Boolean(entry.isRegistered !== undefined ? entry.isRegistered : raw.is_registered);
+      const postId = raw.id !== undefined ? raw.id : entry.id;
+      const feedPost = state.feed.posts.find((p) => String(p.id) === String(postId)) || {};
+      const hasReg = Boolean(
+        entry.hasRegistration !== undefined
+          ? entry.hasRegistration
+          : raw.has_registration !== undefined
+            ? raw.has_registration
+            : feedPost.has_registration,
+      );
+      const isReg = Boolean(
+        entry.isRegistered !== undefined
+          ? entry.isRegistered
+          : raw.is_registered !== undefined
+            ? raw.is_registered
+            : feedPost.is_registered,
+      );
+      const endMs = entry.end instanceof Date ? entry.end.getTime() : Date.parse(raw.event_end || feedPost.event_end || "");
+      const ended = Boolean(!Number.isNaN(endMs) && endMs < Date.now());
+      let statusBadge = null;
+      if (isReg) {
+        statusBadge = h("span", { class: "badge badge-registered", text: "Inscrito" });
+      } else if (hasReg && !ended) {
+        statusBadge = h("span", { class: "badge badge-registration-open", text: "Inscripción abierta" });
+      }
       infoNode = h(
         "div",
         { class: "agenda-info" },
@@ -971,7 +1011,7 @@
           "div",
           { class: "agenda-badges" },
           h("span", { class: "badge badge-campus badge-event" }, upaIcon(12), h("span", { text: "Evento Campus" })),
-          isReg ? h("span", { class: "badge badge-registered", text: "Inscrito" }) : null,
+          statusBadge,
         ),
         h("b", { class: "agenda-title", text: entry.title }),
         h(

@@ -196,7 +196,7 @@ def test_agenda_chronological_consolidation_of_events_and_deadlines():
     assert events[0]["id"] == 201
     assert events[0]["title"] == "Charla de Ciberseguridad Bancaria"
     assert events[0]["is_registered"] is True
-    assert events[0]["registered_count"] == 1
+    assert events[0]["registered_count"] == 0
     assert events[1]["id"] == 202
     assert events[1]["title"] == "Simposio de Robotica Industrial"
     assert events[1]["is_registered"] is False

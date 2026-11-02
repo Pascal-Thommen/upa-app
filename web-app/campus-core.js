@@ -800,7 +800,7 @@
       return {
         ...e,
         hasRegistration: Boolean(
-          mergedRaw.has_registration !== undefined ? mergedRaw.has_registration : e.hasRegistration,
+          mergedRaw.has_registration !== undefined ? mergedRaw.has_registration : e.hasRegistration || true,
         ),
         isRegistered: Boolean(mergedRaw.is_registered),
         registeredCount: Number(mergedRaw.registered_count) || 0,
