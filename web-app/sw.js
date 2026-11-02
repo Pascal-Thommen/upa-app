@@ -16,6 +16,7 @@ const SHELL_FILES = [
   "/campus/campus-core.js?v=1.0.2",
   "/campus/vendor/qrcode.js?v=1.0.2",
   "/campus/campus.js?v=1.0.2",
+  "/campus/icons/favicon.svg",
   "/campus/icons/favicon-32.png",
   "/campus/icons/apple-touch-icon.png",
   "/campus/icons/icon-192.png",

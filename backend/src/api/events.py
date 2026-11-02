@@ -86,6 +86,7 @@ def register_for_event(
     status_code=status.HTTP_200_OK,
     summary="Cancelar inscripcion a un evento institucional (RSVP)",
     responses={
+        400: {"model": ErrorResponse, "description": "Sin inscripcion activa previa en el evento"},
         401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
         403: {"model": ErrorResponse, "description": "Sin permisos para el grupo destinatario del evento"},
         404: {"model": ErrorResponse, "description": "Evento no encontrado"},
@@ -129,9 +130,15 @@ def unregister_from_event(
         )
         .first()
     )
-    if existing:
-        db.delete(existing)
-        db.commit()
-        db.refresh(post)
+    if not existing or existing.status != "attending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se encontró una inscripción activa para cancelar en este evento.",
+        )
+
+    existing.status = "declined"
+    existing.updated_at = now
+    db.commit()
+    db.refresh(post)
 
     return EventResponse.from_orm_post(post, current_user_id=current_user.id)

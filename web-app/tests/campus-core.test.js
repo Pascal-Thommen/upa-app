@@ -300,8 +300,19 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
     /<a class="rich-link" href="https:\/\/upa\.edu\.py\/" target="_blank" rel="noopener noreferrer">https:\/\/upa\.edu\.py\/<\/a>&quot;&gt;&lt;script&gt;alert\(3\)&lt;\/script&gt;/,
   );
 
-  // Deteccion de video y resolucion de poster (thumbnail en image_url con fallback estable)
+  // Deteccion de video, stream reproducible MP4/WEBM y resolucion de poster (thumbnail en image_url con fallback estable)
   assert.equal(Core.isVideoMedia({ media_type: "VIDEO", media_url: "https://cdn.instagram.com/reel.mp4" }), true);
+  assert.equal(Core.hasPlayableVideoStream({ media_type: "VIDEO", media_url: "https://cdn.instagram.com/reel.mp4" }), true);
+  assert.equal(Core.hasPlayableVideoStream({ media_type: "VIDEO", media_url: "https://cdn.instagram.com/reel.webp" }), false);
+  assert.equal(Core.hasPlayableVideoStream({ media_type: "VIDEO", media_url: "https://cdn.instagram.com/reel.jpg" }), false);
+  assert.equal(
+    Core.videoExternalUrl({
+      media_type: "VIDEO",
+      media_url: "https://cdn.instagram.com/reel.webp",
+      permalink: "https://www.instagram.com/reel/Cwebp123/",
+    }),
+    "https://www.instagram.com/reel/Cwebp123/",
+  );
   assert.equal(Core.isVideoMedia({ media_type: "IMAGE", media_url: "https://cdn.instagram.com/clip.mp4?dl=1" }), true);
   assert.equal(Core.isVideoMedia({ media_type: "IMAGE", media_url: "https://cdn.instagram.com/foto.jpg" }), false);
   assert.equal(

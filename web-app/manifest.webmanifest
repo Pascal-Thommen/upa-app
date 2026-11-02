@@ -1,6 +1,6 @@
 {
   "id": "/",
-  "name": "UPA Campus · Universidad Paraguayo Alemana",
+  "name": "UPA Campus",
   "short_name": "UPA Campus",
   "description": "Noticias, eventos y agenda para estudiantes y docentes de la Universidad Paraguayo Alemana.",
   "lang": "es-PY",
@@ -10,10 +10,16 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
-  "background_color": "#0b1220",
+  "background_color": "#ffffff",
   "theme_color": "#ffffff",
   "categories": ["education"],
   "icons": [
+    {
+      "src": "/campus/icons/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
     {
       "src": "/campus/icons/icon-192.png",
       "sizes": "192x192",

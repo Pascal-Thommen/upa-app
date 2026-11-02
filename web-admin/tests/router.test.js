@@ -483,7 +483,7 @@ test("permisos dinamicos: sidebar muestra solo las pestanas autorizadas y rediri
   assert.equal(window.location.pathname, "/dashboard/ia");
 });
 
-test("permisos dinamicos: estudiante sin permisos administrativos oculta sidebar y aterriza en APIs/Campus", () => {
+test("permisos dinamicos: estudiante sin permisos administrativos oculta dashboard y muestra aviso Acceso Restringido", () => {
   const env = createTestEnvironment("/dashboard/publicaciones");
   const { elements, window, router } = env;
 
@@ -494,11 +494,11 @@ test("permisos dinamicos: estudiante sin permisos administrativos oculta sidebar
   });
 
   assert.ok(elements["sidebar-menu"].classList.contains("hidden"));
-  assert.ok(elements["apis-admin-overview"].classList.contains("hidden"));
-  assert.ok(elements["apis-json-details"].classList.contains("hidden"));
+  assert.ok(elements["view-dashboard"].classList.contains("hidden"));
+  assert.ok(elements["view-login"].classList.contains("hidden"));
+  assert.ok(!elements["view-restricted"].classList.contains("hidden"), "Debe mostrar la tarjeta de Acceso Restringido");
   assert.equal(router.getCurrentRoute(), "apis");
   assert.equal(window.location.pathname, "/dashboard/apis");
-  assert.ok(!elements["student-workspace"].classList.contains("hidden"));
 });
 
 test("persistencia: reapplyCurrentRoute conserva el modulo activo y su URL", () => {
@@ -548,7 +548,7 @@ test("oauth redirect: auth_error=missing_client_id und forbidden_domain zeigen k
   assert.ok(envMissing.elements["login-alert"].textContent.includes("Client ID"));
 
   const envForbidden = createTestEnvironment("/dashboard", "?auth_error=forbidden_domain");
-  assert.ok(!envForbidden.elements["view-login"].classList.contains("hidden"));
+  assert.ok(!envForbidden.elements["view-restricted"].classList.contains("hidden"));
   assert.ok(envForbidden.elements["login-alert"].textContent.includes("@upa.edu.py"));
 });
 
@@ -611,6 +611,11 @@ test("modulo ia: index.html renombra reiter a IA, consolida 1-Klick-Save, precar
   assert.ok(indexHtml.includes("Guardar configuración y probar conexión"));
   assert.ok(indexHtml.includes("https://aistudio.google.com/app/apikey"));
   assert.ok(indexHtml.includes("Create API key"));
+  assert.ok(indexHtml.includes("Ver Campus PWA ↗"));
+  assert.ok(indexHtml.includes('id="link-campus-pwa"'));
+  assert.ok(indexHtml.includes("Acceso Restringido"));
+  assert.ok(indexHtml.includes("Volver a UPA Campus"));
+  assert.ok(indexHtml.includes('href="/dashboard/favicon.svg"'));
 
   // Los tres botones individuales confusos han sido eliminados
   assert.ok(!indexHtml.includes('id="btn-ai-save-prompt-autocomplete"'));

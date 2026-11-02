@@ -69,8 +69,11 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
         rel = icon["src"].removeprefix("/campus/")
         icon_path = WEB_APP / rel
         assert icon_path.is_file(), f"Falta el icono declarado en el manifiesto: {icon_path}"
-        w, h = _png_dimensions(icon_path)
-        assert f"{w}x{h}" == icon["sizes"]
+        if icon["type"] == "image/png":
+            w, h = _png_dimensions(icon_path)
+            assert f"{w}x{h}" == icon["sizes"]
+        elif icon["type"] == "image/svg+xml":
+            assert "<svg" in icon_path.read_text(encoding="utf-8")
 
     assert _png_dimensions(WEB_APP / "icons" / "apple-touch-icon.png") == (180, 180)
     assert _png_dimensions(WEB_APP / "icons" / "favicon-32.png") == (32, 32)

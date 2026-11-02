@@ -398,12 +398,36 @@ def test_rsvp_works_on_posts_and_events_and_excludes_declined_from_reminders():
     assert regs["attending_count"] == 1
     assert regs["declined_count"] == 1
 
-    # Verificar exclusión real de recordatorios push para usuarios con baja ("declined")
+    # Verificar exclusión real de recordatorios push para usuarios con baja ("declined") tanto via /rsvp como via DELETE /api/events/{id}/register
     db = TestingSessionLocal()
     tokens = collect_event_reminder_tokens(db, pub_id, ["ALL"])
     db.close()
     assert "fcm-token-ana-real" in tokens
     assert "fcm-token-luis-real" not in tokens
+
+    # Cancelar sin inscripcion previa falla de forma segura con 400
+    ev_res = client.post(
+        "/api/publications",
+        json={
+            "title": "Charla con inscripción y cancelación",
+            "is_news": False,
+            "is_event": True,
+            "event_start": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+            "has_registration": True,
+            "target_groups": ["ALL"],
+        },
+        headers=headers,
+    )
+    assert ev_res.status_code == 201
+    ev_id = ev_res.json()["id"]
+    assert client.delete(f"/api/events/{ev_id}/register", headers=ana_headers).status_code == 400
+    assert client.post(f"/api/publications/{ev_id}/rsvp", json={"status": "declined"}, headers=ana_headers).status_code == 400
+    assert client.post(f"/api/events/{ev_id}/register", headers=ana_headers).status_code == 200
+    assert client.delete(f"/api/events/{ev_id}/register", headers=ana_headers).status_code == 200
+    db = TestingSessionLocal()
+    ev_tokens = collect_event_reminder_tokens(db, ev_id, ["ALL"])
+    db.close()
+    assert "fcm-token-ana-real" not in ev_tokens
 
 
 def test_unique_views_tracking_and_admin_only_audit_history():

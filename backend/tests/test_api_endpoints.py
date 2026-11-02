@@ -335,11 +335,10 @@ def test_event_rsvp_register_unregister_idempotency_and_errors():
     assert unreg1.json()["is_registered"] is False
     assert unreg1.json()["registered_count"] == 1
 
-    # 5. Idempotencia en DELETE: cancelar de nuevo mantiene 200 OK y contador en 1
+    # 5. Cancelar sin inscripcion activa falla de forma segura con 400 Bad Request
     unreg1_dup = client.delete("/api/events/700/register", headers=h1)
-    assert unreg1_dup.status_code == 200
-    assert unreg1_dup.json()["is_registered"] is False
-    assert unreg1_dup.json()["registered_count"] == 1
+    assert unreg1_dup.status_code == 400
+    assert "inscripción activa" in unreg1_dup.json()["detail"].lower()
 
     # 6. Errores de autenticacion (401), autorizacion (403) y recurso inexistente (404)
     assert client.post("/api/events/700/register").status_code == 401
