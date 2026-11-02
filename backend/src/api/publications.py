@@ -9,7 +9,6 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request, status
-from sqlalchemy import case
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
@@ -345,11 +344,6 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
 def list_publications(
     kind: str | None = Query(None, description="Filtro opcional: news, event, instagram, urgent, pending"),
     limit: int = Query(100, ge=1, le=300),
-    sort: str = Query(
-        "created",
-        pattern="^(created|event)$",
-        description="Orden: created (creacion, mas reciente primero) o event (proximos eventos primero)",
-    ),
     db: Session = Depends(get_db),
     editor: User = Depends(require_permission("publicaciones")),
 ) -> list[PublicationResponse]:
@@ -368,24 +362,7 @@ def list_publications(
     elif kind == "pending":
         query = query.filter(Post.is_edited.is_(False))
 
-    if sort == "event":
-        now = datetime.now(UTC).replace(tzinfo=None)
-        bucket = case(
-            (Post.event_start.is_(None), 2),
-            (Post.event_start >= now, 0),
-            else_=1,
-        )
-        upcoming_start = case((Post.event_start >= now, Post.event_start), else_=None)
-        query = query.order_by(
-            bucket.asc(),
-            upcoming_start.asc(),
-            Post.event_start.desc(),
-            Post.created_at.desc(),
-            Post.id.desc(),
-        )
-    else:
-        query = query.order_by(Post.created_at.desc(), Post.id.desc())
-    rows = query.limit(limit).all()
+    rows = query.order_by(Post.is_pinned.desc(), Post.created_at.desc(), Post.id.desc()).limit(limit).all()
     return [PublicationResponse.from_orm_post(row) for row in rows]
 
 
