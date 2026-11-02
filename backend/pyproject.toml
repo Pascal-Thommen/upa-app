@@ -1,0 +1,5 @@
+[tool.pyright]
+# Statische Typenpruefung fuer backend/src
+include = ["src"]
+typeCheckingMode = "basic"
+pythonVersion = "3.11"

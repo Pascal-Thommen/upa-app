@@ -239,6 +239,11 @@
                   <button id="ed-filter-events" type="button" class="ed-mode-btn" data-filter="events">Eventos</button>
                 </div>
                 <div class="flex flex-wrap items-center gap-2.5">
+                  <label class="ed-subtle" for="ed-pub-sort">Ordenar por:</label>
+                  <select id="ed-pub-sort" class="ed-input" style="width:auto">
+                    <option value="created">Fecha de creación (más reciente)</option>
+                    <option value="event">Fecha del evento (próximos eventos)</option>
+                  </select>
                   <span id="ed-sync-status" class="ed-subtle" role="status"></span>
                   <button id="ed-btn-sync" type="button" class="ed-btn ed-btn-secondary">Sincronizar Instagram</button>
                   <button id="ed-btn-new-pub" type="button" class="ed-btn ed-btn-primary">+ Nueva publicación</button>
@@ -276,10 +281,11 @@
               <!-- Resumen de métricas y participantes (visible al editar) -->
               <div id="ed-metrics-bar" class="ed-metrics-bar hidden">
                 <div class="flex flex-wrap items-center gap-3">
-                  <span id="ed-metric-views" class="font-semibold text-slate-800">0 vistas</span>
+                  <span id="ed-metric-views" class="font-semibold text-slate-800" title="Estudiantes únicos que abrieron la publicación">0 vistas</span>
                   <span class="text-slate-300">&bull;</span>
-                  <span id="ed-metric-attending" class="font-semibold text-emerald-700">0 inscritos</span>
-                  <span id="ed-metric-declined" class="text-slate-500">0 bajas</span>
+                  <span id="ed-metric-attending" class="font-semibold text-emerald-700" title="Confirmaciones activas de asistencia (inscritos)">0 inscritos</span>
+                  <span class="text-slate-300">&bull;</span>
+                  <span id="ed-metric-declined" class="text-slate-500" title="Personas que indicaron que no asistirán o cancelaron su inscripción">0 no asisten</span>
                   <span id="ed-metric-edited" class="ed-badge ed-badge-ok">Editado</span>
                 </div>
                 <button id="ed-btn-toggle-participants" type="button" class="ed-btn ed-btn-secondary ed-btn-sm">
@@ -350,12 +356,14 @@
                     <div>
                       <span class="ed-label">Imagen o video</span>
                       <div class="ed-dropzone" data-dropzone="pub">
+                        <div class="ed-dz-empty" data-dz-empty>
                         <input type="file" class="hidden" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,application/pdf" data-dz-input>
                         <input type="hidden" data-dz-url id="ed-pub-image-url">
                         <p class="text-xs text-slate-600">Arrastre aquí un archivo o
                           <button type="button" class="ed-link" data-dz-pick>seleccione desde su equipo</button>
                         </p>
                         <p class="ed-subtle">JPG, PNG, WEBP, MP4, WEBM o PDF &bull; máximo 10 MB</p>
+                        </div>
                         <div class="ed-dz-status" data-dz-status role="status"></div>
                         <div class="hidden ed-dz-preview" data-dz-preview></div>
                       </div>

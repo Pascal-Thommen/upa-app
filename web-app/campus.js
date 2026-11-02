@@ -458,17 +458,37 @@
 
   /* ------------------------------------------------------------------ inscripcion */
 
-  function applyRegistrationUpdate(updated) {
+  function resolveRegistrationStatus(item, fallbackStatus) {
+    if (!item) return fallbackStatus || null;
+    if (item.registration_status === "attending" || item.registration_status === "declined") {
+      return item.registration_status;
+    }
+    if (item.registrationStatus === "attending" || item.registrationStatus === "declined") {
+      return item.registrationStatus;
+    }
+    if (item.is_registered || item.isRegistered) return "attending";
+    return fallbackStatus || null;
+  }
+
+  function applyRegistrationUpdate(updated, fallbackStatus) {
     const targetId = String(updated.id);
     const isReg = Boolean(updated.is_registered);
+    const regStatus = isReg ? "attending" : resolveRegistrationStatus(updated, fallbackStatus);
     state.feed.posts = state.feed.posts.map((p) =>
       String(p.id) === targetId
-        ? { ...p, has_registration: true, is_registered: isReg, registered_count: 0 }
+        ? {
+            ...p,
+            has_registration: true,
+            is_registered: isReg,
+            registration_status: regStatus,
+            registered_count: 0,
+          }
         : p,
     );
     state.agenda.entries = Core.applyRegistration(state.agenda.entries, {
       ...updated,
       is_registered: isReg,
+      registration_status: regStatus,
       registered_count: 0,
     });
     cache.set(`feed:${currentUserKey()}`, state.feed);
@@ -479,13 +499,19 @@
         ...cachedAgenda.data,
         events: cachedAgenda.data.events.map((ev) =>
           String(ev.id) === targetId
-            ? { ...ev, has_registration: true, is_registered: isReg, registered_count: 0 }
+            ? {
+                ...ev,
+                has_registration: true,
+                is_registered: isReg,
+                registration_status: regStatus,
+                registered_count: 0,
+              }
             : ev,
         ),
         items: Array.isArray(cachedAgenda.data.items)
           ? cachedAgenda.data.items.map((item) =>
               item.item_type === "EVENT" && String(item.id) === targetId
-                ? { ...item, is_registered: isReg, registered_count: 0 }
+                ? { ...item, is_registered: isReg, registration_status: regStatus, registered_count: 0 }
                 : item,
             )
           : cachedAgenda.data.items,
@@ -500,6 +526,7 @@
       state.detail.hasRegistration = true;
       state.detail.eventId = updated.id;
       state.detail.isRegistered = isReg;
+      state.detail.registrationStatus = regStatus;
       state.detail.count = 0;
       renderDetailEventCard();
       renderDetailActions();
@@ -514,7 +541,7 @@
     if (button) button.disabled = true;
     try {
       const updated = currentlyRegistered ? await api.unregister(eventId) : await api.register(eventId);
-      applyRegistrationUpdate(updated);
+      applyRegistrationUpdate(updated, currentlyRegistered ? "declined" : "attending");
       toast(updated.is_registered ? "Inscripción confirmada." : "Inscripción cancelada.");
     } catch (error) {
       if (Core.isConnectivityError(error)) setOffline(true, true);
@@ -597,15 +624,44 @@
     const ended = post.event_end && Date.parse(post.event_end) < Date.now();
     if (ended) return h("span", { class: "count", text: "Evento finalizado" });
     if (!state.token) return h("a", { class: "btn btn-secondary btn-small", href: "/api/auth/login-google?return_to=campus", text: "Inicia sesión para inscribirte" });
-    const registered = Boolean(post.is_registered);
-    const button = h("button", {
-      class: `btn btn-small ${registered ? "btn-secondary" : "btn-primary"}`,
+    const regStatus = resolveRegistrationStatus(post, null);
+    const registered = Boolean(post.is_registered) || regStatus === "attending";
+    const declined = !registered && regStatus === "declined";
+    if (registered) {
+      const button = h("button", {
+        class: "btn btn-small btn-secondary",
+        type: "button",
+        "data-register": String(post.id),
+        text: "Cancelar inscripción",
+      });
+      button.addEventListener("click", () => track(toggleRegistration(post.id, true, button)));
+      return [h("span", { class: "badge badge-registered", "data-rsvp-status": "attending", text: "Inscrito" }), button];
+    }
+    if (declined) {
+      const button = h("button", {
+        class: "btn btn-small btn-secondary",
+        type: "button",
+        "data-register": String(post.id),
+        text: "Cambiar: Inscribirme",
+      });
+      button.addEventListener("click", () => track(toggleRegistration(post.id, false, button)));
+      return [h("span", { class: "badge badge-declined", "data-rsvp-status": "declined", text: "No asistirás" }), button];
+    }
+    const registerBtn = h("button", {
+      class: "btn btn-small btn-primary",
       type: "button",
       "data-register": String(post.id),
-      text: registered ? "Cancelar inscripción" : "Inscripción",
+      text: "Inscripción",
     });
-    button.addEventListener("click", () => track(toggleRegistration(post.id, registered, button)));
-    return button;
+    const declineBtn = h("button", {
+      class: "btn btn-small btn-subtle",
+      type: "button",
+      "data-decline": String(post.id),
+      text: "No asistiré",
+    });
+    registerBtn.addEventListener("click", () => track(toggleRegistration(post.id, false, registerBtn)));
+    declineBtn.addEventListener("click", () => track(toggleRegistration(post.id, true, declineBtn)));
+    return [registerBtn, declineBtn];
   }
 
   function feedCard(post, urgent) {
@@ -695,6 +751,7 @@
       hasRegistration: Boolean(isEvent && post.has_registration),
       eventId: isEvent && post.has_registration ? post.id : null,
       isRegistered: Boolean(post.is_registered),
+      registrationStatus: resolveRegistrationStatus(post, null),
       count: 0,
       ended: Boolean(isEvent && post.event_end && Date.parse(post.event_end) < Date.now()),
     };
@@ -728,6 +785,7 @@
         hasRegistration: false,
         eventId: null,
         isRegistered: false,
+        registrationStatus: null,
         count: 0,
         ended: false,
       };
@@ -750,6 +808,16 @@
           ? raw.is_registered
           : feedPost.is_registered,
     );
+    const registrationStatus =
+      entry.registrationStatus !== undefined && entry.registrationStatus !== null
+        ? entry.registrationStatus
+        : raw.registration_status !== undefined && raw.registration_status !== null
+          ? raw.registration_status
+          : feedPost.registration_status !== undefined
+            ? feedPost.registration_status
+            : isRegistered
+              ? "attending"
+              : null;
     return detailFromPost({
       ...feedPost,
       ...raw,
@@ -770,6 +838,7 @@
       location: entry.place || raw.location || feedPost.location || "",
       has_registration: hasRegistration,
       is_registered: isRegistered,
+      registration_status: registrationStatus,
       registered_count: 0,
     });
   }
@@ -793,9 +862,12 @@
     if (d.ended) {
       statusText = "Evento finalizado";
       statusClass += " detail-status-ended";
-    } else if (d.isRegistered) {
+    } else if (d.isRegistered || d.registrationStatus === "attending") {
       statusText = "Inscrito";
       statusClass += " detail-status-registered";
+    } else if (d.registrationStatus === "declined") {
+      statusText = "No asistirás";
+      statusClass += " detail-status-declined";
     } else if (d.hasRegistration || d.eventId) {
       statusText = "Inscripción abierta";
     }
@@ -848,15 +920,40 @@
             text: "Inicia sesión para inscribirte",
           }),
         );
-      } else {
+      } else if (d.isRegistered || d.registrationStatus === "attending") {
         const button = h("button", {
-          class: `btn btn-block ${d.isRegistered ? "btn-secondary" : "btn-primary"}`,
+          class: "btn btn-block btn-secondary",
           type: "button",
           id: "detail-register",
-          text: d.isRegistered ? "Cancelar inscripción" : "Inscripción",
+          text: "Cancelar inscripción",
         });
-        button.addEventListener("click", () => track(toggleRegistration(regEventId, d.isRegistered, button)));
+        button.addEventListener("click", () => track(toggleRegistration(regEventId, true, button)));
         box.append(button);
+      } else if (d.registrationStatus === "declined") {
+        const button = h("button", {
+          class: "btn btn-block btn-secondary",
+          type: "button",
+          id: "detail-register",
+          text: "Cambiar: Inscribirme",
+        });
+        button.addEventListener("click", () => track(toggleRegistration(regEventId, false, button)));
+        box.append(button);
+      } else {
+        const registerBtn = h("button", {
+          class: "btn btn-block btn-primary",
+          type: "button",
+          id: "detail-register",
+          text: "Inscripción",
+        });
+        const declineBtn = h("button", {
+          class: "btn btn-block btn-subtle",
+          type: "button",
+          id: "detail-decline",
+          text: "No asistiré",
+        });
+        registerBtn.addEventListener("click", () => track(toggleRegistration(regEventId, false, registerBtn)));
+        declineBtn.addEventListener("click", () => track(toggleRegistration(regEventId, true, declineBtn)));
+        box.append(registerBtn, declineBtn);
       }
     }
     const links = Core.resolveDetailLinks(d);
@@ -996,11 +1093,19 @@
             ? raw.is_registered
             : feedPost.is_registered,
       );
+      const regStatus =
+        entry.registrationStatus !== undefined && entry.registrationStatus !== null
+          ? entry.registrationStatus
+          : raw.registration_status !== undefined && raw.registration_status !== null
+            ? raw.registration_status
+            : feedPost.registration_status || (isReg ? "attending" : null);
       const endMs = entry.end instanceof Date ? entry.end.getTime() : Date.parse(raw.event_end || feedPost.event_end || "");
       const ended = Boolean(!Number.isNaN(endMs) && endMs < Date.now());
       let statusBadge = null;
-      if (isReg) {
+      if (isReg || regStatus === "attending") {
         statusBadge = h("span", { class: "badge badge-registered", text: "Inscrito" });
+      } else if (regStatus === "declined") {
+        statusBadge = h("span", { class: "badge badge-declined", text: "No asistirás" });
       } else if (hasReg && !ended) {
         statusBadge = h("span", { class: "badge badge-registration-open", text: "Inscripción abierta" });
       }

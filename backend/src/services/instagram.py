@@ -290,7 +290,7 @@ class InstagramSyncService:
                     start_dt = to_utc_datetime(extraction.start_time) if extraction.is_event else None
                     is_valid_ai_event = bool(extraction.is_event and start_dt is not None)
 
-                    if is_valid_ai_event:
+                    if is_valid_ai_event and start_dt is not None:
                         end_dt = to_utc_datetime(extraction.end_time)
                         ai_title = (extraction.event_title or "").strip()[:255] or fallback_title
                         ai_location = (extraction.location or "").strip()[:255] or None

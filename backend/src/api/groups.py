@@ -143,7 +143,7 @@ def create_group(
     )
     db.commit()
     db.refresh(new_group)
-    return new_group
+    return AudienceGroupResponse.model_validate(new_group)
 
 
 @router.put(
@@ -185,7 +185,7 @@ def update_group(
     )
     db.commit()
     db.refresh(group)
-    return group
+    return AudienceGroupResponse.model_validate(group)
 
 
 @router.delete("/{group_id}", summary="Eliminar grupo de audiencia")

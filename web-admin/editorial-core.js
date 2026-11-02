@@ -810,6 +810,37 @@
     return next;
   }
 
+  /**
+   * Ordena publicaciones: "created" = creacion descendente (mas reciente primero);
+   * "event" = proximos eventos primero (ascendente), luego pasados y sin fecha.
+   */
+  function sortPublications(items, mode) {
+    const list = Array.isArray(items) ? items.slice() : [];
+    const ts = (v) => {
+      const t = v ? Date.parse(v) : NaN;
+      return Number.isNaN(t) ? null : t;
+    };
+    const byCreated = (a, b) => {
+      const d = (ts(b.created_at) || 0) - (ts(a.created_at) || 0);
+      return d !== 0 ? d : Number(b.id || 0) - Number(a.id || 0);
+    };
+    if (mode !== "event") return list.sort(byCreated);
+    const now = Date.now();
+    const bucket = (p) => {
+      const t = ts(p.event_start);
+      if (t === null) return 2;
+      return t >= now ? 0 : 1;
+    };
+    return list.sort((a, b) => {
+      const ba = bucket(a);
+      const bb = bucket(b);
+      if (ba !== bb) return ba - bb;
+      if (ba === 0) return ts(a.event_start) - ts(b.event_start) || byCreated(a, b);
+      if (ba === 1) return ts(b.event_start) - ts(a.event_start) || byCreated(a, b);
+      return byCreated(a, b);
+    });
+  }
+
   function renderPublicationRows(items, options) {
     const opts = options || {};
     if (!items || items.length === 0) {
@@ -842,7 +873,7 @@
           <span title="Estudiantes que abrieron la publicación">${escapeHtml(views)} vistas</span>
           ${
             showRsvp
-              ? `<span class="ed-subtle">&bull; ${escapeHtml(attending)} inscritos / ${escapeHtml(declined)} bajas</span>`
+              ? `<span class="ed-subtle" title="Confirmaciones de asistencia (${escapeHtml(attending)} inscritos) y ausencias confirmadas (${escapeHtml(declined)} no asisten)">&bull; ${escapeHtml(attending)} inscritos / ${escapeHtml(declined)} no asisten</span>`
               : ""
           }
         </div>`;
@@ -904,10 +935,13 @@
     const opts = options || {};
     const regs = (response && response.registrations) || [];
     const declinedCount = response && response.declined_count ? Number(response.declined_count) : 0;
-    const declinedHtml = declinedCount > 0 ? ` <span class="ed-badge ed-badge-neutral">${escapeHtml(declinedCount)} bajas</span>` : "";
+    const declinedHtml =
+      declinedCount > 0
+        ? ` <span class="ed-badge ed-badge-neutral" title="Personas que indicaron que no asistirán o cancelaron su inscripción">${escapeHtml(declinedCount)} no asisten</span>`
+        : "";
     const header = `<div class="ed-participants-head"><strong>${escapeHtml(
       response ? response.title : ""
-    )}</strong><div><span class="ed-badge ed-badge-ok">${escapeHtml(
+    )}</strong><div><span class="ed-badge ed-badge-ok" title="Confirmaciones activas de asistencia">${escapeHtml(
       response ? response.attending_count : 0
     )} inscritos</span>${declinedHtml}</div></div>`;
     if (regs.length === 0) {
@@ -916,7 +950,7 @@
     const rows = regs
       .map((r) => {
         const attending = r.status === "attending";
-        const label = attending ? "Asiste" : r.status === "declined" ? "Baja" : r.status;
+        const label = attending ? "Asiste" : r.status === "declined" ? "No asiste" : r.status;
         return `<tr>
           <td>${escapeHtml(r.full_name)}</td>
           <td class="ed-mono">${escapeHtml(r.email)}</td>
@@ -1156,6 +1190,7 @@
     hasAutocompleteSourceContext,
     applyAiSuggestionsToFormValues,
     renderPublicationRows,
+    sortPublications,
     renderHistoryEntries,
     renderParticipantsTable,
     describeSyncResult,

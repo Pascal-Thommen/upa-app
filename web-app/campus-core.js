@@ -691,6 +691,12 @@
         link: "",
         hasRegistration: Boolean(ev.has_registration),
         isRegistered: Boolean(ev.is_registered),
+        registrationStatus:
+          ev.registration_status !== undefined && ev.registration_status !== null
+            ? ev.registration_status
+            : ev.is_registered
+              ? "attending"
+              : null,
         registeredCount: Number(ev.registered_count) || 0,
         date: start,
         end: validEnd,
@@ -797,12 +803,20 @@
     return (entries || []).map((e) => {
       if (e.kind !== "event" || String(e.id) !== targetId) return e;
       const mergedRaw = { ...(e.raw || {}), ...updatedEvent };
+      const isReg = Boolean(mergedRaw.is_registered);
+      const regStatus =
+        mergedRaw.registration_status !== undefined && mergedRaw.registration_status !== null
+          ? mergedRaw.registration_status
+          : isReg
+            ? "attending"
+            : null;
       return {
         ...e,
         hasRegistration: Boolean(
           mergedRaw.has_registration !== undefined ? mergedRaw.has_registration : e.hasRegistration || true,
         ),
-        isRegistered: Boolean(mergedRaw.is_registered),
+        isRegistered: isReg,
+        registrationStatus: regStatus,
         registeredCount: Number(mergedRaw.registered_count) || 0,
         raw: mergedRaw,
       };

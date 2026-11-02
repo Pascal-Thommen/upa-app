@@ -433,22 +433,39 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.equal(app.$("detail").hidden, true);
 
     const regBtn = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
+    const declineBtn = app.document.querySelector(`[data-decline="${seeded.eventId}"]`);
     assert.ok(regBtn);
+    assert.ok(declineBtn, "El evento con inscripcion abierta debe mostrar la opcion directa No asistiré");
     assert.equal(regBtn.textContent, "Inscripción");
+    assert.equal(declineBtn.textContent, "No asistiré");
 
-    await app.click(regBtn);
+    // Opt-out directo sin inscripcion previa (No asistiré -> No asistirás + Cambiar: Inscribirme)
+    await app.click(declineBtn);
+    const declinedBadge = app.document.querySelector(`[data-rsvp-status="declined"]`);
+    assert.ok(declinedBadge);
+    assert.equal(declinedBadge.textContent, "No asistirás");
+    assert.equal(app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent, "Cambiar: Inscribirme");
+    const checkOptOut = await api("/api/v1/agenda", student);
+    const evOptOut = checkOptOut.body.events.find((e) => e.id === seeded.eventId);
+    assert.equal(evOptOut.is_registered, false);
+    assert.equal(evOptOut.registration_status, "declined");
+
+    // Cambiar de No asistirás a Inscrito
+    await app.click(app.document.querySelector(`[data-register="${seeded.eventId}"]`));
     const updatedBtn = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
     assert.equal(updatedBtn.textContent, "Cancelar inscripción");
     const check1 = await api("/api/v1/agenda", student);
     const ev1 = check1.body.events.find((e) => e.id === seeded.eventId);
     assert.equal(ev1.is_registered, true);
+    assert.equal(ev1.registration_status, "attending");
     assert.equal(ev1.registered_count, 0, "El backend debe neutralizar registered_count a 0 para estudiantes");
 
     await app.click(updatedBtn);
-    assert.equal(app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent, "Inscripción");
+    assert.equal(app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent, "Cambiar: Inscribirme");
     const check2 = await api("/api/v1/agenda", student);
     const ev2 = check2.body.events.find((e) => e.id === seeded.eventId);
     assert.equal(ev2.is_registered, false);
+    assert.equal(ev2.registration_status, "declined");
     assert.equal(ev2.registered_count, 0);
 
     // Detalle a pantalla completa, badge Campus flotante con "U" verde y enlace a la fuente original
@@ -596,10 +613,10 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     assert.ok(eventItem.querySelector(".badge.badge-campus.badge-event"), "El evento en Agenda debe mostrar el badge Campus-Event");
     assert.ok(eventItem.querySelector(".badge.badge-campus svg.upa-u-glyph"), "El badge del evento en Agenda debe incluir el icono UPA");
     assert.ok(
-      eventItem.querySelector(".badge.badge-registration-open"),
-      "El evento con inscripcion abierta en Agenda debe mostrar el badge compacto Inscripción abierta",
+      eventItem.querySelector(".badge.badge-declined"),
+      "El evento con baja registrada en Agenda debe mostrar el badge compacto No asistirás",
     );
-    assert.equal(eventItem.querySelector(".badge.badge-registration-open").textContent, "Inscripción abierta");
+    assert.equal(eventItem.querySelector(".badge.badge-declined").textContent, "No asistirás");
     assert.match(eventItem.querySelector(".agenda-room").textContent, /Auditorio Edificio 1/);
     assert.equal(eventItem.querySelector(".agenda-attendees"), null, "No debe mostrar contador de inscritos en el item de Agenda");
 
@@ -611,7 +628,8 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
     assert.equal(app.$("detail-event-card").hidden, false, "El detalle desde Agenda debe mostrar #detail-event-card debajo del texto");
     const detailRegBtn = app.$("detail-actions").querySelector("#detail-register");
     assert.ok(detailRegBtn, "El detalle desde Agenda debe incluir el boton de inscripcion");
-    assert.equal(detailRegBtn.textContent, "Inscripción");
+    assert.equal(detailRegBtn.textContent, "Cambiar: Inscribirme");
+    assert.equal(app.$("detail-event-status").textContent, "No asistirás");
     assert.ok(app.$("detail-actions").querySelector("#detail-source"), "El detalle desde Agenda debe incluir el boton de fuente original");
 
     // Inscripcion RSVP directamente desde el overlay de Agenda y sincronizacion con el feed de Inicio
@@ -629,17 +647,17 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
       "El item de la Agenda debe mostrar el badge Inscrito tras registrarse en el detalle",
     );
 
-    // Cancelar inscripcion desde el mismo overlay de Agenda y verificar sincronizacion inversa
+    // Cancelar inscripcion desde el mismo overlay de Agenda y verificar sincronizacion inversa a No asistirás
     await app.click(app.$("detail-register"));
-    assert.equal(app.$("detail-register").textContent, "Inscripción");
-    assert.equal(app.$("detail-event-status").textContent, "Inscripción abierta");
+    assert.equal(app.$("detail-register").textContent, "Cambiar: Inscribirme");
+    assert.equal(app.$("detail-event-status").textContent, "No asistirás");
     assert.equal(
       app.document.querySelector(`[data-register="${seeded.eventId}"]`).textContent,
-      "Inscripción",
+      "Cambiar: Inscribirme",
     );
     assert.ok(
-      app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"] .badge-registration-open`),
-      "Tras cancelar la inscripcion, el item de Agenda vuelve a mostrar el badge Inscripción abierta",
+      app.$("agenda-list").querySelector(`.agenda-item[data-agenda-day="${seeded.eventDayKey}"] .badge-declined`),
+      "Tras cancelar la inscripcion, el item de Agenda muestra el badge No asistirás",
     );
 
     // Usuario no autenticado: Inicio y Detalle guian limpiamente al login para inscribirse

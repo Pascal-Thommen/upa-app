@@ -1,8 +1,9 @@
+from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -30,7 +31,7 @@ class HistoryEntry(BaseModel):
     created_at: datetime | None = None
 
 
-def _serialize_rows(rows: list[tuple[AdminAuditLog, User]]) -> list[HistoryEntry]:
+def _serialize_rows(rows: Sequence[Any]) -> list[HistoryEntry]:
     entries: list[HistoryEntry] = []
     for log, user in rows:
         details = log.details if isinstance(log.details, dict) else {}
@@ -76,7 +77,7 @@ def get_module_history(
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de entidad no válido.")
 
-    rows = query.order_by(desc(AdminAuditLog.created_at), desc(AdminAuditLog.id)).limit(limit).all()
+    rows = query.order_by(AdminAuditLog.created_at.desc(), AdminAuditLog.id.desc()).limit(limit).all()
     return _serialize_rows(rows)
 
 
@@ -105,5 +106,5 @@ def get_history(
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de entidad no válido.")
 
-    rows = query.order_by(desc(AdminAuditLog.created_at), desc(AdminAuditLog.id)).limit(limit).all()
+    rows = query.order_by(AdminAuditLog.created_at.desc(), AdminAuditLog.id.desc()).limit(limit).all()
     return _serialize_rows(rows)

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user_optional
@@ -44,7 +44,7 @@ def get_feed(
                 or_(Post.published_at.is_(None), Post.published_at <= now),
                 or_(Post.expires_at.is_(None), Post.expires_at > now),
             )
-            .order_by(desc(Post.is_pinned), desc(Post.created_at))
+            .order_by(Post.is_pinned.desc(), Post.created_at.desc())
         )
 
         for b in banners_query.all():
@@ -65,7 +65,7 @@ def get_feed(
     else:
         posts_query = posts_query.filter(or_(Post.is_news.is_(True), Post.is_event.is_(True)))
 
-    posts_query = posts_query.order_by(desc(Post.is_pinned), desc(Post.created_at))
+    posts_query = posts_query.order_by(Post.is_pinned.desc(), Post.created_at.desc())
 
     filtered_posts: list[Post] = []
     for p in posts_query.all():

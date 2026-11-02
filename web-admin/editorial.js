@@ -30,6 +30,7 @@
     remindersCustomized: false,
     participantsPubId: null,
     dropzones: {},
+    sort: "created",
     noticeTimer: null,
     aiConfigured: false,
   };
@@ -353,23 +354,68 @@
     const status = zone.querySelector("[data-dz-status]");
     const preview = zone.querySelector("[data-dz-preview]");
     const pick = zone.querySelector("[data-dz-pick]");
+    const empty = zone.querySelector("[data-dz-empty]");
+    let currentObjectUrl = "";
+    let activeUploadId = 0;
 
-    function revokeObjectUrl() {
-      if (dz.objectUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+    function revokeCurrentObjectUrl() {
+      if (currentObjectUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
         try {
-          URL.revokeObjectURL(dz.objectUrl);
+          URL.revokeObjectURL(currentObjectUrl);
         } catch (_) {
-          /* ignora fallo de revocación */
+          /* ignorar errores de revocacion */
         }
       }
-      dz.objectUrl = "";
+      currentObjectUrl = "";
+    }
+
+    function renderPreview(rawUrl, label, mimeHint) {
+      if (!preview) return;
+      const hasMedia = Boolean(rawUrl);
+      zone.classList.toggle("has-media", hasMedia);
+      if (empty) empty.classList.toggle("hidden", hasMedia);
+      if (!hasMedia) {
+        preview.classList.add("hidden");
+        preview.innerHTML = "";
+        return;
+      }
+      const safe = Core.safeUrl(rawUrl);
+      const mime = String(mimeHint || "").toLowerCase();
+      const isVideo =
+        mime.startsWith("video/") ||
+        Boolean(Core.isVideoUrl && Core.isVideoUrl(safe)) ||
+        Boolean(Core.isVideoUrl && Core.isVideoUrl(label));
+      const isImage =
+        mime.startsWith("image/") || Core.isImageUrl(safe) || Core.isImageUrl(label) || /^blob:/i.test(safe);
+      let media = "";
+      if (isVideo) {
+        media = `<video src="${Core.escapeHtml(safe)}" controls class="max-h-56 w-full rounded-lg"></video>`;
+      } else if (isImage) {
+        media = `<img src="${Core.escapeHtml(safe)}" alt="Vista previa">`;
+      } else {
+        media = `<a class="ed-link" href="${Core.escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${Core.escapeHtml(
+          label || "Documento adjunto"
+        )}</a>`;
+      }
+      const hideRemove = dz.readOnly ? " hidden" : "";
+      preview.innerHTML = `${media}<button type="button" class="ed-dz-remove${hideRemove}" data-dz-remove aria-label="Quitar archivo" title="Quitar archivo">&times;</button>`;
+      preview.classList.remove("hidden");
+      preview.querySelector("[data-dz-remove]").addEventListener("click", () => {
+        if (dz.readOnly) return;
+        activeUploadId += 1;
+        dz.uploading = false;
+        zone.classList.remove("is-uploading");
+        dz.lastFile = null;
+        if (input) input.value = "";
+        dz.setUrl("");
+        dz.setStatus("", "");
+      });
     }
 
     const dz = {
       uploading: false,
       readOnly: false,
       lastFile: null,
-      objectUrl: "",
       getUrl: () => (urlField ? urlField.value : ""),
       getFile: () => dz.lastFile,
       setStatus(type, message) {
@@ -387,53 +433,20 @@
           if (removeBtn) removeBtn.classList.toggle("hidden", dz.readOnly);
         }
       },
-      setUrl(url, label, previewUrl) {
+      setUrl(url, label, mimeHint, keepObjectUrl) {
+        if (!keepObjectUrl) {
+          revokeCurrentObjectUrl();
+        }
         if (urlField) urlField.value = url || "";
-        if (!preview) return;
-        const effectivePreview = previewUrl || url || "";
-        if (!effectivePreview) {
-          preview.classList.add("hidden");
-          preview.innerHTML = "";
-          return;
-        }
-        const safe = Core.safeUrl(url) || Core.safeUrl(effectivePreview);
-        const safePreview = Core.safeUrl(previewUrl) || safe;
-        if (!safePreview) {
-          preview.classList.add("hidden");
-          preview.innerHTML = "";
-          return;
-        }
-        const fileMime = dz.lastFile && dz.lastFile.type ? String(dz.lastFile.type).toLowerCase() : "";
-        const isVideo = (Core.isVideoUrl && Core.isVideoUrl(safe)) || fileMime.startsWith("video/");
-        const isImage = Core.isImageUrl(safe) || fileMime.startsWith("image/") || /^blob:/i.test(safePreview);
-        let media = "";
-        if (isVideo) {
-          media = `<video src="${Core.escapeHtml(safePreview)}" controls class="max-h-56 w-full rounded-lg"></video>`;
-        } else if (isImage) {
-          media = `<img src="${Core.escapeHtml(safePreview)}" alt="Vista previa">`;
-        } else {
-          media = `<a class="ed-link" href="${Core.escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${Core.escapeHtml(
-            label || "Documento adjunto"
-          )}</a>`;
-        }
-        const hideRemove = dz.readOnly ? " hidden" : "";
-        preview.innerHTML = `${media}<button type="button" class="ed-btn ed-btn-secondary ed-btn-sm${hideRemove}" data-dz-remove>Quitar</button>`;
-        preview.classList.remove("hidden");
-        const imgEl = preview.querySelector("img");
-        if (imgEl && safe && safePreview !== safe) {
-          imgEl.setAttribute("data-uploaded-url", safe);
-        }
-        preview.querySelector("[data-dz-remove]").addEventListener("click", () => {
-          if (dz.readOnly) return;
-          dz.lastFile = null;
-          revokeObjectUrl();
-          dz.setUrl("");
-          dz.setStatus("", "");
-        });
+        const previewSrc = keepObjectUrl && currentObjectUrl ? currentObjectUrl : url;
+        renderPreview(previewSrc, label, mimeHint);
       },
       reset() {
+        activeUploadId += 1;
+        dz.uploading = false;
+        zone.classList.remove("is-uploading");
         dz.lastFile = null;
-        revokeObjectUrl();
+        if (input) input.value = "";
         dz.setUrl("");
         dz.setStatus("", "");
       },
@@ -446,37 +459,38 @@
         dz.setStatus("error", check.message);
         return;
       }
+      const myUploadId = ++activeUploadId;
       dz.uploading = true;
       dz.lastFile = file;
-      revokeObjectUrl();
-      const fileType = String(file.type || "").split(";")[0].trim().toLowerCase();
-      if (
-        fileType.startsWith("image/") &&
-        typeof URL !== "undefined" &&
-        typeof URL.createObjectURL === "function"
-      ) {
+      zone.classList.add("is-uploading");
+      revokeCurrentObjectUrl();
+      if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
         try {
-          dz.objectUrl = URL.createObjectURL(file) || "";
+          currentObjectUrl = URL.createObjectURL(file) || "";
+          if (currentObjectUrl) {
+            renderPreview(currentObjectUrl, file.name, file.type);
+          }
         } catch (_) {
-          dz.objectUrl = "";
+          currentObjectUrl = "";
         }
       }
-      if (dz.objectUrl) {
-        dz.setUrl("", file.name, dz.objectUrl);
-      }
-      zone.classList.add("is-uploading");
       dz.setStatus("", `Subiendo ${file.name}...`);
       try {
         const result = await getClient().uploadMedia(file);
-        dz.setUrl(result.url, file.name, dz.objectUrl);
+        if (myUploadId !== activeUploadId) return;
+        const isImg = String(file.type || "").toLowerCase().startsWith("image/");
+        dz.setUrl(result.url, file.name, file.type, isImg && Boolean(currentObjectUrl));
         dz.setStatus("ok", `Archivo subido: ${file.name}`);
       } catch (error) {
-        revokeObjectUrl();
+        if (myUploadId !== activeUploadId) return;
+        dz.lastFile = null;
         dz.setUrl("");
         dz.setStatus("error", Core.describeError(error));
       } finally {
-        dz.uploading = false;
-        zone.classList.remove("is-uploading");
+        if (myUploadId === activeUploadId) {
+          dz.uploading = false;
+          zone.classList.remove("is-uploading");
+        }
       }
     }
 
@@ -792,7 +806,7 @@
         );
         $("ed-metric-views").textContent = `${viewsCount} vistas`;
         $("ed-metric-attending").textContent = `${Number(values.attendingCount || 0)} inscritos`;
-        $("ed-metric-declined").textContent = `${Number(values.declinedCount || 0)} bajas`;
+        $("ed-metric-declined").textContent = `${Number(values.declinedCount || 0)} no asisten`;
         const badge = $("ed-metric-edited");
         if (badge) {
           if (values.isAiGenerated && !values.isEdited) {
@@ -946,6 +960,7 @@
     } else if (state.filter === "events") {
       items = items.filter((p) => Boolean(p.is_event));
     }
+    items = Core.sortPublications(items, state.sort);
     tbody.innerHTML = Core.renderPublicationRows(items);
   }
 
@@ -1354,6 +1369,13 @@
     state.ready = true;
 
     document.querySelectorAll("[data-dropzone]").forEach(bindDropzone);
+    const sortSelect = $("ed-pub-sort");
+    if (sortSelect) {
+      sortSelect.addEventListener("change", () => {
+        state.sort = sortSelect.value === "event" ? "event" : "created";
+        renderFilteredRows();
+      });
+    }
 
     ["all", "news", "events"].forEach((key) => {
       const btn = $(`ed-filter-${key}`);

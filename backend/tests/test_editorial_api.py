@@ -290,3 +290,43 @@ def test_run_alembic_migrations_is_idempotent_and_preserves_existing_data(tmp_pa
         row = conn.execute(text("SELECT title, category FROM posts WHERE id = 1")).one()
     assert tuple(row) == ("Existente", "MELDUNG")
     legacy.dispose()
+
+
+def test_publications_list_sorted_by_created_desc_default_and_by_event():
+    now = datetime.now(UTC).replace(tzinfo=None)
+    db = TestingSessionLocal()
+    db.add_all(
+        [
+            Post(title="vieja pinned", is_pinned=True, is_news=True, created_at=now - timedelta(days=5)),
+            Post(
+                title="evento lejano",
+                is_event=True,
+                created_at=now - timedelta(days=3),
+                event_start=now + timedelta(days=30),
+                event_end=now + timedelta(days=30, hours=1),
+            ),
+            Post(
+                title="evento cercano",
+                is_event=True,
+                created_at=now - timedelta(days=4),
+                event_start=now + timedelta(days=2),
+                event_end=now + timedelta(days=2, hours=1),
+            ),
+            Post(title="nueva", is_news=True, created_at=now - timedelta(days=1)),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    default = client.get("/api/publications", headers=auth(ADMIN, "admin"))
+    assert default.status_code == 200
+    assert [p["title"] for p in default.json()] == ["nueva", "evento lejano", "evento cercano", "vieja pinned"]
+
+    by_event = client.get("/api/publications?sort=event", headers=auth(ADMIN, "admin"))
+    assert by_event.status_code == 200
+    titles = [p["title"] for p in by_event.json()]
+    assert titles[:2] == ["evento cercano", "evento lejano"]
+
+    bad = client.get("/api/publications?sort=foo", headers=auth(ADMIN, "admin"))
+    assert bad.status_code == 422
+

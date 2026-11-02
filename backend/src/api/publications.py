@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request, status
-from sqlalchemy import asc, desc
+from sqlalchemy import case
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
@@ -72,12 +72,12 @@ def record_post_views(db: Session, post_ids: Iterable[int], user_id: int | None)
         stmt = pg_insert(PostView).values(rows).on_conflict_do_nothing(index_elements=["post_id", "user_id"])
         result = db.execute(stmt)
         db.commit()
-        return max(0, int(result.rowcount or 0))
+        return max(0, int(getattr(result, "rowcount", 0) or 0))
     if dialect_name == "sqlite":
         stmt = sqlite_insert(PostView).values(rows).on_conflict_do_nothing(index_elements=["post_id", "user_id"])
         result = db.execute(stmt)
         db.commit()
-        return max(0, int(result.rowcount or 0))
+        return max(0, int(getattr(result, "rowcount", 0) or 0))
 
     existing_ids = {
         int(row[0])
@@ -345,6 +345,11 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
 def list_publications(
     kind: str | None = Query(None, description="Filtro opcional: news, event, instagram, urgent, pending"),
     limit: int = Query(100, ge=1, le=300),
+    sort: str = Query(
+        "created",
+        pattern="^(created|event)$",
+        description="Orden: created (creacion, mas reciente primero) o event (proximos eventos primero)",
+    ),
     db: Session = Depends(get_db),
     editor: User = Depends(require_permission("publicaciones")),
 ) -> list[PublicationResponse]:
@@ -363,7 +368,24 @@ def list_publications(
     elif kind == "pending":
         query = query.filter(Post.is_edited.is_(False))
 
-    rows = query.order_by(desc(Post.is_pinned), desc(Post.created_at), desc(Post.id)).limit(limit).all()
+    if sort == "event":
+        now = datetime.now(UTC).replace(tzinfo=None)
+        bucket = case(
+            (Post.event_start.is_(None), 2),
+            (Post.event_start >= now, 0),
+            else_=1,
+        )
+        upcoming_start = case((Post.event_start >= now, Post.event_start), else_=None)
+        query = query.order_by(
+            bucket.asc(),
+            upcoming_start.asc(),
+            Post.event_start.desc(),
+            Post.created_at.desc(),
+            Post.id.desc(),
+        )
+    else:
+        query = query.order_by(Post.created_at.desc(), Post.id.desc())
+    rows = query.limit(limit).all()
     return [PublicationResponse.from_orm_post(row) for row in rows]
 
 
@@ -581,7 +603,7 @@ async def autocomplete_publication_ai(
                 if isinstance(val, str):
                     raw_dict[key] = val
         upload_obj = form.get("file") or form.get("image")
-        if upload_obj is not None and hasattr(upload_obj, "read"):
+        if upload_obj is not None and not isinstance(upload_obj, str):
             data_bytes = await upload_obj.read(settings.MAX_UPLOAD_SIZE_BYTES + 1)
             if len(data_bytes) > settings.MAX_UPLOAD_SIZE_BYTES:
                 raise HTTPException(
@@ -870,7 +892,7 @@ def get_publication_registrations(
         db.query(EventRegistration, User)
         .join(User, User.id == EventRegistration.user_id)
         .filter(EventRegistration.post_id == publication_id)
-        .order_by(asc(EventRegistration.created_at), asc(EventRegistration.id))
+        .order_by(EventRegistration.created_at.asc(), EventRegistration.id.asc())
         .all()
     )
     entries = [
@@ -930,14 +952,10 @@ def submit_publication_rsvp(
         .filter(EventRegistration.post_id == publication_id, EventRegistration.user_id == current_user.id)
         .first()
     )
-    if payload.status == "declined" and (not existing or existing.status != "attending"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se encontró una inscripción activa para cancelar en esta publicación.",
-        )
     if existing:
-        existing.status = payload.status
-        existing.updated_at = datetime.now(UTC)
+        if existing.status != payload.status:
+            existing.status = payload.status
+            existing.updated_at = datetime.now(UTC)
     else:
         db.add(
             EventRegistration(

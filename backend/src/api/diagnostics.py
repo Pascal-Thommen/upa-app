@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, text
@@ -40,8 +41,8 @@ def get_system_diagnostics(
     total_roles = db.query(func.count(UserRole.id)).scalar() or 0
     total_groups = db.query(func.count(AudienceGroup.id)).scalar() or 0
 
-    pool = engine.pool
-    pool_stats = {
+    pool: Any = engine.pool
+    pool_stats: dict[str, Any] = {
         "status": "healthy" if db_healthy else "unhealthy",
         "latency_ms": db_latency_ms,
         "pool_size": pool.size() if hasattr(pool, "size") else 5,

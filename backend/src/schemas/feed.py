@@ -76,6 +76,10 @@ class FeedItemResponse(BaseModel):
     link_label: str = Field(default="", description="Texto del boton de enlace opcional (cadena vacia si no aplica)")
     is_registered: bool = Field(default=False, description="Indica si el usuario autenticado esta inscrito (eventos)")
     registered_count: int = Field(default=0, ge=0, description="Total de inscritos al evento")
+    registration_status: str | None = Field(
+        default=None,
+        description="Estado RSVP del usuario autenticado (attending, declined o nulo)",
+    )
     views_count: int = Field(default=0, ge=0, description="Total de impresiones unicas por estudiante")
     created_at: datetime = Field(..., description="Fecha de creacion en ISO-8601 UTC")
     published_at: datetime = Field(..., description="Fecha de publicacion en ISO-8601 UTC")
@@ -97,10 +101,15 @@ class FeedItemResponse(BaseModel):
         raw_start = getattr(post, "event_start", None)
         raw_end = getattr(post, "event_end", None)
         raw_regs = getattr(post, "registrations", None) or []
-        attending = [r for r in raw_regs if (getattr(r, "status", "attending") or "attending") == "attending"]
-        is_registered = current_user_id is not None and any(
-            int(getattr(r, "user_id", 0) or 0) == int(current_user_id) for r in attending
-        )
+        reg_status: str | None = None
+        if current_user_id is not None:
+            for r in raw_regs:
+                if int(getattr(r, "user_id", 0) or 0) == int(current_user_id):
+                    st = (getattr(r, "status", None) or "attending").strip()
+                    if st in ("attending", "declined"):
+                        reg_status = st
+                    break
+        is_registered = reg_status == "attending"
         raw_views = getattr(post, "views", None)
         if raw_views is not None:
             unique_viewers = {
@@ -136,6 +145,7 @@ class FeedItemResponse(BaseModel):
             **extra_detail_fields(post),
             is_registered=is_registered,
             registered_count=0,
+            registration_status=reg_status,
             views_count=views_count,
             created_at=created,
             published_at=published,
@@ -231,6 +241,10 @@ class AgendaItemResponse(BaseModel):
     link: str = Field(default="", description="Enlace externo o de Google Classroom")
     is_registered: bool = Field(default=False, description="Indica si el usuario esta inscrito (para eventos)")
     registered_count: int = Field(default=0, ge=0, description="Total de inscritos (para eventos)")
+    registration_status: str | None = Field(
+        default=None,
+        description="Estado RSVP del usuario actual (attending, declined o nulo)",
+    )
 
 
 class AgendaResponse(BaseModel):

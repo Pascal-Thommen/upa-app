@@ -21,6 +21,8 @@ Die Plattform der Universidad Paraguayo Alemana (UPA) besteht aus drei produktiv
 
 ## 4. Wichtige Befehle
 * Backend starten: `cd backend && uvicorn src.main:app --reload --port 8000`
+* Statische Typenpruefung (Pyright) ausfuehren: `cd backend && pyright`
+* Linter (Ruff) ausfuehren: `ruff check .`
 * Backend Tests ausfuehren: `PYTHONPATH=backend pytest backend/tests tests/test_audit_zero_mock.py`
 * PWA Tests ausfuehren: `npm --prefix web-app/tests test`
 * Web Admin Tests ausfuehren: `npm --prefix web-admin/tests test`
