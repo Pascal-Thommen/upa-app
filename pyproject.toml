@@ -11,3 +11,9 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests", "backend/tests"]
 pythonpath = [".", "backend"]
+
+[tool.pyright]
+include = ["backend/src"]
+extraPaths = ["backend"]
+typeCheckingMode = "basic"
+pythonVersion = "3.11"

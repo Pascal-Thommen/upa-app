@@ -2,8 +2,8 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
 
@@ -17,7 +17,8 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 def get_db():
@@ -40,7 +41,7 @@ def get_alembic_config(database_url: str | None = None) -> Config:
     return alembic_cfg
 
 
-def run_alembic_migrations(bind_engine=None) -> None:
+def run_alembic_migrations(bind_engine: Engine | None = None) -> None:
     """
     Ejecuta las migraciones formales de Alembic hasta head sobre el motor indicado.
     Corrige revisiones heredadas en bases de datos preexistentes para garantizar idempotencia.

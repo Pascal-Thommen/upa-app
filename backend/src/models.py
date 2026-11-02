@@ -1,6 +1,9 @@
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false, func
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false, func
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import InstrumentedAttribute, Mapped, mapped_column, relationship
 
 from .database import Base
 
@@ -45,81 +48,87 @@ def pack_stored_media_urls(primary: str | None, thumb: str | None) -> str | None
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    full_name = Column(String(255), nullable=False)
-    role = Column(String(50), default="user", nullable=False)  # "user", "editor" o "admin"
-    groups = Column(JSON, default=list, nullable=False)  # ej. ["TIE", "Semester_4"]
-    google_groups = Column(JSON, default=list, nullable=False)  # Registros de Google Groups
-    classroom_token = Column(Text, nullable=True)  # Token de acceso OAuth para Google Classroom
-    classroom_refresh_token = Column(Text, nullable=True)  # Refresh token OAuth para renovacion automatica
-    classroom_deadlines_cache = Column(JSON, default=list, nullable=False)  # Cache persistente de entregas Classroom
-    classroom_synced_at = Column(DateTime(timezone=True), nullable=True)  # Marca de tiempo de ultima sincronizacion
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default="user", nullable=False)  # "user", "editor" o "admin"
+    groups: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)  # ej. ["TIE", "Semester_4"]
+    google_groups: Mapped[list[Any]] = mapped_column(JSON, default=list, nullable=False)  # Registros de Google Groups
+    classroom_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Token de acceso OAuth para Google Classroom
+    classroom_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Refresh token OAuth para renovacion automatica
+    classroom_deadlines_cache: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)  # Cache persistente de entregas Classroom
+    classroom_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # Marca de tiempo de ultima sincronizacion
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     # Relaciones
-    posts = relationship("Post", back_populates="author")
-    registrations = relationship("EventRegistration", back_populates="user", cascade="all, delete-orphan")
-    post_views = relationship("PostView", back_populates="user", cascade="all, delete-orphan")
-    audit_logs = relationship("AdminAuditLog", back_populates="admin")
-    device_tokens = relationship("DeviceToken", back_populates="user", cascade="all, delete-orphan")
+    posts: Mapped[list["Post"]] = relationship("Post", back_populates="author")
+    registrations: Mapped[list["EventRegistration"]] = relationship(
+        "EventRegistration", back_populates="user", cascade="all, delete-orphan"
+    )
+    post_views: Mapped[list["PostView"]] = relationship(
+        "PostView", back_populates="user", cascade="all, delete-orphan"
+    )
+    audit_logs: Mapped[list["AdminAuditLog"]] = relationship("AdminAuditLog", back_populates="admin")
+    device_tokens: Mapped[list["DeviceToken"]] = relationship(
+        "DeviceToken", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Post(Base):
     __tablename__ = "posts"
 
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(255), nullable=False)
-    caption = Column(Text, nullable=True)
-    content = Column(Text, nullable=True)
-    post_type = Column(String(50), default="MANUAL", nullable=False)  # "INSTAGRAM", "MANUAL", "EMERGENCY_BANNER"
-    category = Column(String(50), nullable=True)  # Categoria editorial opcional
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    post_type: Mapped[str] = mapped_column(String(50), default="MANUAL", nullable=False)  # "INSTAGRAM", "MANUAL", "EMERGENCY_BANNER"
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)  # Categoria editorial opcional
 
     # Visibilidad y componentes activos (un registro puede ser noticia, evento o ambos)
-    is_news = Column(Boolean, default=True, nullable=False)
-    is_event = Column(Boolean, default=False, nullable=False)
-    is_pinned = Column(Boolean, default=False, nullable=False)
-    published_at = Column(DateTime(timezone=True), nullable=True)
-    expires_at = Column(DateTime(timezone=True), nullable=True)
+    is_news: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_event: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Datos de calendario y evento
-    event_start = Column(DateTime(timezone=True), nullable=True)
-    event_end = Column(DateTime(timezone=True), nullable=True)
-    location = Column(String(255), nullable=True)
+    event_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    event_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Grupos destinatarios e inscripcion RSVP
-    target_groups = Column(JSON, default=list, nullable=False)
-    has_registration = Column(Boolean, default=False, nullable=False)
+    target_groups: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    has_registration: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Notificaciones y recordatorios
-    send_push_notification = Column(Boolean, default=False, nullable=False)
-    reminders = Column(JSON, nullable=True)  # Minutos previos al inicio del evento, ej. [30, 1440]
-    notify_groups = Column(JSON, nullable=True)  # Grupos a notificar al publicar o guardar el post
-    event_notify_groups = Column(JSON, nullable=True)  # Grupos que reciben recordatorios del evento
+    send_push_notification: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reminders: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)  # Minutos previos al inicio del evento, ej. [30, 1440]
+    notify_groups: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)  # Grupos a notificar al publicar o guardar el post
+    event_notify_groups: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)  # Grupos que reciben recordatorios del evento
 
     # Boton de enlace opcional
-    link_url = Column(Text, nullable=True)
-    link_label = Column(String(100), nullable=True)
+    link_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    link_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Estado editorial: False = pendiente de revision, True = revisado/editado
-    is_edited = Column(Boolean, default=False, nullable=False, server_default=false())
+    is_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=false())
     # True si el evento fue extraido y publicado directamente por IA (Gemini multimodal)
-    is_ai_generated = Column(Boolean, default=False, nullable=False, server_default=false())
+    is_ai_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=false())
 
     # Campos de sincronizacion con Instagram
-    instagram_id = Column(String(100), unique=True, nullable=True, index=True)
-    media_type = Column(String(50), nullable=True)  # IMAGE, VIDEO, CAROUSEL_ALBUM
-    _stored_media_url = Column("media_url", Text, nullable=True)
-    permalink = Column(Text, nullable=True)
+    instagram_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True, index=True)
+    media_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # IMAGE, VIDEO, CAROUSEL_ALBUM
+    _stored_media_url: Mapped[str | None] = mapped_column("media_url", Text, nullable=True)
+    permalink: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     @hybrid_property
     def media_url(self) -> str | None:
         primary, thumb = split_stored_media_urls(self._stored_media_url)
         return primary or thumb
 
-    @media_url.setter
-    def media_url(self, value: str | None) -> None:
+    @media_url.inplace.setter
+    def _media_url_setter(self, value: str | None) -> None:
         existing_primary, existing_thumb = split_stored_media_urls(self._stored_media_url)
         clean_val = str(value).strip() if value and str(value).strip() else None
         if clean_val is None:
@@ -133,8 +142,9 @@ class Post(Base):
         else:
             self._stored_media_url = clean_val
 
-    @media_url.expression
-    def media_url(cls):
+    @media_url.inplace.expression
+    @classmethod
+    def _media_url_expression(cls) -> InstrumentedAttribute[str | None]:
         return cls._stored_media_url
 
     @hybrid_property
@@ -149,25 +159,30 @@ class Post(Base):
             return DEFAULT_VIDEO_POSTER_FALLBACK
         return None
 
-    @image_url.setter
-    def image_url(self, value: str | None) -> None:
+    @image_url.inplace.setter
+    def _image_url_setter(self, value: str | None) -> None:
         existing_primary, _ = split_stored_media_urls(self._stored_media_url)
         clean_thumb = str(value).strip() if value and str(value).strip() else None
         self._stored_media_url = pack_stored_media_urls(existing_primary, clean_thumb)
 
-    @image_url.expression
-    def image_url(cls):
+    @image_url.inplace.expression
+    @classmethod
+    def _image_url_expression(cls) -> InstrumentedAttribute[str | None]:
         return cls._stored_media_url
 
     # Metadatos
-    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    author_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     # Relaciones
-    author = relationship("User", back_populates="posts")
-    registrations = relationship("EventRegistration", back_populates="post", cascade="all, delete-orphan")
-    views = relationship("PostView", back_populates="post", cascade="all, delete-orphan")
+    author: Mapped[User | None] = relationship("User", back_populates="posts")
+    registrations: Mapped[list["EventRegistration"]] = relationship(
+        "EventRegistration", back_populates="post", cascade="all, delete-orphan"
+    )
+    views: Mapped[list["PostView"]] = relationship(
+        "PostView", back_populates="post", cascade="all, delete-orphan"
+    )
 
     @property
     def status(self) -> str:
@@ -181,85 +196,87 @@ class Post(Base):
 class EventRegistration(Base):
     __tablename__ = "event_registrations"
 
-    id = Column(Integer, primary_key=True, index=True)
-    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    status = Column(String(50), default="attending", nullable=False)  # "attending" o "declined"
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="attending", nullable=False)  # "attending" o "declined"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_user_registration"),)
 
-    post = relationship("Post", back_populates="registrations")
-    user = relationship("User", back_populates="registrations")
+    post: Mapped[Post] = relationship("Post", back_populates="registrations")
+    user: Mapped[User] = relationship("User", back_populates="registrations")
 
 
 class PostView(Base):
     __tablename__ = "post_views"
 
-    id = Column(Integer, primary_key=True, index=True)
-    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    viewed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_user_view"),)
 
-    post = relationship("Post", back_populates="views")
-    user = relationship("User", back_populates="post_views")
+    post: Mapped[Post] = relationship("Post", back_populates="views")
+    user: Mapped[User] = relationship("User", back_populates="post_views")
 
 
 class AdminAuditLog(Base):
     __tablename__ = "admin_audit_logs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    action = Column(String(100), nullable=False)
-    target_type = Column(String(50), nullable=False)  # "post", "group", "role"
-    target_id = Column(Integer, nullable=True)
-    target_key = Column(String(255), nullable=True, index=True)
-    details = Column(JSON, default=dict, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    admin_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "post", "group", "role"
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    admin = relationship("User", back_populates="audit_logs")
+    admin: Mapped[User] = relationship("User", back_populates="audit_logs")
 
 
 class DeviceToken(Base):
     __tablename__ = "device_tokens"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    device_token = Column(String(512), nullable=False, index=True)
-    platform = Column(String(50), default="android", nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_token: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String(50), default="android", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     __table_args__ = (UniqueConstraint("user_id", "device_token", name="uq_user_device_token"),)
 
-    user = relationship("User", back_populates="device_tokens")
+    user: Mapped[User] = relationship("User", back_populates="device_tokens")
 
 
 class AudienceGroup(Base):
     __tablename__ = "audience_groups"
 
-    id = Column(String(50), primary_key=True)
-    name = Column(String(100), nullable=False)
-    description = Column(Text, nullable=True)
-    google_groups = Column(JSON, default=list, nullable=True)  # Lista de correos de grupos de Google Workspace
-    emails = Column(JSON, default=list, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    google_groups: Mapped[list[str] | None] = mapped_column(JSON, default=list, nullable=True)  # Lista de correos de grupos de Google Workspace
+    emails: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
 
 class UserRole(Base):
     __tablename__ = "user_roles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    name = Column(String(255), nullable=False)
-    permissions = Column(JSON, default=list, nullable=False)
-    is_primary = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    permissions: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
 
 class AppSetting(Base):
@@ -267,7 +284,9 @@ class AppSetting(Base):
 
     __tablename__ = "app_settings"
 
-    key = Column(String(100), primary_key=True)
-    value = Column(Text, nullable=False, default="")
-    updated_by = Column(String(255), nullable=True)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
