@@ -214,6 +214,8 @@ def test_default_prompts_exposed_and_one_click_save_with_fallback_from_2_0_to_1_
         auto_body = auto_res.json()
         assert auto_body["caption"] == "Síntesis institucional generada por Gemini Flash"
         assert auto_body["location"] == "Campus UPA San Lorenzo"
+        assert auto_body["is_event"] is True
+        assert auto_body["has_registration"] is True
 
         # 4. Restaurar prompts predeterminados enviando cadena vacía sin borrar la clave guardada
         restore_res = client.post(

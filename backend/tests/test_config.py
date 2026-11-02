@@ -111,6 +111,8 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     assert "public, max-age=86400" in nginx_text
     assert "no-cache, must-revalidate" in nginx_text
     assert "location = /index.html" in nginx_text
+    assert "proxy_set_header Host $http_host;" in nginx_text
+    assert "proxy_set_header Host $host;" not in nginx_text
 
 
 def test_index_html_asset_version_busts_cache_and_roles_header_matches_permissions():

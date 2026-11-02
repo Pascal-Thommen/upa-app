@@ -130,6 +130,12 @@ def test_plausibility_rule_same_calendar_day():
     assert next_day.is_event is True
     assert next_day.start_time == "2026-11-15T09:00:00-03:00"
     assert next_day.end_time is None
+    assert next_day.allow_registration is True
+
+    # No-evento conserva allow_registration=False
+    non_event = AIEventExtractionResult(is_event=False)
+    assert non_event.is_event is False
+    assert non_event.allow_registration is False
 
     # Fin anterior al inicio en el mismo dia -> end_time se filtra a None
     reversed_hours = AIEventExtractionResult(
@@ -357,21 +363,23 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert ev1.event_start.replace(tzinfo=UTC) == datetime(2026, 11, 20, 18, 0, tzinfo=UTC)
         assert ev1.event_end.replace(tzinfo=UTC) == datetime(2026, 11, 20, 20, 0, tzinfo=UTC)
 
-        # Verificar Post 2: End date en dia distinto fue filtrado a None
+        # Verificar Post 2: End date en dia distinto fue filtrado a None y RSVP queda activo por defecto en eventos
         ev2 = db.query(Post).filter(Post.instagram_id == "ig_ai_event_2").first()
         assert ev2 is not None
         assert ev2.is_event is True
         assert ev2.is_ai_generated is True
+        assert ev2.has_registration is True
         assert ev2.event_start.replace(tzinfo=UTC) == datetime(2026, 11, 25, 14, 0, tzinfo=UTC)
         assert ev2.event_end is None
         assert ev2.target_groups == ["ALL"]
         assert ev2.send_push_notification is False
         assert ev2.notify_groups == []
 
-        # Verificar Post 3: Noticia normal de Instagram
+        # Verificar Post 3: Noticia normal de Instagram (no evento -> has_registration=False)
         news3 = db.query(Post).filter(Post.instagram_id == "ig_regular_news_3").first()
         assert news3 is not None
         assert news3.is_event is False
+        assert news3.has_registration is False
         assert news3.is_news is True
         assert news3.is_ai_generated is False
         assert news3.status == "pending"

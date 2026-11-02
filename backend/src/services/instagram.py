@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import DEFAULT_VIDEO_POSTER_FALLBACK, Post, is_video_stream_url
+from ..schemas.post import ASUNCION_TZ
 from ..schemas.publication import clean_group_codes, extract_instagram_teaser
 from .ai_extractor import extract_event_from_instagram_post, to_utc_datetime
 
@@ -297,6 +298,9 @@ class InstagramSyncService:
                         effective_groups = conservative_groups if conservative_groups else ["ALL"]
                         notify_push = bool(extraction.notify_push)
                         push_groups = list(effective_groups) if notify_push else []
+                        default_reminders = (
+                            [1440, 30] if start_dt.astimezone(ASUNCION_TZ).weekday() in (5, 6) else [30]
+                        )
 
                         new_post = Post(
                             title=ai_title,
@@ -316,7 +320,7 @@ class InstagramSyncService:
                             send_push_notification=notify_push,
                             notify_groups=push_groups,
                             event_notify_groups=push_groups,
-                            reminders=[30],
+                            reminders=default_reminders,
                             instagram_id=item.instagram_id,
                             media_type=item.media_type,
                             media_url=item.media_url,

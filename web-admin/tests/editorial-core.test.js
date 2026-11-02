@@ -596,6 +596,33 @@ test("autocompletar con IA: applyAiSuggestionsToFormValues completa solo campos 
   assert.equal(mergedTitleOnly.caption, "");
   assert.equal(mergedTitleOnly.content, "");
   assert.equal(mergedTitleOnly.hasRegistration, false);
+
+  // SRV-232: RSVP por defecto al detectar un evento incluso si has_registration no viene en la sugerencia,
+  // y recordatorios de fin de semana ([1440, 30]) para sábado/domingo vs [30] de lunes a viernes
+  assert.deepEqual(Core.defaultRemindersForEventStart("28/11/2026 18:00"), [1440, 30]); // Sábado
+  assert.deepEqual(Core.defaultRemindersForEventStart("29/11/2026 10:00"), [1440, 30]); // Domingo
+  assert.deepEqual(Core.defaultRemindersForEventStart("2026-11-28T18:00"), [1440, 30]); // Sábado ISO
+  assert.deepEqual(Core.defaultRemindersForEventStart("25/11/2026 18:30"), [30]); // Miércoles
+  assert.deepEqual(Core.defaultRemindersForEventStart("27/11/2026 18:00"), [30]); // Viernes
+
+  const weekendSuggestionsWithoutRsvpFlag = {
+    caption: "Jornada sabatina UPA",
+    is_event: true,
+    event_start: "2026-11-28T10:00",
+    location: "Campus UPA",
+  };
+  const mergedWeekend = Core.applyAiSuggestionsToFormValues(currentForm, weekendSuggestionsWithoutRsvpFlag);
+  assert.equal(mergedWeekend.isEvent, true);
+  assert.equal(mergedWeekend.hasRegistration, true);
+  assert.deepEqual(mergedWeekend.reminders, [1440, 30]);
+
+  const nonEventSuggestions = {
+    caption: "Comunicado institucional sin evento",
+    is_event: false,
+  };
+  const mergedNonEvent = Core.applyAiSuggestionsToFormValues(currentForm, nonEventSuggestions);
+  assert.equal(mergedNonEvent.isEvent, false);
+  assert.equal(mergedNonEvent.hasRegistration, false);
 });
 
 test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de carga, rellena solo campos vacios y maneja errores", async () => {
@@ -782,6 +809,71 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
       .getElementById("ed-notice")
       .textContent.includes("No se pudo autocompletar: Verifique la clave de IA en Control de IA")
   );
+
+  // 5. SRV-232: Activar Evento manualmente activa RSVP por defecto; fecha en fin de semana fija [1440, 30]
+  await window.UpaCockpit.openNewPublication();
+  assert.equal(document.getElementById("ed-pub-rsvp").checked, false);
+  const isEventCheckbox = document.getElementById("ed-pub-is-event");
+  isEventCheckbox.checked = true;
+  isEventCheckbox.dispatchEvent(new window.Event("change"));
+  assert.equal(document.getElementById("ed-pub-rsvp").checked, true);
+
+  const startInput = document.getElementById("ed-pub-event-start");
+  startInput.value = "28/11/2026 10:00"; // Sábado
+  startInput.dispatchEvent(new window.Event("change"));
+  const reminderRowsSat = document.querySelectorAll("#ed-reminders-list [data-reminder-row]");
+  assert.equal(reminderRowsSat.length, 2);
+  assert.equal(reminderRowsSat[0].querySelector("input[data-reminder-value]").value, "1");
+  assert.equal(reminderRowsSat[0].querySelector("select[data-reminder-unit]").value, "days");
+  assert.equal(reminderRowsSat[1].querySelector("input[data-reminder-value]").value, "30");
+  assert.equal(reminderRowsSat[1].querySelector("select[data-reminder-unit]").value, "minutes");
+
+  startInput.value = "25/11/2026 10:00"; // Miércoles
+  startInput.dispatchEvent(new window.Event("change"));
+  const reminderRowsWed = document.querySelectorAll("#ed-reminders-list [data-reminder-row]");
+  assert.equal(reminderRowsWed.length, 1);
+  assert.equal(reminderRowsWed[0].querySelector("input[data-reminder-value]").value, "30");
+  assert.equal(reminderRowsWed[0].querySelector("select[data-reminder-unit]").value, "minutes");
+
+  // 6. SRV-232: Dropzone usa URL.createObjectURL(file) para vista previa inmediata sin icono roto
+  let createdBlobUrl = "";
+  window.URL.createObjectURL = () => {
+    createdBlobUrl = "blob:http://127.0.0.1:8185/local-preview-123";
+    return createdBlobUrl;
+  };
+  window.URL.revokeObjectURL = () => {};
+  const origFetch = window.fetch;
+  window.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes("/api/media/upload")) {
+      return new Response(
+        JSON.stringify({
+          url: "/uploads/abcdef1234567890abcdef1234567890.png",
+          filename: "abcdef1234567890abcdef1234567890.png",
+          content_type: "image/png",
+          size_bytes: 128,
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return origFetch(input, init);
+  };
+
+  const dzZone = document.querySelector('[data-dropzone="pub"]');
+  const testImgFile = new window.File([new Uint8Array([137, 80, 78, 71])], "afiche-evento.png", {
+    type: "image/png",
+  });
+  const dropEvt = new window.Event("drop");
+  Object.defineProperty(dropEvt, "dataTransfer", {
+    value: { files: [testImgFile] },
+  });
+  dzZone.dispatchEvent(dropEvt);
+  await new Promise((r) => setTimeout(r, 50));
+
+  const previewImg = dzZone.querySelector("[data-dz-preview] img");
+  assert.ok(previewImg, "Debe renderizar la etiqueta <img> en la vista previa del dropzone");
+  assert.equal(previewImg.getAttribute("src"), "blob:http://127.0.0.1:8185/local-preview-123");
+  assert.equal(document.getElementById("ed-pub-image-url").value, "/uploads/abcdef1234567890abcdef1234567890.png");
 
   window.close();
 });

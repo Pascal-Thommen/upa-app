@@ -27,6 +27,7 @@
     groupCatalog: [],
     editingItem: null,
     reminders: [30],
+    remindersCustomized: false,
     participantsPubId: null,
     dropzones: {},
     noticeTimer: null,
@@ -279,6 +280,7 @@
       const unitSelect = row.querySelector("select[data-reminder-unit]");
       const updateIdx = () => {
         if (Number.isNaN(idx)) return;
+        state.remindersCustomized = true;
         const mins = Core.partsToReminderMinutes(
           valInput ? valInput.value : 30,
           unitSelect ? unitSelect.value : "minutes"
@@ -291,6 +293,7 @@
 
     container.querySelectorAll("button[data-remove-reminder]").forEach((btn) => {
       btn.addEventListener("click", () => {
+        state.remindersCustomized = true;
         syncRemindersFromDom();
         const idx = Number(btn.getAttribute("data-remove-reminder"));
         state.reminders.splice(idx, 1);
@@ -300,6 +303,7 @@
   }
 
   function addReminderRow() {
+    state.remindersCustomized = true;
     syncRemindersFromDom();
     const clean = Core.cleanReminders(state.reminders);
     let nextVal = 30;
@@ -308,6 +312,35 @@
     else if (clean.length > 0) nextVal = clean[clean.length - 1] + 60;
     state.reminders.push(nextVal);
     renderRemindersList(state.reminders);
+  }
+
+  function isDefaultReminderArray(rems) {
+    if (!Array.isArray(rems) || rems.length === 0) return true;
+    if (rems.length === 1 && Number(rems[0]) === 30) return true;
+    if (
+      rems.length === 2 &&
+      ((Number(rems[0]) === 1440 && Number(rems[1]) === 30) ||
+        (Number(rems[0]) === 30 && Number(rems[1]) === 1440))
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function syncDefaultRemindersForEventStart() {
+    if (state.remindersCustomized) return;
+    if (!isDefaultReminderArray(state.reminders)) return;
+    const startEl = $("ed-pub-event-start");
+    const rawStart = startEl ? startEl.value.trim() : "";
+    const targetReminders = Core.defaultRemindersForEventStart
+      ? Core.defaultRemindersForEventStart(rawStart)
+      : [30];
+    const same =
+      state.reminders.length === targetReminders.length &&
+      state.reminders.every((val, idx) => Number(val) === Number(targetReminders[idx]));
+    if (!same || state.reminders.length === 0) {
+      renderRemindersList(targetReminders);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -321,10 +354,22 @@
     const preview = zone.querySelector("[data-dz-preview]");
     const pick = zone.querySelector("[data-dz-pick]");
 
+    function revokeObjectUrl() {
+      if (dz.objectUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+        try {
+          URL.revokeObjectURL(dz.objectUrl);
+        } catch (_) {
+          /* ignora fallo de revocación */
+        }
+      }
+      dz.objectUrl = "";
+    }
+
     const dz = {
       uploading: false,
       readOnly: false,
       lastFile: null,
+      objectUrl: "",
       getUrl: () => (urlField ? urlField.value : ""),
       getFile: () => dz.lastFile,
       setStatus(type, message) {
@@ -342,20 +387,30 @@
           if (removeBtn) removeBtn.classList.toggle("hidden", dz.readOnly);
         }
       },
-      setUrl(url, label) {
+      setUrl(url, label, previewUrl) {
         if (urlField) urlField.value = url || "";
         if (!preview) return;
-        if (!url) {
+        const effectivePreview = previewUrl || url || "";
+        if (!effectivePreview) {
           preview.classList.add("hidden");
           preview.innerHTML = "";
           return;
         }
-        const safe = Core.safeUrl(url);
+        const safe = Core.safeUrl(url) || Core.safeUrl(effectivePreview);
+        const safePreview = Core.safeUrl(previewUrl) || safe;
+        if (!safePreview) {
+          preview.classList.add("hidden");
+          preview.innerHTML = "";
+          return;
+        }
+        const fileMime = dz.lastFile && dz.lastFile.type ? String(dz.lastFile.type).toLowerCase() : "";
+        const isVideo = (Core.isVideoUrl && Core.isVideoUrl(safe)) || fileMime.startsWith("video/");
+        const isImage = Core.isImageUrl(safe) || fileMime.startsWith("image/") || /^blob:/i.test(safePreview);
         let media = "";
-        if (Core.isVideoUrl && Core.isVideoUrl(safe)) {
-          media = `<video src="${Core.escapeHtml(safe)}" controls class="max-h-56 w-full rounded-lg"></video>`;
-        } else if (Core.isImageUrl(safe)) {
-          media = `<img src="${Core.escapeHtml(safe)}" alt="Vista previa">`;
+        if (isVideo) {
+          media = `<video src="${Core.escapeHtml(safePreview)}" controls class="max-h-56 w-full rounded-lg"></video>`;
+        } else if (isImage) {
+          media = `<img src="${Core.escapeHtml(safePreview)}" alt="Vista previa">`;
         } else {
           media = `<a class="ed-link" href="${Core.escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${Core.escapeHtml(
             label || "Documento adjunto"
@@ -364,15 +419,21 @@
         const hideRemove = dz.readOnly ? " hidden" : "";
         preview.innerHTML = `${media}<button type="button" class="ed-btn ed-btn-secondary ed-btn-sm${hideRemove}" data-dz-remove>Quitar</button>`;
         preview.classList.remove("hidden");
+        const imgEl = preview.querySelector("img");
+        if (imgEl && safe && safePreview !== safe) {
+          imgEl.setAttribute("data-uploaded-url", safe);
+        }
         preview.querySelector("[data-dz-remove]").addEventListener("click", () => {
           if (dz.readOnly) return;
           dz.lastFile = null;
+          revokeObjectUrl();
           dz.setUrl("");
           dz.setStatus("", "");
         });
       },
       reset() {
         dz.lastFile = null;
+        revokeObjectUrl();
         dz.setUrl("");
         dz.setStatus("", "");
       },
@@ -387,13 +448,31 @@
       }
       dz.uploading = true;
       dz.lastFile = file;
+      revokeObjectUrl();
+      const fileType = String(file.type || "").split(";")[0].trim().toLowerCase();
+      if (
+        fileType.startsWith("image/") &&
+        typeof URL !== "undefined" &&
+        typeof URL.createObjectURL === "function"
+      ) {
+        try {
+          dz.objectUrl = URL.createObjectURL(file) || "";
+        } catch (_) {
+          dz.objectUrl = "";
+        }
+      }
+      if (dz.objectUrl) {
+        dz.setUrl("", file.name, dz.objectUrl);
+      }
       zone.classList.add("is-uploading");
       dz.setStatus("", `Subiendo ${file.name}...`);
       try {
         const result = await getClient().uploadMedia(file);
-        dz.setUrl(result.url, file.name);
+        dz.setUrl(result.url, file.name, dz.objectUrl);
         dz.setStatus("ok", `Archivo subido: ${file.name}`);
       } catch (error) {
+        revokeObjectUrl();
+        dz.setUrl("");
         dz.setStatus("error", Core.describeError(error));
       } finally {
         dz.uploading = false;
@@ -617,6 +696,9 @@
   // ---------------------------------------------------------------------------
 
   function readPublicationForm() {
+    if ($("ed-pub-is-event") && $("ed-pub-is-event").checked && !state.remindersCustomized) {
+      syncDefaultRemindersForEventStart();
+    }
     syncRemindersFromDom();
     const alreadyPublished = isEditingAlreadyPublished();
     const scheduled = !alreadyPublished && Boolean($("ed-pub-scheduled") && $("ed-pub-scheduled").checked);
@@ -692,7 +774,11 @@
     if ($("ed-pub-event-start")) $("ed-pub-event-start").value = values.eventStart || "";
     if ($("ed-pub-event-end")) $("ed-pub-event-end").value = values.eventEnd || "";
     if ($("ed-pub-location")) $("ed-pub-location").value = values.location || "";
-    renderRemindersList(Array.isArray(values.reminders) ? values.reminders : [30]);
+    state.remindersCustomized = Boolean(editing && values.isEvent);
+    const defaultStartRems = Core.defaultRemindersForEventStart
+      ? Core.defaultRemindersForEventStart(values.eventStart)
+      : [30];
+    renderRemindersList(Array.isArray(values.reminders) ? values.reminders : defaultStartRems);
 
     $("ed-pub-form-title").textContent = editing ? "Editar publicación" : "Nueva publicación";
     $("ed-btn-delete-pub").classList.toggle("hidden", !editing);
@@ -1058,14 +1144,19 @@
         renderSubsetGroupCheckboxes("ed-pub-event-notify-groups", targetList, targetList);
       }
 
-      if (!values.hasRegistration && merged.hasRegistration && $("ed-pub-rsvp")) {
+      const startEl = $("ed-pub-event-start");
+      if (startEl && !startEl.value.trim() && merged.eventStart) {
+        startEl.value = merged.eventStart;
+      }
+
+      if (!values.hasRegistration && (merged.hasRegistration || merged.isEvent) && $("ed-pub-rsvp")) {
         $("ed-pub-rsvp").checked = true;
       }
 
       if (!values.isEvent && merged.isEvent && $("ed-pub-is-event") && !$("ed-pub-is-event").disabled) {
         $("ed-pub-is-event").checked = true;
-        if (state.reminders.length === 0) {
-          renderRemindersList([30]);
+        if ($("ed-pub-rsvp")) {
+          $("ed-pub-rsvp").checked = true;
         }
         const currentTargets = readCheckedValues("ed-pub-target-groups");
         const currentEventNotify = readCheckedValues("ed-pub-event-notify-groups");
@@ -1074,9 +1165,12 @@
         }
       }
 
-      const startEl = $("ed-pub-event-start");
-      if (startEl && !startEl.value.trim() && merged.eventStart) {
-        startEl.value = merged.eventStart;
+      if ((merged.isEvent || ($("ed-pub-is-event") && $("ed-pub-is-event").checked)) && !state.remindersCustomized) {
+        if (Array.isArray(merged.reminders) && merged.reminders.length > 0) {
+          renderRemindersList(merged.reminders);
+        } else {
+          syncDefaultRemindersForEventStart();
+        }
       }
 
       const endEl = $("ed-pub-event-end");
@@ -1296,9 +1390,10 @@
     if ($("ed-pub-is-event")) {
       $("ed-pub-is-event").addEventListener("change", () => {
         if ($("ed-pub-is-event").checked) {
-          if (state.reminders.length === 0 && !state.editingItem) {
-            renderRemindersList([30]);
+          if ($("ed-pub-rsvp")) {
+            $("ed-pub-rsvp").checked = true;
           }
+          syncDefaultRemindersForEventStart();
           const currentTargets = readCheckedValues("ed-pub-target-groups");
           const currentEventNotify = readCheckedValues("ed-pub-event-notify-groups");
           if (currentEventNotify.length === 0 && currentTargets.length > 0) {
@@ -1316,6 +1411,12 @@
           const masked = Core.maskDateTimeInput(inputEl.value);
           if (masked !== inputEl.value) inputEl.value = masked;
         }
+        if (inputEl.id === "ed-pub-event-start") {
+          const val = inputEl.value.trim();
+          if (/^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/.test(val)) {
+            syncDefaultRemindersForEventStart();
+          }
+        }
       });
     });
 
@@ -1329,6 +1430,7 @@
     });
 
     const validateEventTimeFieldsLive = () => {
+      syncDefaultRemindersForEventStart();
       const isEv = Boolean($("ed-pub-is-event") && $("ed-pub-is-event").checked);
       if (!isEv) return;
       const values = readPublicationForm();

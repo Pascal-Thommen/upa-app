@@ -92,7 +92,7 @@ def sniff_content_type(header: bytes) -> str | None:
 def _build_public_url(request: Request, filename: str) -> str:
     base = (settings.PUBLIC_BASE_URL or "").strip().rstrip("/")
     if not base:
-        base = str(request.base_url).rstrip("/")
+        return f"{UPLOADS_URL_PREFIX}/{filename}"
     return f"{base}{UPLOADS_URL_PREFIX}/{filename}"
 
 

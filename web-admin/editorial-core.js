@@ -186,6 +186,7 @@
   function safeUrl(url) {
     const clean = String(url || "").trim();
     if (/^https?:\/\//i.test(clean)) return clean;
+    if (/^blob:/i.test(clean)) return clean;
     if (clean.startsWith("/") && !clean.startsWith("//")) return clean;
     return "";
   }
@@ -438,6 +439,42 @@
     return Array.from(seen).sort((a, b) => a - b);
   }
 
+  function isWeekendEventStart(eventStartVal) {
+    if (!eventStartVal) return false;
+    if (eventStartVal instanceof Date) {
+      if (Number.isNaN(eventStartVal.getTime())) return false;
+      const dow = eventStartVal.getDay();
+      return dow === 0 || dow === 6;
+    }
+    const clean = String(eventStartVal || "").trim();
+    if (!clean) return false;
+    const pyMatch = /^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::\d{2})?)?$/.exec(clean);
+    if (pyMatch) {
+      const py = parseParaguayDate(`${pyMatch[1]}/${pyMatch[2]}/${pyMatch[3]}`);
+      if (!py) return false;
+      const dow = new Date(py.year, py.month - 1, py.day).getDay();
+      return dow === 0 || dow === 6;
+    }
+    const isoLocalMatch = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::\d{2})?)?$/.exec(clean);
+    if (isoLocalMatch) {
+      const year = Number(isoLocalMatch[1]);
+      const month = Number(isoLocalMatch[2]);
+      const day = Number(isoLocalMatch[3]);
+      const d = new Date(year, month - 1, day);
+      if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return false;
+      const dow = d.getDay();
+      return dow === 0 || dow === 6;
+    }
+    const d = new Date(clean);
+    if (Number.isNaN(d.getTime())) return false;
+    const dow = d.getDay();
+    return dow === 0 || dow === 6;
+  }
+
+  function defaultRemindersForEventStart(eventStartVal) {
+    return isWeekendEventStart(eventStartVal) ? [1440, 30] : [30];
+  }
+
   // ---------------------------------------------------------------------------
   // Modelo unificado de Publicaciones (Noticia, Evento o ambos)
   // ---------------------------------------------------------------------------
@@ -567,7 +604,9 @@
     const postType = String(p.post_type || POST_TYPE_NORMAL).toUpperCase();
     const isNews = p.is_news !== undefined ? Boolean(p.is_news) : true;
     const isEvent = Boolean(p.is_event);
-    const reminders = Array.isArray(p.reminders) ? p.reminders.slice() : [30];
+    const reminders = Array.isArray(p.reminders)
+      ? p.reminders.slice()
+      : defaultRemindersForEventStart(p.event_start);
     const targetGroups = Array.isArray(p.target_groups) && p.target_groups.length ? p.target_groups.slice() : ["ALL"];
     const linkUrl = p.link_url || (postType === POST_TYPE_INSTAGRAM ? p.permalink || "" : "");
     const linkLabel = p.link_label || (postType === POST_TYPE_INSTAGRAM && linkUrl ? "Ver en Instagram" : "");
@@ -592,7 +631,7 @@
       id: p.id || "",
       title: p.title || "",
       postType,
-      hasRegistration: Boolean(p.has_registration),
+      hasRegistration: p.has_registration !== undefined ? Boolean(p.has_registration) : isEvent,
       targetGroups,
       scheduled: isFutureScheduled,
       isPublished,
@@ -750,8 +789,22 @@
       }
     }
 
-    if (!next.hasRegistration && (sug.has_registration === true || sug.hasRegistration === true)) {
+    if (!next.hasRegistration && (next.isEvent || sug.has_registration === true || sug.hasRegistration === true)) {
       next.hasRegistration = true;
+    }
+
+    if (next.isEvent) {
+      const prevStartEmpty = !String(cur.eventStart || "").trim();
+      const isDefaultRem =
+        !Array.isArray(cur.reminders) ||
+        cur.reminders.length === 0 ||
+        (cur.reminders.length === 1 && Number(cur.reminders[0]) === 30) ||
+        (cur.reminders.length === 2 &&
+          ((Number(cur.reminders[0]) === 1440 && Number(cur.reminders[1]) === 30) ||
+            (Number(cur.reminders[0]) === 30 && Number(cur.reminders[1]) === 1440)));
+      if ((prevStartEmpty || !cur.isEvent) && isDefaultRem) {
+        next.reminders = defaultRemindersForEventStart(next.eventStart);
+      }
     }
 
     return next;
@@ -1093,6 +1146,8 @@
     categoryLabel,
     cleanGroups,
     cleanReminders,
+    isWeekendEventStart,
+    defaultRemindersForEventStart,
     validatePublicationValues,
     buildPublicationPayload,
     publicationToFormValues,

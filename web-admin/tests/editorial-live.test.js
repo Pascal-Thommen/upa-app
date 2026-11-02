@@ -118,7 +118,7 @@ test("subida: un PNG real se guarda y se entrega con el mismo contenido", live, 
   assert.equal(result.size_bytes, PNG_BYTES.length);
   assert.match(result.filename, /^[0-9a-f]{32}\.png$/);
 
-  const served = await fetch(result.url);
+  const served = await fetch(result.url.startsWith("http") ? result.url : `${BASE_URL}${result.url}`);
   assert.equal(served.status, 200);
   assert.equal(served.headers.get("content-type"), "image/png");
   assert.deepEqual(Buffer.from(await served.arrayBuffer()), PNG_BYTES);

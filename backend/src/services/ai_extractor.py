@@ -86,7 +86,7 @@ class AIEventExtractionResult(BaseModel):
     start_time: str | None = Field(default=None, description="Fecha y hora de inicio en formato ISO-8601")
     end_time: str | None = Field(default=None, description="Fecha y hora de finalizacion en formato ISO-8601")
     location: str | None = Field(default=None, description="Ubicacion del evento (ej. Aula Magna, Campus UPA, Online)")
-    allow_registration: bool = Field(default=False, description="Indica si el evento requiere o permite inscripcion")
+    allow_registration: bool = Field(default=True, description="Indica si el evento requiere o permite inscripcion")
     target_groups: list[str] = Field(
         default_factory=list,
         description="Etiquetas de grupos destinatarios seleccionadas de forma conservadora",
@@ -115,6 +115,8 @@ class AIEventExtractionResult(BaseModel):
             self.end_time = None
             if self.is_event:
                 self.is_event = False
+            self.allow_registration = False
+            self.notify_push = False
             return self
 
         self.start_time = str(self.start_time).strip()
@@ -124,6 +126,8 @@ class AIEventExtractionResult(BaseModel):
             self.end_time = None
             self.allow_registration = False
             self.notify_push = False
+        else:
+            self.allow_registration = True
 
         return self
 
