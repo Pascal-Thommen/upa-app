@@ -76,28 +76,40 @@ def setup_database(monkeypatch):
     db.commit()
     db.close()
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
-    monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-2.0-flash")
+    monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-3.6-flash")
     yield
     app.dependency_overrides.clear()
 
 
 def test_preferred_flash_models_exclude_phantom_2_5_and_prioritize_2_0_then_1_5():
     assert "gemini-2.5-flash" not in gemini.PREFERRED_FLASH_MODELS
-    assert gemini.PREFERRED_FLASH_MODELS == ("gemini-2.0-flash", "gemini-1.5-flash")
-    assert gemini.DEFAULT_FLASH_MODEL == "gemini-2.0-flash"
+    assert "gemini-2.0-flash" not in gemini.PREFERRED_FLASH_MODELS
+    assert "gemini-2.0-flash" in gemini.RETIRED_FLASH_MODELS
+    assert gemini.PREFERRED_FLASH_MODELS == (
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-1.5-flash",
+    )
+    assert gemini.DEFAULT_FLASH_MODEL == "gemini-3.6-flash"
 
-    # Incluso si en la base de datos hubiera quedado guardado el modelo fantasma gemini-2.5-flash,
-    # resolve_active_model lo descarta y devuelve gemini-2.0-flash.
+    # Incluso si en la base de datos hubiera quedado guardado el modelo retirado gemini-2.5-flash o gemini-2.0-flash,
+    # resolve_active_model lo descarta y devuelve gemini-3.6-flash.
     db = TestingSessionLocal()
     db.add(AppSetting(key=gemini.GEMINI_MODEL_SETTING, value="gemini-2.5-flash", updated_by="legacy"))
     db.commit()
-    assert gemini.resolve_active_model(db) == "gemini-2.0-flash"
+    assert gemini.resolve_active_model(db) == "gemini-3.6-flash"
+    row = db.get(AppSetting, gemini.GEMINI_MODEL_SETTING)
+    assert row is not None
+    row.value = "gemini-2.0-flash"
+    db.commit()
+    assert gemini.resolve_active_model(db) == "gemini-3.6-flash"
     db.close()
 
 
 def test_default_prompts_exposed_and_one_click_save_with_fallback_from_2_0_to_1_5(monkeypatch):
     called_paths: list[str] = []
-    fail_2_0_with_404 = {"enabled": False}
+    fail_3_6_with_404 = {"enabled": False}
 
     class FallbackGeminiStub(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -107,6 +119,8 @@ def test_default_prompts_exposed_and_one_click_save_with_fallback_from_2_0_to_1_
                         "models": [
                             {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
                             {"name": "models/gemini-2.0-flash", "supportedGenerationMethods": ["generateContent"]},
+                            {"name": "models/gemini-3.6-flash", "supportedGenerationMethods": ["generateContent"]},
+                            {"name": "models/gemini-3.5-flash-lite", "supportedGenerationMethods": ["generateContent"]},
                             {"name": "models/gemini-1.5-flash", "supportedGenerationMethods": ["generateContent"]},
                         ]
                     }
@@ -122,7 +136,7 @@ def test_default_prompts_exposed_and_one_click_save_with_fallback_from_2_0_to_1_
 
         def do_POST(self):
             called_paths.append(self.path)
-            if fail_2_0_with_404["enabled"] and "gemini-2.0-flash" in self.path:
+            if fail_3_6_with_404["enabled"] and "gemini-3.6-flash" in self.path:
                 err = json.dumps({"error": {"code": 404, "message": "Model not found"}}).encode("utf-8")
                 self.send_response(404)
                 self.send_header("Content-Type", "application/json")
@@ -160,15 +174,15 @@ def test_default_prompts_exposed_and_one_click_save_with_fallback_from_2_0_to_1_
         monkeypatch.setattr(settings, "GEMINI_API_BASE_URL", f"http://127.0.0.1:{port}")
         headers = auth(EDITOR_ID, EDITOR_EMAIL, "editor")
 
-        # 1. GET /api/ai/config devuelve los prompts predeterminados de la UPA y modelo gemini-2.0-flash
+        # 1. GET /api/ai/config devuelve los prompts predeterminados de la UPA y modelo gemini-3.6-flash
         initial = client.get("/api/ai/config", headers=headers).json()
-        assert initial["model"] == "gemini-2.0-flash"
+        assert initial["model"] == "gemini-3.6-flash"
         assert initial["default_system_prompt_autocomplete"] == gemini.DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
         assert initial["default_system_prompt_instagram"] == gemini.DEFAULT_SYSTEM_PROMPT_INSTAGRAM
         assert initial["system_prompt_autocomplete"] == gemini.DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
         assert initial["system_prompt_instagram"] == gemini.DEFAULT_SYSTEM_PROMPT_INSTAGRAM
 
-        # 2. 1-Klick-Save: Guardar clave y ambos prompts simultáneamente + probar conexión con gemini-2.0-flash
+        # 2. 1-Klick-Save: Guardar clave y ambos prompts simultáneamente + probar conexión con gemini-3.6-flash
         save_res = client.post(
             "/api/ai/config",
             json={
@@ -186,18 +200,18 @@ def test_default_prompts_exposed_and_one_click_save_with_fallback_from_2_0_to_1_
 
         test_res = client.post("/api/ai/test-connection", headers=headers).json()
         assert test_res["ok"] is True
-        assert test_res["model"] == "gemini-2.0-flash"
-        assert called_paths[-1] == "/v1beta/models/gemini-2.0-flash:generateContent"
+        assert test_res["model"] == "gemini-3.6-flash"
+        assert called_paths[-1] == "/v1beta/models/gemini-3.6-flash:generateContent"
 
-        # 3. Fallback automatico a gemini-1.5-flash cuando gemini-2.0-flash responde 404 en test-connection y autocomplete
-        fail_2_0_with_404["enabled"] = True
+        # 3. Fallback automatico a gemini-3.5-flash-lite cuando gemini-3.6-flash responde 404 en test-connection y autocomplete
+        fail_3_6_with_404["enabled"] = True
         called_paths.clear()
         fallback_test = client.post("/api/ai/test-connection", headers=headers).json()
         assert fallback_test["ok"] is True
-        assert fallback_test["model"] == "gemini-1.5-flash"
+        assert fallback_test["model"] == "gemini-3.5-flash-lite"
         assert called_paths == [
-            "/v1beta/models/gemini-2.0-flash:generateContent",
-            "/v1beta/models/gemini-1.5-flash:generateContent",
+            "/v1beta/models/gemini-3.6-flash:generateContent",
+            "/v1beta/models/gemini-3.5-flash-lite:generateContent",
         ]
 
         auto_res = client.post(
@@ -390,7 +404,7 @@ def test_zero_hallucination_grounding_title_only_vs_flyer_autocomplete(monkeypat
                 payload = json.dumps(
                     {
                         "models": [
-                            {"name": "models/gemini-2.0-flash", "supportedGenerationMethods": ["generateContent"]},
+                            {"name": "models/gemini-3.6-flash", "supportedGenerationMethods": ["generateContent"]},
                         ]
                     }
                 ).encode("utf-8")
@@ -501,3 +515,114 @@ def test_zero_hallucination_grounding_title_only_vs_flyer_autocomplete(monkeypat
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_autocomplete_timeout_fallback_and_large_image_downscaling(monkeypatch):
+    """
+    SRV-245:
+    1. GEMINI_TIMEOUT_SECONDS por defecto es 45.0 y GEMINI_MODEL es gemini-3.6-flash.
+    2. En autocomplete_publication, si el primer modelo (ej. gemini-3.6-flash) sufre TimeoutException,
+       la bucle continúa con el siguiente candidato (ej. gemini-3.5-flash-lite) en lugar de abortar.
+       Solo si todos los candidatos agotan el tiempo de espera devuelve TIMEOUT.
+    3. Las imágenes grandes (>1.5 MB o >1568px) se reescalan a un máximo de 1568px de borde antes de enviarse a Gemini.
+    """
+    import io
+
+    from PIL import Image
+    from src.config import Settings
+
+    default_cfg = Settings(_env_file=None)
+    assert default_cfg.GEMINI_TIMEOUT_SECONDS == 45.0
+    assert default_cfg.GEMINI_MODEL == "gemini-3.6-flash"
+
+    # Crear imagen grande (2400x1800) que supera 1568px y verificar preprocesamiento
+    big_img = Image.new("RGB", (2400, 1800), color=(20, 60, 120))
+    raw_buf = io.BytesIO()
+    big_img.save(raw_buf, format="PNG", compress_level=0)
+    big_bytes = raw_buf.getvalue()
+    assert len(big_bytes) > 1_500_000
+
+    scaled_bytes, scaled_mime = gemini.preprocess_image_for_gemini(big_bytes, "image/png")
+    assert scaled_bytes is not None
+    assert scaled_mime == "image/jpeg"
+    assert len(scaled_bytes) < len(big_bytes)
+    with Image.open(io.BytesIO(scaled_bytes)) as checked_img:
+        assert max(checked_img.size) == 1568
+        assert checked_img.size == (1568, 1176)
+
+    # Verificar fallback de TimeoutException en autocomplete_publication
+    attempted_models: list[str] = []
+    monkeypatch.setattr(
+        gemini,
+        "build_candidate_flash_models",
+        lambda *_args, **_kwargs: ["gemini-3.6-flash", "gemini-3.5-flash-lite"],
+    )
+
+    real_post = gemini.httpx.post
+
+    def fake_post(url: str, **kwargs):
+        for m in ("gemini-3.6-flash", "gemini-3.5-flash-lite"):
+            if m in url:
+                attempted_models.append(m)
+        if "gemini-3.6-flash" in url:
+            raise gemini.httpx.ReadTimeout("Simulated timeout on primary model")
+        return gemini.httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps(
+                                        {
+                                            "title": "Evento Recuperado por Fallback Lite",
+                                            "location": "Campus UPA",
+                                            "event_start": "2026-11-29T10:00",
+                                            "is_event": True,
+                                        }
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(gemini.httpx, "post", fake_post)
+    try:
+        db = TestingSessionLocal()
+        res = gemini.autocomplete_publication(
+            "AIzaValidKeyForTimeoutFallbackTest",
+            form_data={"title": "", "content": "Evento el 29/11/2026 a las 10:00 en Campus UPA", "location": ""},
+            image_bytes=big_bytes,
+            image_mime_type="image/png",
+            db=db,
+        )
+        assert res.ok is True
+        assert res.code == "OK"
+        assert res.model == "gemini-3.5-flash-lite"
+        assert attempted_models == ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+        assert res.suggestions["title"] == "Evento Recuperado por Fallback Lite"
+        assert res.suggestions["location"] == "Campus UPA"
+
+        # Si todos los candidatos sufren timeout, devuelve TIMEOUT al final
+        attempted_models.clear()
+
+        def always_timeout(url: str, **kwargs):
+            attempted_models.append(url)
+            raise gemini.httpx.ReadTimeout("Simulated timeout on all models")
+
+        monkeypatch.setattr(gemini.httpx, "post", always_timeout)
+        res_all_timeout = gemini.autocomplete_publication(
+            "AIzaValidKeyForTimeoutFallbackTest",
+            form_data={"title": "", "content": "Evento el 29/11/2026", "location": ""},
+            db=db,
+        )
+        assert res_all_timeout.ok is False
+        assert res_all_timeout.code == "TIMEOUT"
+        assert len(attempted_models) == 2
+        db.close()
+    finally:
+        monkeypatch.setattr(gemini.httpx, "post", real_post)

@@ -311,11 +311,14 @@ def extract_event_from_instagram_post(
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
     if resolved_bytes:
+        processed_bytes, processed_mime = gemini.preprocess_image_for_gemini(
+            resolved_bytes, resolved_mime or "image/jpeg"
+        )
         parts.append(
             {
                 "inline_data": {
-                    "mime_type": resolved_mime or "image/jpeg",
-                    "data": base64.b64encode(resolved_bytes).decode("ascii"),
+                    "mime_type": processed_mime or resolved_mime or "image/jpeg",
+                    "data": base64.b64encode(processed_bytes or resolved_bytes).decode("ascii"),
                 }
             }
         )
@@ -347,9 +350,13 @@ def extract_event_from_instagram_post(
             )
         except httpx.TimeoutException:
             logger.warning("[AI Extractor] Timeout consultando Google Gemini (%s).", candidate)
+            if idx < len(candidate_models) - 1:
+                continue
             return AIEventExtractionResult(is_event=False)
         except httpx.HTTPError as exc:
             logger.warning("[AI Extractor] Error de red consultando Google Gemini: %s", exc)
+            if idx < len(candidate_models) - 1:
+                continue
             return AIEventExtractionResult(is_event=False)
         except Exception as exc:
             logger.warning("[AI Extractor] Error inesperado en llamada a Gemini: %s", exc)

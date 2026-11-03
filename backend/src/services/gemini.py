@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import io
 import json
 import re
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import Any
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
+from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -43,18 +45,23 @@ DEFAULT_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT_AUTOCOMPLETE
 
 FREE_TIER_QUOTA_RPM = 15
 
+IMAGE_DOWNSCALE_THRESHOLD_BYTES = 1_500_000
+IMAGE_MAX_EDGE_PX = 1568
+
 # Orden de prioridad oficial de modelos gratuitos Gemini Flash en Google AI Studio (mas reciente primero)
 PREFERRED_FLASH_MODELS: tuple[str, ...] = (
-    "gemini-2.0-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
     "gemini-1.5-flash",
 )
-DEFAULT_FLASH_MODEL = "gemini-2.0-flash"
+DEFAULT_FLASH_MODEL = "gemini-3.6-flash"
 
 # Modelos Gemini Flash actuales en Google Generative Language API v1beta (ordenados por estabilidad y velocidad)
 MODERN_FLASH_MODELS: tuple[str, ...] = (
     "gemini-3.6-flash",
-    "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-flash-lite-latest",
     "gemini-3-flash-preview",
@@ -63,9 +70,12 @@ MODERN_FLASH_MODELS: tuple[str, ...] = (
     "gemini-flash-latest",
 )
 
-# Modelos 2.5 retirados para claves nuevas en Google AI Studio que deben ignorarse
+# Modelos retirados para claves en Google AI Studio que deben ignorarse
 RETIRED_FLASH_MODELS: frozenset[str] = frozenset(
     {
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-2.0-flash-exp",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
         "gemini-2.5-flash-preview",
@@ -121,7 +131,12 @@ def decrypt_api_key(stored_value: str) -> str:
 
 def _is_valid_flash_model(model_name: str) -> bool:
     clean = (model_name or "").removeprefix("models/").strip().lower()
-    if not clean or clean in RETIRED_FLASH_MODELS or clean.startswith("gemini-2.5-"):
+    if (
+        not clean
+        or clean in RETIRED_FLASH_MODELS
+        or clean.startswith("gemini-2.0-")
+        or clean.startswith("gemini-2.5-")
+    ):
         return False
     if clean in PREFERRED_FLASH_MODELS or clean in MODERN_FLASH_MODELS:
         return True
@@ -130,6 +145,64 @@ def _is_valid_flash_model(model_name: str) -> bool:
     if any(keyword in clean for keyword in EXCLUDED_MODEL_KEYWORDS):
         return False
     return True
+
+
+def preprocess_image_for_gemini(
+    image_bytes: bytes | None,
+    image_mime_type: str | None,
+    *,
+    max_bytes_threshold: int = IMAGE_DOWNSCALE_THRESHOLD_BYTES,
+    max_edge_px: int = IMAGE_MAX_EDGE_PX,
+) -> tuple[bytes | None, str | None]:
+    """
+    Reescala imagenes grandes (>1.5 MB o >1568px de borde maximo cuando superan el umbral)
+    a un maximo de 1568px de lado para reducir latencia de transferencia y tokens en Gemini.
+    Los PDFs e imagenes pequeñas se devuelven sin cambios.
+    """
+    if not image_bytes or not image_mime_type:
+        return image_bytes, image_mime_type
+    clean_mime = image_mime_type.split(";", 1)[0].strip().lower()
+    if clean_mime == "application/pdf" or not clean_mime.startswith("image/"):
+        return image_bytes, image_mime_type
+
+    needs_bytes_reduction = len(image_bytes) > max_bytes_threshold
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            transposed = ImageOps.exif_transpose(img)
+            img_work = transposed if transposed is not None else img
+            width, height = img_work.size
+            exceeds_dimensions = max(width, height) > max_edge_px
+            if not needs_bytes_reduction and not exceeds_dimensions:
+                return image_bytes, clean_mime
+
+            if exceeds_dimensions:
+                scale = max_edge_px / float(max(width, height))
+                new_size = (
+                    max(1, int(round(width * scale))),
+                    max(1, int(round(height * scale))),
+                )
+                img_work = img_work.resize(new_size, Image.Resampling.LANCZOS)
+
+            if img_work.mode not in ("RGB", "L"):
+                if "A" in img_work.mode or img_work.mode == "P":
+                    rgba = img_work.convert("RGBA")
+                    bg = Image.new("RGB", rgba.size, (255, 255, 255))
+                    bg.paste(rgba, mask=rgba.split()[3])
+                    img_work = bg
+                else:
+                    img_work = img_work.convert("RGB")
+            elif img_work.mode == "L":
+                img_work = img_work.convert("RGB")
+
+            buf = io.BytesIO()
+            img_work.save(buf, format="JPEG", quality=85, optimize=True)
+            compressed = buf.getvalue()
+            if compressed and (exceeds_dimensions or len(compressed) < len(image_bytes)):
+                return compressed, "image/jpeg"
+    except Exception:
+        return image_bytes, image_mime_type
+
+    return image_bytes, image_mime_type
 
 
 def mask_key(key: str) -> str:
@@ -410,10 +483,14 @@ def check_connection(api_key: str, *, db: Session | None = None) -> ConnectionRe
                 timeout=settings.GEMINI_TIMEOUT_SECONDS,
             )
         except httpx.TimeoutException:
+            if idx < len(candidate_models) - 1:
+                continue
             return ConnectionResult(
                 False, "TIMEOUT", "Error de red con Google: tiempo de espera agotado.", active_model
             )
         except httpx.HTTPError:
+            if idx < len(candidate_models) - 1:
+                continue
             return ConnectionResult(
                 False, "NETWORK", "Error de red con Google: no se pudo establecer la conexión.", active_model
             )
@@ -889,11 +966,12 @@ def autocomplete_publication(
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
     if image_bytes and image_mime_type:
+        processed_bytes, processed_mime = preprocess_image_for_gemini(image_bytes, image_mime_type)
         parts.append(
             {
                 "inline_data": {
-                    "mime_type": image_mime_type,
-                    "data": base64.b64encode(image_bytes).decode("ascii"),
+                    "mime_type": processed_mime or image_mime_type,
+                    "data": base64.b64encode(processed_bytes or image_bytes).decode("ascii"),
                 }
             }
         )
@@ -924,6 +1002,8 @@ def autocomplete_publication(
                 timeout=settings.GEMINI_TIMEOUT_SECONDS,
             )
         except httpx.TimeoutException:
+            if idx < len(candidate_models) - 1:
+                continue
             return AutocompleteResult(
                 False,
                 "TIMEOUT",
@@ -932,6 +1012,8 @@ def autocomplete_publication(
                 {},
             )
         except httpx.HTTPError:
+            if idx < len(candidate_models) - 1:
+                continue
             return AutocompleteResult(
                 False,
                 "NETWORK",
