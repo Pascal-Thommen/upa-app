@@ -103,6 +103,11 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     compose_text = (repo_root / "docker-compose.yml").read_text(encoding="utf-8")
     assert DEFAULT_GOOGLE_CLIENT_ID in compose_text
     assert "GOOGLE_CLIENT_ID:" in compose_text
+    assert "APP_ENV: production" in compose_text
+    assert "GOOGLE_SERVICE_ACCOUNT_FILE: /app/secrets/service-account.json" in compose_text
+    assert 'AI_EVENT_EXTRACTION_ENABLED: "true"' in compose_text
+    assert '"127.0.0.1:5432:5432"' in compose_text
+    assert "upa-beta" not in compose_text
     assert "/home/pasc/.config/upa-app/.env" in compose_text
     assert "./backend/.env" in compose_text
     assert "/home/pasc/.config/upa-app/secrets:/app/secrets:ro" in compose_text
