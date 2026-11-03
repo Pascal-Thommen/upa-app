@@ -15,7 +15,7 @@ from pathlib import Path
 
 import docx
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Inches, Pt, RGBColor
@@ -24,6 +24,8 @@ from PIL import Image, ImageDraw, ImageFont
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MD_SOURCE_PATH = REPO_ROOT / "docs" / "UPA_App_Documentacion_Arquitectura.md"
 DOCX_OUTPUT_PATH = REPO_ROOT / "docs" / "UPA_App_Documentacion_Arquitectura.docx"
+MD_V3_SOURCE_PATH = REPO_ROOT / "docs" / "UPA_App_Documentacion_Arquitectura_v3.md"
+DOCX_V3_OUTPUT_PATH = REPO_ROOT / "docs" / "UPA_App_Documentacion_Arquitectura_v3.docx"
 
 COLOR_NAVY = RGBColor(15, 23, 42)
 COLOR_BLUE = RGBColor(30, 58, 138)
@@ -512,8 +514,14 @@ def _set_cell_margins(cell, top: int = 100, bottom: int = 100, left: int = 140, 
     tc_pr.append(tc_mar)
 
 
-def _add_formatted_runs(paragraph, text: str, base_size_pt: float = 10.5, text_color: RGBColor = COLOR_TEXT) -> None:
-    """Procesa negritas (**...**) y codigo en linea (`...`) dentro de un parrafo."""
+def _add_formatted_runs_segment(
+    paragraph,
+    text: str,
+    base_size_pt: float = 10.5,
+    text_color: RGBColor = COLOR_TEXT,
+    highlight_yellow: bool = False,
+) -> None:
+    """Procesa negritas (**...**) y codigo en linea (`...`) dentro de un segmento de texto."""
     tokens = re.split(r"(\*\*[^*]+\*\*|`[^`]+`)", text)
     for token in tokens:
         if not token:
@@ -524,21 +532,52 @@ def _add_formatted_runs(paragraph, text: str, base_size_pt: float = 10.5, text_c
             for st in sub_tokens:
                 if not st:
                     continue
-                run = paragraph.add_run(st[1:-1] if (st.startswith("`") and st.endswith("`")) else st)
+                is_code = st.startswith("`") and st.endswith("`")
+                run = paragraph.add_run(st[1:-1] if is_code else st)
                 run.bold = True
-                run.font.name = "Consolas" if (st.startswith("`") and st.endswith("`")) else "Arial"
-                run.font.size = Pt(base_size_pt - 0.5 if (st.startswith("`") and st.endswith("`")) else base_size_pt)
-                run.font.color.rgb = COLOR_CODE if (st.startswith("`") and st.endswith("`")) else text_color
+                run.font.name = "Consolas" if is_code else "Arial"
+                run.font.size = Pt(base_size_pt - 0.5 if is_code else base_size_pt)
+                run.font.color.rgb = COLOR_CODE if is_code else text_color
+                if highlight_yellow:
+                    run.font.highlight_color = WD_COLOR_INDEX.YELLOW
         elif token.startswith("`") and token.endswith("`") and len(token) > 2:
             run = paragraph.add_run(token[1:-1])
             run.font.name = "Consolas"
             run.font.size = Pt(base_size_pt - 0.5)
             run.font.color.rgb = COLOR_CODE
+            if highlight_yellow:
+                run.font.highlight_color = WD_COLOR_INDEX.YELLOW
         else:
             run = paragraph.add_run(token)
             run.font.name = "Arial"
             run.font.size = Pt(base_size_pt)
             run.font.color.rgb = text_color
+            if highlight_yellow:
+                run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+
+
+def _add_formatted_runs(paragraph, text: str, base_size_pt: float = 10.5, text_color: RGBColor = COLOR_TEXT) -> None:
+    """Procesa resaltado amarillo (==...==), negritas (**...**) y codigo (`...`) dentro de un parrafo."""
+    hl_segments = re.split(r"(==.+?==)", text)
+    for seg in hl_segments:
+        if not seg:
+            continue
+        if seg.startswith("==") and seg.endswith("==") and len(seg) > 4:
+            _add_formatted_runs_segment(
+                paragraph,
+                seg[2:-2],
+                base_size_pt=base_size_pt,
+                text_color=text_color,
+                highlight_yellow=True,
+            )
+        else:
+            _add_formatted_runs_segment(
+                paragraph,
+                seg,
+                base_size_pt=base_size_pt,
+                text_color=text_color,
+                highlight_yellow=False,
+            )
 
 
 def _add_markdown_table(doc: docx.Document, rows: list[list[str]]) -> None:
@@ -819,5 +858,8 @@ def generate_docx(md_path: Path = MD_SOURCE_PATH, docx_path: Path = DOCX_OUTPUT_
 
 
 if __name__ == "__main__":
-    output = generate_docx()
-    print(f"Documento Word generado exitosamente en: {output} ({output.stat().st_size} bytes)")
+    output_v4 = generate_docx(MD_SOURCE_PATH, DOCX_OUTPUT_PATH)
+    print(f"Documento Word generado exitosamente en: {output_v4} ({output_v4.stat().st_size} bytes)")
+    if MD_V3_SOURCE_PATH.exists():
+        output_v3 = generate_docx(MD_V3_SOURCE_PATH, DOCX_V3_OUTPUT_PATH)
+        print(f"Documento Word v3 generado exitosamente en: {output_v3} ({output_v3.stat().st_size} bytes)")
