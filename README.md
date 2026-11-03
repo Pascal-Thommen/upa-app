@@ -104,6 +104,33 @@ upa-app/
    * **Control de IA (`/dashboard/ia`):** Verwaltung des Google Gemini API Schluessels (`GET/POST /api/ai/config`, persistent in PostgreSQL maskiert gespeichert), System Prompt Konfiguration und Live Verbindungstest (`POST /api/ai/test-connection`).
    * **APIs (`/dashboard/apis`) und Historial (`/api/history`):** Echtzeit Telemetrie fuer Datenbank Pool, Google Directory, Google Classroom, Instagram Sync und lueckenloses Audit Log aller administrativen Aenderungen.
 
+## Datos de Prueba e Indicaciones de Acceso (Evaluación y Testing)
+
+Para facilitar la evaluación integral del sistema por parte del cuerpo docente, la plataforma cuenta con instancias desplegadas y datos semilla operativos (cargados automáticamente vía `backend/src/seed.py` al iniciar los contenedores):
+
+### 1. Entornos y URLs de Acceso Directo
+* **Campus PWA (Estudiantes y Docentes):** `https://upa.eu1.netbird.services/` (en ejecución local: `http://localhost:8085/`)
+  * Vista móvil directa o simulador web: añadir parámetro `/?app=1`
+* **Web-Admin Cockpit (Gestión Editorial y Configuración):** `https://upa.eu1.netbird.services/dashboard/` (en ejecución local: `http://localhost:8085/dashboard/`)
+* **Documentación Interactiva de la API (Swagger UI):** `https://upa.eu1.netbird.services/docs` (en ejecución local: `http://localhost:8000/docs`)
+
+### 2. Identidades y Roles de Prueba
+* **Cuenta Administrador Primario:** `pascal.thommen@upa.edu.py` (Rol institucional con los 6 módulos habilitados: `publicaciones`, `grupos`, `roles`, `ia`, `apis`, `historial`).
+* **Autenticación Institucional:** Inicio de sesión único (SSO) mediante Google OAuth 2.0 restringido al dominio `@upa.edu.py`.
+* **Grupos de Audiencia Preconfigurados:** `estudiantes`, `docentes`, `staff`, `egresados` (con sincronización bidireccional a Google Workspace).
+
+### 3. Datos Semilla Disponibles en Base de Datos (PostgreSQL)
+* **Noticia Oficial Instagram:** Convocatoria laboral institucional *"Búsqueda Laboral: Recepcionista"*, con texto enriquecido, imagen en `/uploads` e integración de feed.
+* **Evento Académico Híbrido con RSVP Activo:** *"Charla Magistral de IA: Aplicaciones Prácticas y Futuro Profesional"* (con expositor Daniel Romero en el Auditorio Edificio 1), con registro de asistencia en un clic (`Asistiré` / `No asistiré`) y contadores en tiempo real.
+* **Configuración del Modelo Gemini:** Parámetros de conexión y extracción multimodal persistidos en tabla `app_settings`.
+
+### 4. Flujo de Prueba de las 5 Funcionalidades Principales
+1. **Muro y Avisos Prioritarios (PWA):** En `/?app=1` (pestaña *Inicio*), comprobar avisos urgentes destacados en azul institucional y posts del feed universitario.
+2. **Agenda y Google Classroom:** En la pestaña *Agenda*, consultar eventos del calendario y tareas sincronizadas de Classroom con fecha límite.
+3. **Confirmación de Asistencia (RSVP):** En el evento de Charla IA, pulsar `Asistiré` para comprobar el incremento instantáneo y persistente en PostgreSQL.
+4. **Extracción Multimodal con IA en Cockpit:** En `/dashboard/publicaciones/nueva`, cargar un afiche o pulsar `Autocompletar con IA` para verificar la estructuración automática de eventos mediante Google Gemini Flash.
+5. **Matriz de Permisos y Telemetría:** En `/dashboard/roles` revisar la matriz de 6 permisos y en `/dashboard/apis` inspeccionar la latencia de base de datos y conectores externos.
+
 ## Sicherheitsrichtlinien und Konfiguration
 
 * Es duerfen niemals echte API Schluessel, OAuth Client Secrets, Service Account JSON Dateien oder personenbezogene Zugangsdaten im Repository committet werden.
