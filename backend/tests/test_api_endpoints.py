@@ -592,6 +592,7 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "AGENTS.md",
         repo_root / "web-app" / "README.md",
         repo_root / "web-admin" / "README.md",
+        repo_root / "docs" / "UPA_App_Documentacion_Arquitectura_v3.md",
         repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.md",
         repo_root / "docs" / "UPA_App_Manual_de_Usuario.md",
         repo_root / "docs" / "UPA_App_Informe_del_Proyecto.md",
@@ -615,11 +616,47 @@ def test_pwa_and_ai_documentation_integrity():
     }
     docx_files = {p.name for p in (repo_root / "docs").glob("*.docx")}
     assert "UPA_App_Documentacion_Arquitectura.docx" in docx_files
+    assert "UPA_App_Documentacion_Arquitectura_v3.docx" in docx_files
     assert "UPA_App_Manual_de_Usuario.docx" in docx_files
     assert "UPA_App_Informe_del_Proyecto.docx" in docx_files
     assert docx_files.issubset(allowed_docx)
 
     import zipfile
+
+    v3_docx_path = repo_root / "docs" / "UPA_App_Documentacion_Arquitectura_v3.docx"
+    with zipfile.ZipFile(v3_docx_path) as zf:
+        v3_xml = zf.read("word/document.xml").decode("utf-8")
+        v3_media = [name for name in zf.namelist() if name.startswith("word/media/")]
+    assert len(v3_media) >= 2, "Expected embedded architecture and ER diagram images in v3 .docx"
+    assert 'w:val="yellow"' in v3_xml, "Expected yellow text highlight in v3 .docx for unchanged v3 passages"
+    assert 'w:val="both"' in v3_xml, "Expected justified (Blocksatz) alignment in v3 .docx"
+    assert "==" not in v3_xml, "Unparsed highlight markers found in v3 .docx"
+    for forbidden_native_term in ("Kotlin", "Jetpack Compose", "Android Studio", "MVVM", "Room"):
+        assert forbidden_native_term not in v3_xml
+
+    v3_md_text = (repo_root / "docs" / "UPA_App_Documentacion_Arquitectura_v3.md").read_text(encoding="utf-8")
+    for required_v3_term in (
+        "30 de octubre de 2026",
+        "Progressive Web App",
+        "Single Source of Truth",
+        "menos de 1.000 estudiantes",
+        "SociableKIT",
+        "Free Tier",
+        "Google Gemini Flash",
+        "dbdiagram.io",
+        "users",
+        "posts",
+        "event_registrations",
+        "post_views",
+        "admin_audit_logs",
+        "device_tokens",
+        "audience_groups",
+        "user_roles",
+        "app_settings",
+    ):
+        assert required_v3_term in v3_md_text, f"Missing {required_v3_term} in v3 architecture documentation"
+    for forbidden_native_term in ("Kotlin", "Jetpack Compose", "Android Studio", "MVVM", "Room"):
+        assert forbidden_native_term not in v3_md_text
 
     docx_path = repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.docx"
     with zipfile.ZipFile(docx_path) as zf:

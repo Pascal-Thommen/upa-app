@@ -53,6 +53,8 @@ upa-app/
 │   │   └── services/           # Geschaeftslogik (gemini, ai_extractor, instagram, google_groups, push, scheduler, audit)
 │   └── tests/                  # Pytest Testsuite (API, Auth, PWA E2E, KI Extraktion, Classroom, Push)
 ├── docs/                       # Technische System, API und Projektspezifikation
+│   ├── UPA_App_Documentacion_Arquitectura_v3.docx # Kompaktes Architektur-Hauptdokument Teil 1 (Word, Gelb-Markierung)
+│   ├── UPA_App_Documentacion_Arquitectura_v3.md   # Markdown-Quelle des Architektur-Hauptdokuments Teil 1
 │   ├── UPA_App_Documentacion_Arquitectura.docx # Offizielle Projektdokumentation (Word)
 │   ├── UPA_App_Documentacion_Arquitectura.md   # Markdown-Quelle der Projektdokumentation
 │   ├── UPA_App_Manual_de_Usuario.docx          # Offizielle Anwenderanleitung Teil 2 (Word)
@@ -130,6 +132,8 @@ python3 scripts/audit_zero_mock.py
 
 ## Weiterfuehrende Dokumentation
 
+* [Kompaktes Architektur-Hauptdokument v3 (Teil 1, Markdown)](docs/UPA_App_Documentacion_Arquitectura_v3.md)
+* [Kompaktes Architektur-Hauptdokument v3 (Teil 1, MS Word .docx)](docs/UPA_App_Documentacion_Arquitectura_v3.docx)
 * [Offizielle Architektur- und Projektdokumentation (Spanisch, Markdown)](docs/UPA_App_Documentacion_Arquitectura.md)
 * [Offizielle Architektur- und Projektdokumentation (MS Word .docx)](docs/UPA_App_Documentacion_Arquitectura.docx)
 * [Offizielle Anwenderanleitung Manual de Usuario Teil 2 (Spanisch, Markdown)](docs/UPA_App_Manual_de_Usuario.md)
