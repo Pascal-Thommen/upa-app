@@ -46,7 +46,6 @@ const DOM_ELEMENTS = {
   modalInputClassroomToken: document.getElementById("modal-input-classroom-token"),
   btnCloseClassroomModal: document.getElementById("btn-close-classroom-modal"),
   btnCancelClassroom: document.getElementById("btn-cancel-classroom"),
-  btnRefresh: document.getElementById("btn-refresh"),
 };
 
 const state = {
@@ -2379,7 +2378,6 @@ function init() {
   }
 
   if (DOM_ELEMENTS.formLogin) DOM_ELEMENTS.formLogin.addEventListener("submit", handleLoginSubmit);
-  if (DOM_ELEMENTS.btnRefresh) DOM_ELEMENTS.btnRefresh.addEventListener("click", refreshDashboard);
   if (DOM_ELEMENTS.btnLogout) DOM_ELEMENTS.btnLogout.addEventListener("click", logout);
 
   if (DOM_ELEMENTS.userMenuBtn && DOM_ELEMENTS.userProfileDropdown) {

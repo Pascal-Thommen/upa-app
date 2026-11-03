@@ -616,8 +616,17 @@ def test_web_admin_ux_invariants_clean_labels_and_no_legacy_noise():
         assert removed_footer_id not in index_html
         assert removed_footer_id not in app_js
 
-    # Elementos clave de la arquitectura UX vigente (SRV-174)
-    assert "Recargar datos" in index_html
+    # Elementos clave de la arquitectura UX vigente (SRV-174 / SRV-239)
+    assert "Recargar datos" not in index_html
+    assert "btn-refresh" not in index_html
+    assert "btn-refresh" not in app_js
+    assert "Sincronizar Instagram" not in index_html
+    assert "ed-btn-sync" not in index_html
+    assert "ed-btn-sync" not in editorial_js
+    assert "ed-sync-status" not in index_html
+    assert "ed-sync-status" not in editorial_js
+    assert 'id="ed-btn-new-pub"' in index_html
+    assert "+ Nueva publicación" in index_html
     assert 'id="user-menu-btn"' in index_html
     assert 'id="ed-form-pub"' in index_html
     assert 'id="ed-pub-scheduled"' in index_html

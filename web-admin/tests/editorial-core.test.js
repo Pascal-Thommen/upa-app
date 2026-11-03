@@ -745,6 +745,10 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   const aiBtn = document.getElementById("ed-pub-autocomplete-ai");
   assert.ok(aiBtn, "El botón Autocompletar con IA debe existir en el editor");
   assert.equal(aiBtn.textContent.trim(), "Autocompletar con IA");
+  assert.equal(document.getElementById("btn-refresh"), null, "El botón Recargar datos fue eliminado del header");
+  assert.equal(document.getElementById("ed-btn-sync"), null, "El botón Sincronizar Instagram fue eliminado de la toolbar");
+  assert.equal(document.getElementById("ed-sync-status"), null, "El estado de sync manual fue eliminado de la toolbar");
+  assert.ok(document.getElementById("ed-btn-new-pub"), "El botón + Nueva publicación permanece como acción principal");
 
   // 1. Sin token de Gemini configurado: botón deshabilitado, gris y con tooltip explicativo
   assert.equal(aiBtn.disabled, true);

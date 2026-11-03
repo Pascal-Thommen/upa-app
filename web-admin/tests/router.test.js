@@ -622,6 +622,15 @@ test("modulo ia: index.html renombra reiter a IA, consolida 1-Klick-Save, precar
   assert.ok(!indexHtml.includes('id="btn-ai-save-prompt-instagram"'));
   assert.ok(!indexHtml.includes('id="btn-ai-test-connection"'));
 
+  // SRV-239: Los botones redundantes Recargar datos y Sincronizar Instagram fueron eliminados
+  assert.ok(!indexHtml.includes('id="btn-refresh"'));
+  assert.ok(!indexHtml.includes("Recargar datos"));
+  assert.ok(!indexHtml.includes('id="ed-btn-sync"'));
+  assert.ok(!indexHtml.includes('id="ed-sync-status"'));
+  assert.ok(!indexHtml.includes("Sincronizar Instagram"));
+  assert.ok(indexHtml.includes('id="ed-btn-new-pub"'));
+  assert.ok(indexHtml.includes("+ Nueva publicación"));
+
   const env = createTestEnvironment("/dashboard/ia");
   assert.equal(env.window.location.pathname, "/dashboard/ia");
   assert.equal(env.router.getCurrentRoute(), "ia");
