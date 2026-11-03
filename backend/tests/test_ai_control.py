@@ -620,8 +620,8 @@ def test_publication_autocomplete_ai_multimodal_fills_only_empty_fields(monkeypa
 
 def test_gemini_automatic_latest_free_flash_model_discovery(monkeypatch):
     """
-    Verifica que el backend consulta GET /v1beta/models, ignora modelos fantasma como gemini-2.5-flash,
-    y selecciona automaticamente la cadena de prioridad oficial (gemini-2.0-flash -> gemini-1.5-flash),
+    Verifica que el backend consulta GET /v1beta/models, ignora modelos retirados como gemini-2.0-flash y gemini-2.5-flash,
+    y selecciona automaticamente la cadena de prioridad oficial (gemini-3.6-flash -> gemini-3.5-flash-lite -> gemini-3.5-flash -> gemini-1.5-flash),
     devolviendo su nombre como estado en /api/ai/test-connection y /api/ai/config.
     """
     post_paths: list[str] = []
@@ -633,6 +633,14 @@ def test_gemini_automatic_latest_free_flash_model_discovery(monkeypatch):
                     "models": [
                         {
                             "name": "models/gemini-1.5-flash",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                        {
+                            "name": "models/gemini-3.5-flash-lite",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                        {
+                            "name": "models/gemini-3.6-flash",
                             "supportedGenerationMethods": ["generateContent"],
                         },
                         {
@@ -678,7 +686,7 @@ def test_gemini_automatic_latest_free_flash_model_discovery(monkeypatch):
 
     try:
         monkeypatch.setattr(settings, "GEMINI_API_BASE_URL", f"http://127.0.0.1:{port}")
-        monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-2.0-flash")
+        monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-3.6-flash")
         admin_headers = auth(ADMIN_ID, ADMIN_EMAIL, "admin")
 
         client.post("/api/ai/config", json={"api_key": "AIzaAutoDiscoveryFlashKey123"}, headers=admin_headers)
@@ -686,13 +694,13 @@ def test_gemini_automatic_latest_free_flash_model_discovery(monkeypatch):
         assert test_res.status_code == 200
         body = test_res.json()
         assert body["ok"] is True
-        assert body["model"] == "gemini-2.0-flash"
+        assert body["model"] == "gemini-3.6-flash"
         assert body["quota_rpm"] == 15
-        assert "gemini-2.0-flash" in body["message"]
-        assert post_paths == ["/v1beta/models/gemini-2.0-flash:generateContent"]
+        assert "gemini-3.6-flash" in body["message"]
+        assert post_paths == ["/v1beta/models/gemini-3.6-flash:generateContent"]
 
         cfg_res = client.get("/api/ai/config", headers=admin_headers).json()
-        assert cfg_res["model"] == "gemini-2.0-flash"
+        assert cfg_res["model"] == "gemini-3.6-flash"
         assert cfg_res["quota_rpm"] == 15
     finally:
         server.shutdown()

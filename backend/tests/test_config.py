@@ -131,6 +131,8 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     assert "map $http_x_forwarded_proto $forwarded_proto" in nginx_text
     assert "proxy_set_header X-Forwarded-Proto $forwarded_proto;" in nginx_text
     assert "proxy_set_header X-Forwarded-Proto https;" not in nginx_text
+    assert "proxy_read_timeout 60s;" in nginx_text
+    assert "proxy_connect_timeout 10s;" in nginx_text
 
 
 def test_jwt_secret_validation_warns_in_production_when_default(caplog):
