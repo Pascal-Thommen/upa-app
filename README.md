@@ -55,6 +55,8 @@ upa-app/
 ├── docs/                       # Technische System, API und Projektspezifikation
 │   ├── UPA_App_Documentacion_Arquitectura.docx # Offizielle Projektdokumentation (Word)
 │   ├── UPA_App_Documentacion_Arquitectura.md   # Markdown-Quelle der Projektdokumentation
+│   ├── UPA_App_Manual_de_Usuario.docx          # Offizielle Anwenderanleitung Teil 2 (Word)
+│   ├── UPA_App_Manual_de_Usuario.md            # Markdown-Quelle der Anwenderanleitung Teil 2
 │   ├── UPA_App_Informe_del_Proyecto.docx       # Offizieller Projektbericht und Fragenkatalog (Word)
 │   ├── UPA_App_Informe_del_Proyecto.md         # Markdown-Quelle des Projektberichts (Teil 3)
 │   ├── PFLICHTENHEFT.md        # Offizielles, verbindliches Pflichtenheft der UPA App
@@ -68,6 +70,7 @@ upa-app/
 ├── scripts/
 │   ├── audit_zero_mock.py      # Gatekeeper Zero Mock und Architektur Scanner
 │   ├── generar_documentacion_arquitectura.py # Generator fuer die offizielle Word-Dokumentation
+│   ├── generar_manual_usuario.py             # Generator fuer die Anwenderanleitung (Manual de Usuario .docx)
 │   ├── generar_informe_proyecto.py           # Generator fuer den Projektbericht (Teil 3)
 │   └── generar_iconos_pwa.py   # Generator fuer PWA und Apple Touch Icons
 ├── .env.example                # Vollstaendige Konfigurationsvorlage analog zu backend/src/config.py
@@ -129,6 +132,8 @@ python3 scripts/audit_zero_mock.py
 
 * [Offizielle Architektur- und Projektdokumentation (Spanisch, Markdown)](docs/UPA_App_Documentacion_Arquitectura.md)
 * [Offizielle Architektur- und Projektdokumentation (MS Word .docx)](docs/UPA_App_Documentacion_Arquitectura.docx)
+* [Offizielle Anwenderanleitung Manual de Usuario Teil 2 (Spanisch, Markdown)](docs/UPA_App_Manual_de_Usuario.md)
+* [Offizielle Anwenderanleitung Manual de Usuario Teil 2 (MS Word .docx)](docs/UPA_App_Manual_de_Usuario.docx)
 * [Offizieller Projektbericht und Fragenkatalog (Teil 3, Markdown)](docs/UPA_App_Informe_del_Proyecto.md)
 * [Offizieller Projektbericht und Fragenkatalog (Teil 3, MS Word .docx)](docs/UPA_App_Informe_del_Proyecto.docx)
 * [Offizielles Pflichtenheft (PFLICHTENHEFT)](docs/PFLICHTENHEFT.md)
