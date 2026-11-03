@@ -602,7 +602,14 @@
         captionInput.value = Core.extractInstagramTeaser(state.editingItem.content || state.editingItem.caption);
       }
       if (linkUrlInput) {
-        linkUrlInput.value = state.editingItem.permalink || state.editingItem.link_url || "";
+        const rawIgLink = state.editingItem.permalink || state.editingItem.link_url || "";
+        linkUrlInput.value = Core.normalizeInstagramUrl
+          ? Core.normalizeInstagramUrl(rawIgLink, {
+              isInstagram: true,
+              instagramId: state.editingItem.instagram_id,
+              mediaType: state.editingItem.media_type,
+            })
+          : rawIgLink;
       }
     }
 

@@ -181,13 +181,112 @@ def effective_reminders(post: Any) -> list[int]:
     return []
 
 
+DEFAULT_INSTAGRAM_PROFILE_URL = "https://www.instagram.com/upalemana/"
+_IG_POST_URL_RE = re.compile(
+    r"^(https?://(?:www\.|m\.)?instagram\.com)/(?:(?!p/|reel/|reels/|tv/|stories/|explore/|accounts/|about/|developer/|legal/|direct/)[^/?#]+/)?(p|reel|reels|tv)/([A-Za-z0-9_-]+)/?(?:[?#].*)?$",
+    re.IGNORECASE,
+)
+_IG_SHORTCODE_RE = re.compile(r"^[A-Za-z0-9_-]{5,32}$")
+_IG_RESERVED_PREFIX_RE = re.compile(r"^(?:insta_|ig_|sk_)", re.IGNORECASE)
+
+
+def is_likely_instagram_shortcode(raw_code: Any) -> bool:
+    """Detecta si un instagram_id corresponde a un shortcode real de Instagram (no un ID numerico ni de prueba)."""
+    clean = str(raw_code or "").strip()
+    if not clean or clean.isdigit() or _IG_RESERVED_PREFIX_RE.match(clean):
+        return False
+    return bool(_IG_SHORTCODE_RE.match(clean))
+
+
+def normalize_instagram_url(
+    raw_url: Any,
+    *,
+    instagram_id: Any = None,
+    media_type: Any = None,
+    is_instagram: bool = False,
+    fallback_if_generic: bool = False,
+) -> str:
+    """
+    Normaliza enlaces de Instagram eliminando el segmento de usuario intermedio (ej. /upalemana/p/CODE/ -> /p/CODE/)
+    para garantizar compatibilidad con Android App Links, Universal Links de iOS y vistas web moviles.
+    Si el enlace falta o es invalido en una publicacion de Instagram, reconstruye el enlace desde instagram_id
+    o aplica fallback al perfil oficial @upalemana.
+    """
+    clean = str(raw_url or "").strip()
+    if re.match(r"^(?:www\.|m\.)?instagram\.com/", clean, re.IGNORECASE):
+        clean = f"https://{clean}"
+
+    valid_url = clean if (re.match(r"^https?://", clean, re.IGNORECASE) or clean.startswith("/uploads/")) else ""
+    if valid_url:
+        m = _IG_POST_URL_RE.match(valid_url)
+        if m:
+            host = re.sub(r"^https?://m\.instagram\.com$", "https://www.instagram.com", m.group(1), flags=re.IGNORECASE)
+            kind = m.group(2).lower()
+            if kind == "reels":
+                kind = "reel"
+            shortcode = m.group(3)
+            return f"{host}/{kind}/{shortcode}/"
+        is_generic_profile = bool(
+            re.match(r"^https?://(?:www\.|m\.)?instagram\.com/upalemana/?$", valid_url, re.IGNORECASE)
+        )
+        if not (fallback_if_generic and is_generic_profile):
+            return valid_url
+
+    if is_likely_instagram_shortcode(instagram_id):
+        code = str(instagram_id).strip()
+        is_video = bool(re.search(r"video|reel", str(media_type or ""), re.IGNORECASE))
+        kind = "reel" if is_video else "p"
+        return f"https://www.instagram.com/{kind}/{code}/"
+
+    if valid_url:
+        return valid_url
+    if is_instagram:
+        return DEFAULT_INSTAGRAM_PROFILE_URL
+    return ""
+
+
+def effective_permalink(post: Any) -> str:
+    """Devuelve el permalink normalizado de una publicacion (con fallback seguro para Instagram)."""
+    is_ig = (getattr(post, "post_type", None) or "").strip().upper() == "INSTAGRAM"
+    raw_permalink = (getattr(post, "permalink", None) or "").strip()
+    if is_ig or "instagram.com" in raw_permalink.lower():
+        return normalize_instagram_url(
+            raw_permalink or getattr(post, "link_url", None),
+            instagram_id=getattr(post, "instagram_id", None),
+            media_type=getattr(post, "media_type", None),
+            is_instagram=is_ig,
+            fallback_if_generic=True,
+        )
+    return raw_permalink
+
+
 def extra_detail_fields(post: Any) -> dict[str, str]:
     """Campos adicionales de enlace para la aplicacion movil (nunca nulos)."""
+    is_ig = (getattr(post, "post_type", None) or "").strip().upper() == "INSTAGRAM"
+    ig_id = getattr(post, "instagram_id", None)
+    media_type = getattr(post, "media_type", None)
+    permalink = effective_permalink(post)
     link_url = normalize_upload_path(getattr(post, "link_url", None))
-    if not link_url and (getattr(post, "post_type", None) or "") == "INSTAGRAM":
-        link_url = (getattr(post, "permalink", None) or "").strip()
+    if is_ig:
+        if not link_url or "instagram.com" in link_url.lower():
+            link_url = permalink or normalize_instagram_url(
+                link_url,
+                instagram_id=ig_id,
+                media_type=media_type,
+                is_instagram=True,
+                fallback_if_generic=True,
+            )
+        else:
+            link_url = normalize_instagram_url(
+                link_url,
+                instagram_id=ig_id,
+                media_type=media_type,
+                is_instagram=True,
+            )
+    elif "instagram.com" in link_url.lower():
+        link_url = normalize_instagram_url(link_url, instagram_id=ig_id, media_type=media_type)
     link_label = (getattr(post, "link_label", None) or "").strip()
-    if link_url and not link_label and (getattr(post, "post_type", None) or "") == "INSTAGRAM":
+    if link_url and not link_label and is_ig:
         link_label = "Ver en Instagram"
     return {
         "link_url": link_url,

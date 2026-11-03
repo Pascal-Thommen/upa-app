@@ -595,6 +595,16 @@
     return svg;
   }
 
+  function bindImageFallback(img, fallbackSrc) {
+    const fb = fallbackSrc || Core.DEFAULT_VIDEO_POSTER;
+    img.addEventListener("error", () => {
+      if (img.getAttribute("src") !== fb) {
+        img.setAttribute("src", fb);
+      }
+    });
+    return img;
+  }
+
   function mediaNode(post, className, controls) {
     const url = Core.safeUrl(post.media_url || post.image_url);
     if (!url && !Core.isVideoMedia(post)) return null;
@@ -613,7 +623,10 @@
       }
       const extUrl = Core.videoExternalUrl(post);
       const badge = h("span", { class: "video-play-badge", "aria-hidden": "true" }, playIcon(18));
-      const img = h("img", { class: className, src: poster, alt: "", loading: "lazy", decoding: "async" });
+      const img = bindImageFallback(
+        h("img", { class: className, src: poster, alt: "", loading: "lazy", decoding: "async" }),
+        Core.DEFAULT_VIDEO_POSTER,
+      );
       if (extUrl) {
         const link = h(
           "a",
@@ -632,7 +645,10 @@
       }
       return h("div", { class: "video-preview-link" }, img, badge);
     }
-    return h("img", { class: className, src: url, alt: "", loading: "lazy", decoding: "async" });
+    return bindImageFallback(
+      h("img", { class: className, src: url, alt: "", loading: "lazy", decoding: "async" }),
+      Core.DEFAULT_VIDEO_POSTER,
+    );
   }
 
   function registrationButton(post) {
@@ -738,22 +754,41 @@
     const kind = Core.postKind(post);
     const origin = Core.postOrigin(post);
     const isEvent = Boolean(post.is_event);
+    const isInsta = post.post_type === "INSTAGRAM" || origin === "instagram";
+    const source = isInsta
+      ? Core.normalizeInstagramUrl(post.permalink || post.link_url, {
+          isInstagram: true,
+          instagramId: post.instagram_id,
+          mediaType: post.media_type,
+          fallbackIfGeneric: true,
+        })
+      : Core.safeUrl(post.permalink);
+    const linkUrl = isInsta
+      ? Core.normalizeInstagramUrl(post.link_url || post.permalink, {
+          isInstagram: true,
+          instagramId: post.instagram_id,
+          mediaType: post.media_type,
+          fallbackIfGeneric: true,
+        })
+      : Core.safeUrl(post.link_url);
     return {
       postId: post.id,
       kind,
       origin,
       isEvent,
       postType: post.post_type || "",
+      instagramId: post.instagram_id || "",
+      mediaType: post.media_type || "",
       kindLabel: Core.originLabel(origin),
       title: post.title,
       meta: postTimeLine(post) || "",
       text: post.content || post.caption || post.summary || "",
       extra: "",
       media: post,
-      source: Core.safeUrl(post.permalink),
-      sourceLabel: post.post_type === "INSTAGRAM" ? "Ver en Instagram" : "Ver fuente original",
-      linkUrl: Core.safeUrl(post.link_url),
-      linkLabel: post.link_label || "Abrir enlace",
+      source,
+      sourceLabel: isInsta ? "Ver en Instagram" : "Ver fuente original",
+      linkUrl,
+      linkLabel: post.link_label || (isInsta ? "Ver en Instagram" : "Abrir enlace"),
       eventStart: isEvent ? post.event_start || "" : "",
       eventEnd: isEvent ? post.event_end || "" : "",
       location: isEvent ? post.location || "" : "",

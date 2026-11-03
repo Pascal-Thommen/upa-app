@@ -381,6 +381,59 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
   assert.equal(dupInsta[0].id, "detail-source");
   assert.equal(dupInsta[0].label, "Ver en Instagram");
   assert.equal(dupInsta[0].isInstagram, true);
+  assert.equal(dupInsta[0].href, "https://www.instagram.com/p/Cxyz123/");
+
+  // Normalizacion de URLs de SociableKIT (/upalemana/p/CODE/ y /upalemana/reel/CODE/) a rutas canonicas de Instagram
+  assert.equal(
+    Core.normalizeInstagramUrl("https://www.instagram.com/upalemana/p/DfC-9wJFV6u/"),
+    "https://www.instagram.com/p/DfC-9wJFV6u/",
+  );
+  assert.equal(
+    Core.normalizeInstagramUrl("https://www.instagram.com/upalemana/reel/De92KpiM8x1/"),
+    "https://www.instagram.com/reel/De92KpiM8x1/",
+  );
+  assert.equal(
+    Core.normalizeInstagramUrl("https://www.instagram.com/cefeupa_/p/DeaO6m_SKEt/"),
+    "https://www.instagram.com/p/DeaO6m_SKEt/",
+  );
+  assert.equal(
+    Core.normalizeInstagramUrl("www.instagram.com/upalemana/reels/Dadb7n5OH5t"),
+    "https://www.instagram.com/reel/Dadb7n5OH5t/",
+  );
+
+  // Fallback seguro en publicaciones de Instagram cuando la URL falta o es invalida
+  const fallbackWithShortcode = Core.resolveDetailLinks({
+    kind: "instagram",
+    postType: "INSTAGRAM",
+    instagramId: "DfC-9wJFV6u",
+    mediaType: "IMAGE",
+    source: "",
+    linkUrl: "javascript:alert(1)",
+  });
+  assert.equal(fallbackWithShortcode.length, 1);
+  assert.equal(fallbackWithShortcode[0].href, "https://www.instagram.com/p/DfC-9wJFV6u/");
+  assert.equal(fallbackWithShortcode[0].label, "Ver en Instagram");
+
+  const fallbackProfile = Core.resolveDetailLinks({
+    kind: "instagram",
+    postType: "INSTAGRAM",
+    instagramId: "insta_internal_test",
+    source: "",
+    linkUrl: "",
+  });
+  assert.equal(fallbackProfile.length, 1);
+  assert.equal(fallbackProfile[0].href, "https://www.instagram.com/upalemana/");
+  assert.equal(fallbackProfile[0].label, "Ver en Instagram");
+
+  // videoPosterUrl prefiere media_url de SociableKIT cuando image_url apunta a fbcdn.net bloqueado por CORP/403
+  assert.equal(
+    Core.videoPosterUrl({
+      media_type: "video",
+      media_url: "https://data-image.sociablekit.com/sources/instagram-feed/upalemana/De92KpiM8x1-thumbnail.webp",
+      image_url: "https://instagram.fmnl25-7.fna.fbcdn.net/v/t51.82787-15/expired.jpg",
+    }),
+    "https://data-image.sociablekit.com/sources/instagram-feed/upalemana/De92KpiM8x1-thumbnail.webp",
+  );
 
   const eventFromInsta = Core.resolveDetailLinks({
     kind: "event",

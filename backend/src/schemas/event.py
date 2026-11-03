@@ -4,6 +4,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from .post import (
+    effective_permalink,
     effective_reminders,
     ensure_utc_datetime,
     extra_detail_fields,
@@ -58,6 +59,10 @@ class EventResponse(BaseModel):
     location: str = Field(default="Campus UPA", description="Ubicacion del evento (nunca nulo)")
     has_registration: bool = Field(default=False, description="Indica si permite registro de asistencia")
     is_pinned: bool = Field(default=False, description="Indica si el evento esta destacado")
+    post_type: str = Field(default="MANUAL", description="Tipo de origen: MANUAL, INSTAGRAM, EMERGENCY_BANNER")
+    instagram_id: str = Field(default="", description="ID de Instagram si proviene de sincronizacion (vacio si no aplica)")
+    media_type: str = Field(default="", description="Tipo multimedia: IMAGE, VIDEO, CAROUSEL_ALBUM (vacio si no aplica)")
+    media_url: str = Field(default="", description="URL multimedia principal del evento (cadena vacia si no aplica)")
     target_groups: list[str] = Field(default_factory=lambda: ["ALL"], description="Grupos destinatarios del evento")
     image_url: str = Field(default="", description="URL de imagen del evento (cadena vacia si no aplica)")
     permalink: str = Field(default="", description="Enlace externo del evento (cadena vacia si no aplica)")
@@ -125,9 +130,13 @@ class EventResponse(BaseModel):
             location=loc,
             has_registration=bool(getattr(post, "has_registration", False)),
             is_pinned=bool(getattr(post, "is_pinned", False)),
+            post_type=(getattr(post, "post_type", None) or "MANUAL").strip() or "MANUAL",
+            instagram_id=(getattr(post, "instagram_id", None) or "").strip(),
+            media_type=(getattr(post, "media_type", None) or "").strip(),
+            media_url=media,
             target_groups=normalize_target_groups(getattr(post, "target_groups", None)),
             image_url=img,
-            permalink=(getattr(post, "permalink", None) or "").strip(),
+            permalink=effective_permalink(post),
             **extra_detail_fields(post),
             reminders=effective_reminders(post),
             created_at=created,

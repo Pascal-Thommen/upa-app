@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from .database import SessionLocal, engine, run_alembic_migrations
 from .models import AdminAuditLog, AudienceGroup, Post, User, UserRole
+from .schemas.post import normalize_instagram_url
 from .schemas.user import REDUNDANT_GROUP_TAGS, sanitize_user_groups
 
 _SEED_LINE_UPLOAD_RE = re.compile(r"^https?://[^/\s]+/uploads/", re.IGNORECASE)
@@ -13,7 +14,7 @@ _SEED_ANY_UPLOAD_RE = re.compile(r"https?://[^/\s\"']+/uploads/", re.IGNORECASE)
 
 
 def _normalize_stored_upload_urls(db: Session) -> None:
-    """Normaliza rutas heredadas con IP/Host antes de /uploads/ en posts y registros de auditoria."""
+    """Normaliza rutas heredadas con IP/Host antes de /uploads/ y enlaces canonicos de Instagram."""
     for post in db.query(Post).filter(Post._stored_media_url.isnot(None)).all():
         raw_val = post._stored_media_url
         if not raw_val or "/uploads/" not in raw_val:
@@ -32,6 +33,51 @@ def _normalize_stored_upload_urls(db: Session) -> None:
             cleaned_link = _SEED_LINE_UPLOAD_RE.sub("/uploads/", post.link_url.strip())
             if cleaned_link != post.link_url:
                 post.link_url = cleaned_link
+
+    for post in db.query(Post).all():
+        is_ig = (post.post_type or "").strip().upper() == "INSTAGRAM"
+        raw_perm = (post.permalink or "").strip()
+        raw_link = (post.link_url or "").strip()
+        if is_ig or "instagram.com" in raw_perm.lower() or "instagram.com" in raw_link.lower():
+            norm_perm = normalize_instagram_url(
+                raw_perm or (raw_link if is_ig else ""),
+                instagram_id=post.instagram_id,
+                media_type=post.media_type,
+                is_instagram=is_ig,
+                fallback_if_generic=True,
+            )
+            if norm_perm and norm_perm != raw_perm:
+                post.permalink = norm_perm
+            if is_ig:
+                target_link = norm_perm or normalize_instagram_url(
+                    raw_link,
+                    instagram_id=post.instagram_id,
+                    media_type=post.media_type,
+                    is_instagram=True,
+                    fallback_if_generic=True,
+                )
+                if target_link and target_link != raw_link:
+                    post.link_url = target_link
+                if (post.link_url or post.permalink) and not (post.link_label or "").strip():
+                    post.link_label = "Ver en Instagram"
+            elif raw_link and "instagram.com" in raw_link.lower():
+                norm_link = normalize_instagram_url(raw_link, instagram_id=post.instagram_id, media_type=post.media_type)
+                if norm_link and norm_link != raw_link:
+                    post.link_url = norm_link
+
+        if is_ig and post._stored_media_url and "\n" in post._stored_media_url:
+            primary, thumb = [part.strip() for part in post._stored_media_url.split("\n", 1)]
+            if primary and thumb and "fbcdn.net" in thumb.lower() and "fbcdn.net" not in primary.lower():
+                post._stored_media_url = primary
+
+        if (
+            is_ig
+            and post.instagram_id == "insta_recepcionista_2026"
+            and post._stored_media_url == "https://upa.edu.py/static/images/recepcionista_post.png"
+        ):
+            post._stored_media_url = (
+                "https://data-image.sociablekit.com/sources/instagram-feed/upalemana/DerQoIzjtYf-thumbnail.webp"
+            )
 
     for log_entry in db.query(AdminAuditLog).all():
         if not isinstance(log_entry.details, dict):
@@ -91,7 +137,7 @@ def seed_database():
                 target_groups=["ALL"],
                 instagram_id="insta_recepcionista_2026",
                 media_type="IMAGE",
-                media_url="https://upa.edu.py/static/images/recepcionista_post.png",
+                media_url="https://data-image.sociablekit.com/sources/instagram-feed/upalemana/DerQoIzjtYf-thumbnail.webp",
                 permalink="https://www.instagram.com/p/DerQoIzjtYf/",
                 link_url="https://www.instagram.com/p/DerQoIzjtYf/",
                 link_label="Ver en Instagram",

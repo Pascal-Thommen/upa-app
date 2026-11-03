@@ -222,6 +222,37 @@
     return "";
   }
 
+  const DEFAULT_INSTAGRAM_PROFILE_URL = "https://www.instagram.com/upalemana/";
+  const IG_SHORTCODE_RE = /^[A-Za-z0-9_-]{5,32}$/;
+  const IG_RESERVED_PREFIX_RE = /^(?:insta_|ig_|sk_)/i;
+  const IG_POST_URL_RE =
+    /^(https?:\/\/(?:www\.|m\.)?instagram\.com)\/(?:(?!p\/|reel\/|reels\/|tv\/|stories\/|explore\/|accounts\/|about\/|developer\/|legal\/|direct\/)[^/?#]+\/)?(p|reel|reels|tv)\/([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/i;
+
+  function normalizeInstagramUrl(value, options) {
+    const opts = options || {};
+    let raw = String(value || "").trim();
+    if (/^(?:www\.|m\.)?instagram\.com\//i.test(raw)) {
+      raw = `https://${raw}`;
+    }
+    const url = safeUrl(raw);
+    if (url) {
+      const m = IG_POST_URL_RE.exec(url);
+      if (m) {
+        const host = m[1].replace(/^https?:\/\/m\.instagram\.com$/i, "https://www.instagram.com");
+        const kind = m[2].toLowerCase() === "reels" ? "reel" : m[2].toLowerCase();
+        return `${host}/${kind}/${m[3]}/`;
+      }
+      return url;
+    }
+    const igId = String(opts.instagramId || "").trim();
+    if (igId && !/^\d+$/.test(igId) && !IG_RESERVED_PREFIX_RE.test(igId) && IG_SHORTCODE_RE.test(igId)) {
+      const kind = /video|reel/i.test(String(opts.mediaType || "")) ? "reel" : "p";
+      return `https://www.instagram.com/${kind}/${igId}/`;
+    }
+    if (opts.isInstagram) return DEFAULT_INSTAGRAM_PROFILE_URL;
+    return "";
+  }
+
   function extractInstagramTeaser(text) {
     if (!text) return "";
     const lines = String(text)
@@ -625,8 +656,23 @@
       ? p.reminders.slice()
       : defaultRemindersForEventStart(p.event_start);
     const targetGroups = Array.isArray(p.target_groups) && p.target_groups.length ? p.target_groups.slice() : ["ALL"];
-    const linkUrl = p.link_url || (postType === POST_TYPE_INSTAGRAM ? p.permalink || "" : "");
-    const linkLabel = p.link_label || (postType === POST_TYPE_INSTAGRAM && linkUrl ? "Ver en Instagram" : "");
+    const isIg = postType === POST_TYPE_INSTAGRAM;
+    const rawPermalink = p.permalink || "";
+    const normPermalink = isIg
+      ? normalizeInstagramUrl(rawPermalink || p.link_url, {
+          isInstagram: true,
+          instagramId: p.instagram_id,
+          mediaType: p.media_type,
+        })
+      : rawPermalink;
+    const linkUrl = isIg
+      ? normalizeInstagramUrl(p.link_url || normPermalink, {
+          isInstagram: true,
+          instagramId: p.instagram_id,
+          mediaType: p.media_type,
+        })
+      : p.link_url || "";
+    const linkLabel = p.link_label || (isIg && linkUrl ? "Ver en Instagram" : "");
     const caption =
       postType === POST_TYPE_INSTAGRAM ? extractInstagramTeaser(p.content || p.caption) : p.caption || "";
     const eventNotifyGroups =
@@ -663,7 +709,7 @@
       pinned: Boolean(p.is_pinned),
       expiresAt: isoToDatetimeLocal(p.expires_at),
       imageUrl: normalizeUploadUrl(p.media_url || p.image_url || ""),
-      permalink: p.permalink || "",
+      permalink: normPermalink,
       linkLabel,
       linkUrl,
       isEvent,
@@ -1154,6 +1200,7 @@
     isImageUrl,
     isVideoUrl,
     mediaTypeForUrl,
+    normalizeInstagramUrl,
     extractInstagramTeaser,
     reminderToParts,
     partsToReminderMinutes,

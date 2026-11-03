@@ -581,13 +581,13 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
       "Los videos sin thumbnail deben utilizar la imagen de respaldo estable en poster",
     );
 
-    // Reel de Instagram con imagen WebP (sin stream MP4 reproducible): muestra imagen + Play-Badge que abre Instagram
+    // Reel de Instagram con imagen WebP (sin stream MP4 reproducible): muestra imagen + Play-Badge que abre Instagram con URL canonica
     const webpVideoCardBtn = app.document.querySelector(`[data-post-id="${seeded.reelWebpId}"]`);
     assert.ok(webpVideoCardBtn, "Debe existir la tarjeta de Reel con imagen WebP");
     assert.equal(webpVideoCardBtn.querySelector("video"), null, "No debe renderizar <video> roto cuando media_url es WebP");
     const previewLink = webpVideoCardBtn.querySelector("a.video-preview-link");
     assert.ok(previewLink, "Debe renderizar un enlace con vista previa y Play-Badge hacia Instagram");
-    assert.equal(previewLink.getAttribute("href"), "https://www.instagram.com/upalemana/reel/CwebpReel99/");
+    assert.equal(previewLink.getAttribute("href"), "https://www.instagram.com/reel/CwebpReel99/");
     assert.equal(previewLink.getAttribute("target"), "_blank");
     assert.ok(previewLink.querySelector(".video-play-badge svg.play-glyph"), "Debe incluir el Play-Badge discreto");
     assert.equal(previewLink.querySelector("img.card-media").getAttribute("src"), "https://upa.edu.py/static/images/reel-preview.webp");
