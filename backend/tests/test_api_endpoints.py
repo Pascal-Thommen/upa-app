@@ -592,6 +592,7 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "AGENTS.md",
         repo_root / "web-app" / "README.md",
         repo_root / "web-admin" / "README.md",
+        repo_root / "docs" / "PFLICHTENHEFT.md",
         repo_root / "docs" / "FRONTEND_INTEGRATION_GUIDE.md",
         repo_root / "docs" / "api_documentation.md",
         repo_root / "docs" / "decisiones_arquitectonicas.md",
@@ -599,8 +600,11 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "docs" / "especificacion_funcional.md",
         repo_root / "docs" / "google_cloud_setup.md",
         repo_root / "docs" / "LOGBOOK.md",
-        repo_root / "docs" / "DATABASE_CLEANUP_AUDIT.md",
     ]
+
+    assert not (repo_root / "docs" / "DATABASE_CLEANUP_AUDIT.md").exists()
+    for ext in ("*.pdf", "*.docx"):
+        assert list((repo_root / "docs").glob(ext)) == []
 
     link_pattern = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
@@ -608,9 +612,8 @@ def test_pwa_and_ai_documentation_integrity():
         assert md_path.is_file(), f"Missing markdown file: {md_path}"
         content = md_path.read_text(encoding="utf-8")
         assert content.strip(), f"Empty markdown file: {md_path}"
-        if md_path.name != "DATABASE_CLEANUP_AUDIT.md":
-            assert "\u2013" not in content, f"En-dash found in {md_path.name}"
-            assert "\u2014" not in content, f"Em-dash found in {md_path.name}"
+        assert "\u2013" not in content, f"En-dash found in {md_path.name}"
+        assert "\u2014" not in content, f"Em-dash found in {md_path.name}"
         assert "descartando la alternativa de Progressive Web App" not in content
 
         for raw_target in link_pattern.findall(content):
@@ -621,8 +624,53 @@ def test_pwa_and_ai_documentation_integrity():
             assert resolved.exists(), f"Broken link '{raw_target}' in {md_path}"
 
     readme_text = (repo_root / "README.md").read_text(encoding="utf-8")
-    for snippet in ("PWA", "web-app/", "TWA", "Autocompletar con IA", "docs/api_documentation.md"):
-        assert snippet in readme_text
+    assert "/api/v1/app-state" not in readme_text
+    for snippet in (
+        "PWA",
+        "web-app/",
+        "TWA",
+        "Autocompletar con IA",
+        "docs/PFLICHTENHEFT.md",
+        "docs/api_documentation.md",
+        "/dashboard/publicaciones/:id",
+        "npm --prefix web-app/tests ci && npm --prefix web-admin/tests ci",
+        "publicaciones",
+        "grupos",
+        "roles",
+        "ia",
+        "apis",
+        "historial",
+    ):
+        assert snippet in readme_text, f"Missing {snippet} in README.md"
+
+    pflichtenheft_text = (repo_root / "docs" / "PFLICHTENHEFT.md").read_text(encoding="utf-8")
+    for snippet in (
+        "America/Asuncion",
+        "127.0.0.1",
+        "1.0.3",
+        "https://upa.eu1.netbird.services",
+        "https://upa-beta.eu1.netbird.services",
+        "/dashboard/publicaciones/:id",
+        "publicaciones",
+        "grupos",
+        "roles",
+        "ia",
+        "apis",
+        "historial",
+    ):
+        assert snippet in pflichtenheft_text, f"Missing {snippet} in docs/PFLICHTENHEFT.md"
+
+    for env_path in (repo_root / ".env.example", repo_root / "backend" / ".env.example"):
+        env_text = env_path.read_text(encoding="utf-8")
+        for key in (
+            "GEMINI_API_KEY=",
+            "GOOGLE_CLIENT_ID=",
+            "GOOGLE_CLIENT_SECRET=",
+            "JWT_SECRET=",
+            "JWT_ALGORITHM=",
+            "DATABASE_URL=postgresql://",
+        ):
+            assert key in env_text, f"Missing {key} in {env_path}"
 
     api_doc_text = (repo_root / "docs" / "api_documentation.md").read_text(encoding="utf-8")
     for snippet in (

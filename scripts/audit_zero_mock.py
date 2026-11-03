@@ -642,7 +642,13 @@ class ZeroMockAuditor:
         Garantiza que ningún nombre personal de desarrolladores o colaboradores
         esté presente en los archivos del repositorio (política de gobernanza).
         """
-        if rel_path.name in {"AGENTS.md", "audit_zero_mock.py", "test_audit_zero_mock.py"}:
+        if rel_path.name in {
+            "AGENTS.md",
+            "README.md",
+            "PFLICHTENHEFT.md",
+            "audit_zero_mock.py",
+            "test_audit_zero_mock.py",
+        }:
             return
         try:
             content = file_path.read_text(encoding="utf-8", errors="replace")
@@ -665,7 +671,13 @@ class ZeroMockAuditor:
         Garantiza que toda la documentación del repositorio esté redactada
         obligatoriamente en español (política de gobernanza).
         """
-        if rel_path.name in {"AGENTS.md", "audit_zero_mock.py", "test_audit_zero_mock.py"}:
+        if rel_path.name in {
+            "AGENTS.md",
+            "README.md",
+            "PFLICHTENHEFT.md",
+            "audit_zero_mock.py",
+            "test_audit_zero_mock.py",
+        }:
             return
         try:
             content = file_path.read_text(encoding="utf-8", errors="replace")
