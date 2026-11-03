@@ -61,6 +61,8 @@ upa-app/
 │   ├── UPA_App_Manual_de_Usuario.md            # Markdown-Quelle der Anwenderanleitung Teil 2
 │   ├── UPA_App_Informe_del_Proyecto.docx       # Offizieller Projektbericht und Fragenkatalog (Word)
 │   ├── UPA_App_Informe_del_Proyecto.md         # Markdown-Quelle des Projektberichts (Teil 3)
+│   ├── UPA_App_Presentacion_Final.pptx         # Offizielle Abschlusspraesentation (7 Folien, 5+5 Min)
+│   ├── PRESENTACION_LEITPLAN.md                # Praesentationsleitplan, Timing & Google Slides Gemini Prompt
 │   ├── PFLICHTENHEFT.md        # Offizielles, verbindliches Pflichtenheft der UPA App
 │   ├── FRONTEND_INTEGRATION_GUIDE.md
 │   ├── api_documentation.md
@@ -74,6 +76,7 @@ upa-app/
 │   ├── generar_documentacion_arquitectura.py # Generator fuer die offizielle Word-Dokumentation
 │   ├── generar_manual_usuario.py             # Generator fuer die Anwenderanleitung (Manual de Usuario .docx)
 │   ├── generar_informe_proyecto.py           # Generator fuer den Projektbericht (Teil 3)
+│   ├── generar_presentacion_final.py         # Generator fuer die Abschlusspraesentation (Teil 4, .pptx)
 │   └── generar_iconos_pwa.py   # Generator fuer PWA und Apple Touch Icons
 ├── .env.example                # Vollstaendige Konfigurationsvorlage analog zu backend/src/config.py
 ├── docker-compose.yml          # Produktions Stack (Port 8085 Frontend, Port 8000 Backend, 127.0.0.1:5432 DB)
@@ -140,6 +143,8 @@ python3 scripts/audit_zero_mock.py
 * [Offizielle Anwenderanleitung Manual de Usuario Teil 2 (MS Word .docx)](docs/UPA_App_Manual_de_Usuario.docx)
 * [Offizieller Projektbericht und Fragenkatalog (Teil 3, Markdown)](docs/UPA_App_Informe_del_Proyecto.md)
 * [Offizieller Projektbericht und Fragenkatalog (Teil 3, MS Word .docx)](docs/UPA_App_Informe_del_Proyecto.docx)
+* [Praesentationsleitplan und Google Slides Gemini Prompt (Teil 4, Markdown)](docs/PRESENTACION_LEITPLAN.md)
+* [Offizielle Abschlusspraesentation (Teil 4, MS PowerPoint .pptx)](docs/UPA_App_Presentacion_Final.pptx)
 * [Offizielles Pflichtenheft (PFLICHTENHEFT)](docs/PFLICHTENHEFT.md)
 * [PWA und Frontend Integrationsleitfaden](docs/FRONTEND_INTEGRATION_GUIDE.md)
 * [REST API und Architektur Referenz](docs/api_documentation.md)
