@@ -424,6 +424,70 @@ test("deep linking: ruta desconocida redirige a /dashboard/publicaciones", () =>
   assert.equal(env.router.getCurrentRoute(), "publicaciones");
 });
 
+test("resolucion: subrutas de publicaciones (/dashboard/publicaciones/:id y /nueva) e IDs malformados", () => {
+  const env = createTestEnvironment("/dashboard/publicaciones");
+  const r = env.router;
+
+  assert.deepEqual(r.resolveRoute("/dashboard/publicaciones/60"), {
+    name: "publicaciones",
+    path: "/dashboard/publicaciones/60",
+    isRedirect: false,
+    subroute: "edit",
+    publicationId: "60",
+  });
+
+  assert.deepEqual(r.resolveRoute("/dashboard/publicaciones/nueva"), {
+    name: "publicaciones",
+    path: "/dashboard/publicaciones/nueva",
+    isRedirect: false,
+    subroute: "nueva",
+  });
+
+  for (const invalidPath of [
+    "/dashboard/publicaciones/0",
+    "/dashboard/publicaciones/-5",
+    "/dashboard/publicaciones/abc",
+    "/dashboard/publicaciones/60/extra",
+  ]) {
+    const res = r.resolveRoute(invalidPath);
+    assert.equal(res.name, "publicaciones");
+    assert.equal(res.path, "/dashboard/publicaciones");
+    assert.equal(res.isRedirect, true);
+    assert.equal(res.subroute, "invalid");
+  }
+});
+
+test("deep linking: carga directa de /dashboard/publicaciones/:id y /nueva conserva su URL y delega al cockpit", () => {
+  const cockpitCalls = [];
+
+  const envEdit = createTestEnvironment("/dashboard/publicaciones/60");
+  assert.equal(envEdit.window.location.pathname, "/dashboard/publicaciones/60");
+  assert.equal(envEdit.router.getCurrentRoute(), "publicaciones");
+  envEdit.window.UpaCockpit = {
+    loadPanelData(opts) {
+      cockpitCalls.push(opts);
+    },
+  };
+  envEdit.router.reapplyCurrentRoute();
+  assert.equal(envEdit.window.location.pathname, "/dashboard/publicaciones/60");
+  assert.equal(cockpitCalls.length, 1);
+  assert.equal(cockpitCalls[0].subroute, "edit");
+  assert.equal(cockpitCalls[0].publicationId, "60");
+
+  const envNew = createTestEnvironment("/dashboard/publicaciones/nueva");
+  assert.equal(envNew.window.location.pathname, "/dashboard/publicaciones/nueva");
+  assert.equal(envNew.router.getCurrentRoute(), "publicaciones");
+  envNew.window.UpaCockpit = {
+    loadPanelData(opts) {
+      cockpitCalls.push(opts);
+    },
+  };
+  envNew.router.reapplyCurrentRoute();
+  assert.equal(envNew.window.location.pathname, "/dashboard/publicaciones/nueva");
+  assert.equal(cockpitCalls.length, 2);
+  assert.equal(cockpitCalls[1].subroute, "nueva");
+});
+
 // ---------------------------------------------------------------------------
 // 4. Visibilidad Dinámica de Pestañas según Permisos (SRV-160)
 // ---------------------------------------------------------------------------

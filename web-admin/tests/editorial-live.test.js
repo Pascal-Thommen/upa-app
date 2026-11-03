@@ -617,3 +617,80 @@ test("grupos y matriz de roles en vivo contra SQLite/PostgreSQL", live, async ()
   assert.equal(aiSaved.system_prompt_autocomplete, "Eres el asistente de redacción UPA. Usa formato 24h HH:mm.");
   assert.equal(aiSaved.system_prompt_instagram, "Analiza flyers de Instagram UPA con selección conservadora de grupos.");
 });
+
+test("deep linking en vivo contra backend real: abrir /dashboard/publicaciones/:id, navegacion history y fallback en 404", live, async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const { JSDOM } = require("jsdom");
+
+  const created = await ctx.admin.createPublication({
+    title: "Publicación Deep Link Real",
+    caption: "Resumen compartido por enlace directo",
+    content: "Contenido persistido en SQLite para prueba de ruta directa.",
+    post_type: "MANUAL",
+    is_news: true,
+    is_event: false,
+    target_groups: ["ALL"],
+  });
+  assert.ok(created.id > 0);
+
+  const webAdminDir = path.resolve(__dirname, "..");
+  let html = fs.readFileSync(path.join(webAdminDir, "index.html"), "utf8");
+  html = html.replace(/<script\s+src="[^"]*"><\/script>/g, "");
+
+  const dom = new JSDOM(html, {
+    url: `${BASE_URL}/dashboard/publicaciones/${created.id}`,
+    runScripts: "outside-only",
+    pretendToBeVisual: true,
+  });
+  const { window } = dom;
+  const { document } = window;
+
+  window.AbortController = AbortController;
+  window.FormData = FormData;
+  window.File = File;
+  window.Blob = Blob;
+  window.confirm = () => true;
+  window.alert = () => {};
+  window.Element.prototype.scrollIntoView = function () {};
+  window.localStorage.setItem("upa_access_token", sessions.admin.access_token);
+
+  window.fetch = (input, init) => {
+    const rawUrl = String(input);
+    const fullUrl = rawUrl.startsWith("http") ? rawUrl : `${BASE_URL}${rawUrl}`;
+    return fetch(fullUrl, init);
+  };
+
+  for (const script of ["editorial-core.js", "editorial.js", "app.js"]) {
+    window.eval(fs.readFileSync(path.join(webAdminDir, script), "utf8"));
+  }
+  document.dispatchEvent(new window.Event("DOMContentLoaded"));
+
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
+    if (document.getElementById("ed-pub-id").value === String(created.id)) break;
+    await new Promise((r) => setTimeout(r, 40));
+  }
+
+  assert.equal(window.location.pathname, `/dashboard/publicaciones/${created.id}`);
+  assert.ok(document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(!document.getElementById("ed-editor-card").classList.contains("hidden"));
+  assert.equal(document.getElementById("ed-pub-id").value, String(created.id));
+  assert.equal(document.getElementById("ed-pub-title").value, "Publicación Deep Link Real");
+
+  // Volver al listado actualiza la URL a /dashboard/publicaciones
+  document.getElementById("ed-btn-back").click();
+  assert.equal(window.location.pathname, "/dashboard/publicaciones");
+  assert.ok(!document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(document.getElementById("ed-editor-card").classList.contains("hidden"));
+
+  // ID inexistente (99999) contra backend real devuelve 404 "Publicación no encontrada.", muestra aviso y corrige URL
+  await window.UpaCockpit.openEditPublication(99999);
+  assert.equal(window.location.pathname, "/dashboard/publicaciones");
+  assert.ok(!document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(document.getElementById("ed-editor-card").classList.contains("hidden"));
+  assert.ok(document.getElementById("ed-notice").textContent.includes("Publicación no encontrada"));
+
+  window.close();
+  await ctx.admin.deletePublication(created.id);
+});

@@ -1822,6 +1822,35 @@ function resolveRoute(rawPath) {
       isRedirect: false,
     };
   }
+  if (lower === "/dashboard/publicaciones/nueva") {
+    return {
+      name: "publicaciones",
+      path: "/dashboard/publicaciones/nueva",
+      isRedirect: false,
+      subroute: "nueva",
+    };
+  }
+  const pubIdMatch = /^\/dashboard\/publicaciones\/([1-9]\d*)$/.exec(lower);
+  if (pubIdMatch) {
+    const pubId = pubIdMatch[1];
+    return {
+      name: "publicaciones",
+      path: `/dashboard/publicaciones/${pubId}`,
+      isRedirect: false,
+      subroute: "edit",
+      publicationId: pubId,
+    };
+  }
+  if (lower.startsWith("/dashboard/publicaciones/")) {
+    const invalidSegment = path.slice("/dashboard/publicaciones/".length);
+    return {
+      name: "publicaciones",
+      path: "/dashboard/publicaciones",
+      isRedirect: true,
+      subroute: "invalid",
+      invalidPublicationId: invalidSegment,
+    };
+  }
   if (lower === "/dashboard/grupos") {
     return { name: "grupos", path: "/dashboard/grupos", isRedirect: false };
   }
@@ -1945,16 +1974,42 @@ function applyRoute(routeName, options = {}) {
   }
 
   const config = ROUTE_CONFIG[effectiveRoute] || ROUTE_CONFIG.publicaciones;
-  const canonicalPath = config.path;
+  let canonicalPath = config.path;
+  let pubSubroute = options.subroute || null;
+  let pubId = options.publicationId || null;
+  let invalidPubId = options.invalidPublicationId || null;
+
+  if (effectiveRoute === "publicaciones") {
+    if (!pubSubroute && !options.push && !options.isRedirect && typeof window !== "undefined" && window.location) {
+      const currentResolved = resolveRoute(window.location.pathname);
+      if (currentResolved.name === "publicaciones" && currentResolved.subroute && !currentResolved.isRedirect) {
+        pubSubroute = currentResolved.subroute;
+        pubId = currentResolved.publicationId || null;
+      }
+    }
+    if (pubSubroute === "nueva") {
+      canonicalPath = "/dashboard/publicaciones/nueva";
+    } else if (pubSubroute === "edit" && pubId) {
+      canonicalPath = `/dashboard/publicaciones/${pubId}`;
+    } else {
+      canonicalPath = "/dashboard/publicaciones";
+    }
+  }
+
   const shouldUpdateUrl = options.updateUrl !== false;
 
   if (shouldUpdateUrl && typeof window !== "undefined" && window.history) {
     const currentPath = (window.location.pathname || "").replace(/\/+$/, "") || "/dashboard";
     if (options.replace || options.isRedirect || currentPath !== canonicalPath) {
+      const statePayload = {
+        route: effectiveRoute,
+        subroute: effectiveRoute === "publicaciones" ? pubSubroute : null,
+        publicationId: effectiveRoute === "publicaciones" ? pubId : null,
+      };
       if (options.push && !options.replace && !options.isRedirect && effectiveRoute === routeName) {
-        window.history.pushState({ route: effectiveRoute }, "", canonicalPath);
+        window.history.pushState(statePayload, "", canonicalPath);
       } else {
-        window.history.replaceState({ route: effectiveRoute }, "", canonicalPath);
+        window.history.replaceState(statePayload, "", canonicalPath);
       }
     }
   }
@@ -1976,7 +2031,12 @@ function applyRoute(routeName, options = {}) {
 
   if (effectiveRoute === "publicaciones") {
     if (!options.skipDataLoad && window.UpaCockpit && typeof window.UpaCockpit.loadPanelData === "function") {
-      window.UpaCockpit.loadPanelData();
+      return window.UpaCockpit.loadPanelData({
+        subroute: pubSubroute,
+        publicationId: pubId,
+        invalidPublicationId: invalidPubId,
+        updateUrl: false,
+      });
     }
   } else if (effectiveRoute === "apis") {
     if (!options.skipDataLoad) {
@@ -2000,17 +2060,21 @@ function applyRoute(routeName, options = {}) {
 function navigate(targetPath, options = {}) {
   const resolved = resolveRoute(targetPath);
   const shouldPush = options.push !== false && !options.replace && !resolved.isRedirect;
-  applyRoute(resolved.name, {
+  return applyRoute(resolved.name, {
     updateUrl: true,
     push: shouldPush,
     replace: !shouldPush || options.replace || resolved.isRedirect,
     isRedirect: resolved.isRedirect,
+    subroute: resolved.subroute || null,
+    publicationId: resolved.publicationId || null,
+    invalidPublicationId: resolved.invalidPublicationId || null,
   });
 }
 
 const UpaRouter = {
   ROUTES: {
     PUBLICACIONES: "/dashboard/publicaciones",
+    PUBLICACIONES_NUEVA: "/dashboard/publicaciones/nueva",
     GRUPOS: "/dashboard/grupos",
     ROLES: "/dashboard/roles",
     APIS: "/dashboard/apis",
@@ -2025,17 +2089,38 @@ const UpaRouter = {
     return currentActiveRoute;
   },
   reapplyCurrentRoute() {
-    applyRoute(currentActiveRoute, { updateUrl: false });
+    const currentResolved =
+      typeof window !== "undefined" && window.location ? resolveRoute(window.location.pathname) : null;
+    return applyRoute(currentActiveRoute, {
+      updateUrl: Boolean(currentResolved && currentResolved.isRedirect),
+      replace: Boolean(currentResolved && currentResolved.isRedirect),
+      isRedirect: Boolean(currentResolved && currentResolved.isRedirect),
+      subroute: currentResolved && currentResolved.name === currentActiveRoute ? currentResolved.subroute || null : null,
+      publicationId:
+        currentResolved && currentResolved.name === currentActiveRoute ? currentResolved.publicationId || null : null,
+      invalidPublicationId:
+        currentResolved && currentResolved.name === currentActiveRoute
+          ? currentResolved.invalidPublicationId || null
+          : null,
+    });
   },
   init() {
     const initialResolved = resolveRoute(
       typeof window !== "undefined" ? window.location.pathname : "/dashboard/publicaciones"
     );
+    let initialSearch = "";
+    try {
+      initialSearch = typeof window !== "undefined" && window.location ? String(window.location.search || "") : "";
+    } catch (_) {}
+    const skipInitialUrlSync = initialSearch.includes("token=") || initialSearch.includes("auth_error=");
     applyRoute(initialResolved.name, {
-      updateUrl: true,
+      updateUrl: !skipInitialUrlSync,
       push: false,
       replace: initialResolved.isRedirect,
       isRedirect: initialResolved.isRedirect,
+      subroute: initialResolved.subroute || null,
+      publicationId: initialResolved.publicationId || null,
+      invalidPublicationId: initialResolved.invalidPublicationId || null,
       skipDataLoad: true,
     });
 
@@ -2047,6 +2132,9 @@ const UpaRouter = {
           push: false,
           replace: true,
           isRedirect: popResolved.isRedirect,
+          subroute: popResolved.subroute || null,
+          publicationId: popResolved.publicationId || null,
+          invalidPublicationId: popResolved.invalidPublicationId || null,
         });
       });
     }
