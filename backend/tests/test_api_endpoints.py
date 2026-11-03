@@ -593,6 +593,7 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "web-app" / "README.md",
         repo_root / "web-admin" / "README.md",
         repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.md",
+        repo_root / "docs" / "UPA_App_Informe_del_Proyecto.md",
         repo_root / "docs" / "PFLICHTENHEFT.md",
         repo_root / "docs" / "FRONTEND_INTEGRATION_GUIDE.md",
         repo_root / "docs" / "api_documentation.md",
@@ -605,8 +606,16 @@ def test_pwa_and_ai_documentation_integrity():
 
     assert not (repo_root / "docs" / "DATABASE_CLEANUP_AUDIT.md").exists()
     assert list((repo_root / "docs").glob("*.pdf")) == []
-    docx_files = [p.name for p in (repo_root / "docs").glob("*.docx")]
-    assert docx_files == ["UPA_App_Documentacion_Arquitectura.docx"]
+    allowed_docx = {
+        "UPA_App_Documentacion_Arquitectura.docx",
+        "UPA_App_Documentacion_Arquitectura_v3.docx",
+        "UPA_App_Manual_de_Usuario.docx",
+        "UPA_App_Informe_del_Proyecto.docx",
+    }
+    docx_files = {p.name for p in (repo_root / "docs").glob("*.docx")}
+    assert "UPA_App_Documentacion_Arquitectura.docx" in docx_files
+    assert "UPA_App_Informe_del_Proyecto.docx" in docx_files
+    assert docx_files.issubset(allowed_docx)
 
     import zipfile
 
@@ -619,6 +628,34 @@ def test_pwa_and_ai_documentation_integrity():
         assert f"Capítulo {ch_num}:" in doc_xml
     for forbidden_native_term in ("Kotlin", "Jetpack Compose", "Android Studio", "MVVM"):
         assert forbidden_native_term not in doc_xml
+
+    informe_docx_path = repo_root / "docs" / "UPA_App_Informe_del_Proyecto.docx"
+    with zipfile.ZipFile(informe_docx_path) as zf:
+        informe_xml = zf.read("word/document.xml").decode("utf-8")
+        informe_media = [name for name in zf.namelist() if name.startswith("word/media/")]
+    assert len(informe_media) >= 1, "Expected embedded management architecture diagram in Informe .docx"
+    for sec_num in range(1, 6):
+        assert f"Sección {sec_num}:" in informe_xml
+
+    informe_md_text = (repo_root / "docs" / "UPA_App_Informe_del_Proyecto.md").read_text(encoding="utf-8")
+    for sec_num in range(1, 6):
+        assert f"## Sección {sec_num}:" in informe_md_text
+    for required_informe_term in (
+        "Progressive Web App",
+        "Gemini 4 Argon",
+        "Zero-Mock",
+        "231",
+        "app.upa.edu.py",
+        "UPA Académico",
+        "Pascal Thommen",
+        "Theresa Bauer",
+        "Natasha Colman",
+        "SociableKIT",
+        "NetBird",
+    ):
+        assert required_informe_term in informe_md_text, (
+            f"Missing {required_informe_term} in UPA_App_Informe_del_Proyecto.md"
+        )
 
     official_md_text = (repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.md").read_text(encoding="utf-8")
     for ch_num in range(1, 10):

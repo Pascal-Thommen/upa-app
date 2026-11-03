@@ -102,7 +102,11 @@ uploads/
 docs/*.pdf
 docs/*.docx
 !docs/UPA_App_Documentacion_Arquitectura.docx
+!docs/UPA_App_Documentacion_Arquitectura_v3.docx
+!docs/UPA_App_Manual_de_Usuario.docx
+!docs/UPA_App_Informe_del_Proyecto.docx
 docs/*.doc
 docs/*.odt
 docs/*.pptx
+!docs/UPA_App_Presentacion_Final.pptx
 docs/*.xlsx

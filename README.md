@@ -55,6 +55,8 @@ upa-app/
 ├── docs/                       # Technische System, API und Projektspezifikation
 │   ├── UPA_App_Documentacion_Arquitectura.docx # Offizielle Projektdokumentation (Word)
 │   ├── UPA_App_Documentacion_Arquitectura.md   # Markdown-Quelle der Projektdokumentation
+│   ├── UPA_App_Informe_del_Proyecto.docx       # Offizieller Projektbericht und Fragenkatalog (Word)
+│   ├── UPA_App_Informe_del_Proyecto.md         # Markdown-Quelle des Projektberichts (Teil 3)
 │   ├── PFLICHTENHEFT.md        # Offizielles, verbindliches Pflichtenheft der UPA App
 │   ├── FRONTEND_INTEGRATION_GUIDE.md
 │   ├── api_documentation.md
@@ -66,6 +68,7 @@ upa-app/
 ├── scripts/
 │   ├── audit_zero_mock.py      # Gatekeeper Zero Mock und Architektur Scanner
 │   ├── generar_documentacion_arquitectura.py # Generator fuer die offizielle Word-Dokumentation
+│   ├── generar_informe_proyecto.py           # Generator fuer den Projektbericht (Teil 3)
 │   └── generar_iconos_pwa.py   # Generator fuer PWA und Apple Touch Icons
 ├── .env.example                # Vollstaendige Konfigurationsvorlage analog zu backend/src/config.py
 ├── docker-compose.yml          # Produktions Stack (Port 8085 Frontend, Port 8000 Backend, 127.0.0.1:5432 DB)
@@ -126,6 +129,8 @@ python3 scripts/audit_zero_mock.py
 
 * [Offizielle Architektur- und Projektdokumentation (Spanisch, Markdown)](docs/UPA_App_Documentacion_Arquitectura.md)
 * [Offizielle Architektur- und Projektdokumentation (MS Word .docx)](docs/UPA_App_Documentacion_Arquitectura.docx)
+* [Offizieller Projektbericht und Fragenkatalog (Teil 3, Markdown)](docs/UPA_App_Informe_del_Proyecto.md)
+* [Offizieller Projektbericht und Fragenkatalog (Teil 3, MS Word .docx)](docs/UPA_App_Informe_del_Proyecto.docx)
 * [Offizielles Pflichtenheft (PFLICHTENHEFT)](docs/PFLICHTENHEFT.md)
 * [PWA und Frontend Integrationsleitfaden](docs/FRONTEND_INTEGRATION_GUIDE.md)
 * [REST API und Architektur Referenz](docs/api_documentation.md)

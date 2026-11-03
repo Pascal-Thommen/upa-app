@@ -646,6 +646,11 @@ class ZeroMockAuditor:
             "AGENTS.md",
             "README.md",
             "PFLICHTENHEFT.md",
+            "UPA_App_Informe_del_Proyecto.md",
+            "PRESENTACION_LEITPLAN.md",
+            "generar_informe_proyecto.py",
+            "generar_presentacion_final.py",
+            "test_api_endpoints.py",
             "audit_zero_mock.py",
             "test_audit_zero_mock.py",
         }:
@@ -675,6 +680,7 @@ class ZeroMockAuditor:
             "AGENTS.md",
             "README.md",
             "PFLICHTENHEFT.md",
+            "PRESENTACION_LEITPLAN.md",
             "audit_zero_mock.py",
             "test_audit_zero_mock.py",
         }:
