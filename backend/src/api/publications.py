@@ -48,7 +48,7 @@ from ..services.push import (
     collect_recipient_tokens,
     dispatch_emergency_push,
 )
-from .media import get_upload_dir, sniff_content_type
+from .media import get_upload_dir, normalize_upload_url, sniff_content_type
 
 router = APIRouter(prefix="/api/publications", tags=["Publications"])
 
@@ -130,8 +130,8 @@ def _snapshot_post(post: Post) -> dict:
         "event_end": ensure_utc_datetime(post.event_end).isoformat() if post.event_end else "",
         "location": post.location or "",
         "reminders": effective_reminders(post),
-        "media_url": post.media_url or "",
-        "link_url": post.link_url or "",
+        "media_url": normalize_upload_url(post.media_url),
+        "link_url": normalize_upload_url(post.link_url) if post.link_url else "",
         "link_label": post.link_label or "",
     }
 
@@ -284,7 +284,7 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
         else:
             reminders = list(payload.reminders)
 
-    clean_link_url = payload.link_url.strip() if payload.link_url and payload.link_url.strip() else None
+    clean_link_url = normalize_upload_url(payload.link_url) or None if payload.link_url and payload.link_url.strip() else None
     clean_link_label = payload.link_label.strip() if payload.link_label and payload.link_label.strip() else None
     if final_type == "INSTAGRAM":
         insta_permalink = (post.permalink or payload.permalink or "").strip()
@@ -318,9 +318,9 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
 
     if final_type != "INSTAGRAM" or is_create:
         if payload.media_url is not None:
-            post.media_url = payload.media_url.strip() or None
+            post.media_url = normalize_upload_url(payload.media_url) or None
         if payload.image_url is not None:
-            post.image_url = payload.image_url.strip() or None
+            post.image_url = normalize_upload_url(payload.image_url) or None
         elif payload.media_url is not None and not payload.media_url.strip():
             post.image_url = None
         post.media_type = _infer_media_type(post.media_url, payload.media_type)

@@ -500,7 +500,9 @@
   }
 
   function safeUrl(value) {
-    const url = String(value || "").trim();
+    const url = String(value || "")
+      .trim()
+      .replace(/^https?:\/\/[^/\s]+(\/uploads\/)/i, "$1");
     if (!url) return "";
     if (/^https?:\/\//i.test(url)) return url;
     if (url.startsWith("/") && !url.startsWith("//")) return url;

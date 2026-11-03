@@ -91,7 +91,8 @@ def test_create_event_persists_real_row_and_audit_log():
     assert body["location"] == "Laboratorio 2"
     assert body["has_registration"] is True
     assert body["target_groups"] == ["TIE"]
-    assert body["image_url"] == "https://api.upa.edu.py/uploads/aaa.png"
+    assert body["media_url"] == "/uploads/aaa.png"
+    assert body["image_url"] == "/uploads/aaa.png"
     assert body["attending_count"] == 0
 
     db = TestingSessionLocal()
@@ -100,7 +101,7 @@ def test_create_event_persists_real_row_and_audit_log():
     assert post.is_news is False
     assert post.category == "VERANSTALTUNG"
     assert post.author_id == ADMIN
-    assert post.media_url == "https://api.upa.edu.py/uploads/aaa.png"
+    assert post.media_url == "/uploads/aaa.png"
     audit = db.query(AdminAuditLog).filter(AdminAuditLog.action == "CREATE_POST").one()
     assert audit.target_id == post.id
     assert audit.details["title"] == "Charla de Robotica"
@@ -280,13 +281,24 @@ def test_run_alembic_migrations_is_idempotent_and_preserves_existing_data(tmp_pa
         conn.execute(
             text(
                 "INSERT INTO posts (id, title, post_type, is_news, is_event, is_pinned, target_groups, "
-                "has_registration, send_push_notification, category, is_edited, is_ai_generated) "
-                "VALUES (1, 'Existente', 'MANUAL', 1, 0, 0, '[\"ALL\"]', 0, 0, 'MELDUNG', 1, 0)"
+                "has_registration, send_push_notification, category, is_edited, is_ai_generated, media_url) "
+                "VALUES (60, 'Feria de Innovación & Tecnología UPA 2026', 'MANUAL', 1, 0, 0, '[\"ALL\"]', "
+                "0, 0, 'MELDUNG', 1, 0, 'http://100.110.128.107/uploads/7f34230e3ad140689d991d3175929766.jpg')"
             )
         )
+    # Re-ejecutar desde 008 hasta head (009) migra las URLs con IP a rutas relativas /uploads/...
+    from alembic import command as alembic_cmd
+    from src.database import get_alembic_config
+
+    cfg = get_alembic_config(f"sqlite:///{db_file}")
+    alembic_cmd.downgrade(cfg, "008_consolidate_schema_and_drop_legacy_columns")
     run_alembic_migrations(legacy)  # idempotente
     assert "category" in {c["name"] for c in inspect(legacy).get_columns("posts")}
     with legacy.connect() as conn:
-        row = conn.execute(text("SELECT title, category FROM posts WHERE id = 1")).one()
-    assert tuple(row) == ("Existente", "MELDUNG")
+        row = conn.execute(text("SELECT title, category, media_url FROM posts WHERE id = 60")).one()
+    assert tuple(row) == (
+        "Feria de Innovación & Tecnología UPA 2026",
+        "MELDUNG",
+        "/uploads/7f34230e3ad140689d991d3175929766.jpg",
+    )
     legacy.dispose()

@@ -221,7 +221,26 @@ test("safeUrl y renderPublicationRows escapan HTML hostil y descartan URLs pelig
   assert.equal(Core.safeUrl("javascript:alert(1)"), "");
   assert.equal(Core.safeUrl("//evil.test/x.png"), "");
   assert.equal(Core.safeUrl("/uploads/a.png"), "/uploads/a.png");
+  assert.equal(
+    Core.safeUrl("http://100.110.128.107/uploads/7f34230e3ad140689d991d3175929766.jpg"),
+    "/uploads/7f34230e3ad140689d991d3175929766.jpg"
+  );
+  assert.equal(Core.safeUrl("http://localhost:8000/uploads/a.png"), "/uploads/a.png");
   assert.equal(Core.safeUrl("https://ok.test/a.png"), "https://ok.test/a.png");
+
+  const ipPostHtml = Core.renderPublicationRows([
+    {
+      id: 60,
+      title: "Feria de Innovación & Tecnología UPA 2026",
+      post_type: "MANUAL",
+      is_news: true,
+      is_event: true,
+      media_url: "http://100.110.128.107/uploads/7f34230e3ad140689d991d3175929766.jpg",
+    },
+  ]);
+  assert.ok(!ipPostHtml.includes("http://100.110.128.107"), "No debe renderizar IP con HTTP (Mixed-Content)");
+  assert.ok(ipPostHtml.includes('src="/uploads/7f34230e3ad140689d991d3175929766.jpg"'));
+  assert.ok(ipPostHtml.includes('onerror="'));
 });
 
 test("renderParticipantsTable muestra datos reales y estados vacios", () => {
@@ -882,6 +901,28 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   assert.ok(previewImg, "Debe renderizar la etiqueta <img> en la vista previa del dropzone");
   assert.equal(previewImg.getAttribute("src"), "/uploads/abcdef1234567890abcdef1234567890.png");
   assert.equal(document.getElementById("ed-pub-image-url").value, "/uploads/abcdef1234567890abcdef1234567890.png");
+
+  // 7. SRV-237: En la lista de publicaciones, si una imagen falla al cargar (onerror), se reemplaza por el marcador UPA
+  const tbody = document.getElementById("ed-pub-rows");
+  tbody.innerHTML = Core.renderPublicationRows([
+    {
+      id: 60,
+      title: "Feria de Innovación & Tecnología UPA 2026",
+      post_type: "MANUAL",
+      is_news: true,
+      is_event: true,
+      media_url: "http://100.110.128.107/uploads/7f34230e3ad140689d991d3175929766.jpg",
+    },
+  ]);
+  const thumbImg = tbody.querySelector("img.ed-thumb");
+  assert.ok(thumbImg, "Debe existir la miniatura inicialmente");
+  assert.equal(thumbImg.getAttribute("src"), "/uploads/7f34230e3ad140689d991d3175929766.jpg");
+  Core.replaceBrokenThumbWithPlaceholder(thumbImg);
+  assert.equal(tbody.querySelector("img.ed-thumb"), null, "La imagen rota debe eliminarse del DOM");
+  const placeholder = tbody.querySelector(".ed-thumb-placeholder");
+  assert.ok(placeholder, "Debe renderizarse el marcador de posición UPA");
+  assert.equal(placeholder.textContent, "UPA");
+  assert.equal(placeholder.getAttribute("aria-hidden"), "true");
 
   window.close();
 });

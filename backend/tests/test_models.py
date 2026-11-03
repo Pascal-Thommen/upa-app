@@ -129,8 +129,9 @@ def test_alembic_full_upgrade_downgrade_and_data_preservation():
             conn.execute(
                 text(
                     "INSERT INTO posts (id, title, post_type, is_news, is_event, is_pinned, target_groups, "
-                    "has_registration, send_push_notification, reminder_minutes_before, is_edited, is_ai_generated) "
-                    "VALUES (10, 'Foro UPA', 'MANUAL', 1, 1, 0, '[\"ALL\"]', 1, 0, 45, 1, 0)"
+                    "has_registration, send_push_notification, reminder_minutes_before, is_edited, is_ai_generated, media_url) "
+                    "VALUES (10, 'Foro UPA', 'MANUAL', 1, 1, 0, '[\"ALL\"]', 1, 0, 45, 1, 0, "
+                    "'http://100.110.128.107/uploads/7f34230e3ad140689d991d3175929766.jpg')"
                 )
             )
             conn.execute(
@@ -185,7 +186,13 @@ def test_alembic_full_upgrade_downgrade_and_data_preservation():
              ).scalar()
              assert migrated_audit == "post"
 
-        # 3. Downgrade -1 (vuelve a 007) y restaura las columnas eliminadas
+             migrated_media = conn.execute(
+                 text("SELECT media_url FROM posts WHERE id = 10")
+             ).scalar()
+             assert migrated_media == "/uploads/7f34230e3ad140689d991d3175929766.jpg"
+
+        # 3. Downgrade -1 (vuelve a 008) y luego -1 (vuelve a 007) restaurando columnas eliminadas
+        command.downgrade(cfg, "-1")
         command.downgrade(cfg, "-1")
         insp_down = inspect(eng)
         assert "device_token" in {c["name"] for c in insp_down.get_columns("users")}

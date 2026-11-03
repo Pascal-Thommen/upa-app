@@ -5,7 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .classroom import ClassroomDeadlineResponse
 from .event import EventResponse
-from .post import effective_published_at, ensure_utc_datetime, extra_detail_fields, normalize_target_groups
+from .post import (
+    effective_published_at,
+    ensure_utc_datetime,
+    extra_detail_fields,
+    normalize_target_groups,
+    normalize_upload_path,
+)
 
 
 class ErrorResponse(BaseModel):
@@ -93,8 +99,8 @@ class FeedItemResponse(BaseModel):
         summary_text = (
             raw_caption if raw_caption else (full_content[:150] + "..." if len(full_content) > 150 else full_content)
         )
-        media = (getattr(post, "media_url", None) or "").strip()
-        img = (getattr(post, "image_url", None) or media).strip()
+        media = normalize_upload_path(getattr(post, "media_url", None))
+        img = normalize_upload_path(getattr(post, "image_url", None) or media)
         created = ensure_utc_datetime(getattr(post, "created_at", None))
         published = effective_published_at(post)
         raw_expires = getattr(post, "expires_at", None)
