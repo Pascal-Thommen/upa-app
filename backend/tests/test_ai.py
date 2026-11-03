@@ -630,18 +630,24 @@ def test_autocomplete_timeout_fallback_and_large_image_downscaling(monkeypatch):
 
 def test_stored_active_model_priority_minimal_thinking_and_per_candidate_timeout_cap(monkeypatch):
     """
-    SRV-246:
-    1. MODERN_FLASH_MODELS prioriza gemini-3-flash-preview inmediatamente después de gemini-3.6-flash.
-    2. Si GEMINI_ACTIVE_MODEL está guardado en app_settings (ej. gemini-3-flash-preview), autocomplete_publication
-       lo intenta en primer lugar sin bloquearse en modelos con cuota agotada.
-    3. Para gemini-3-flash-preview se envía thinkingConfig={'thinkingLevel': 'MINIMAL'} y cada candidato
-       limita su timeout individual a PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS (15s).
+    SRV-246 / SRV-248:
+    1. MODERN_FLASH_MODELS prioriza gemini-3.6-flash, gemini-3-flash-preview y gemma-4-26b-a4b-it
+       antes de modelos propensos a bloqueo como gemini-3.5-flash-lite.
+    2. Si GEMINI_ACTIVE_MODEL está guardado en app_settings (ej. gemini-3-flash-preview o gemma-4-26b-a4b-it),
+       autocomplete_publication lo intenta en primer lugar sin bloquearse en modelos con cuota agotada.
+    3. Para gemini-3-flash-preview y gemma-4-26b-a4b-it se envía thinkingConfig={'thinkingLevel': 'MINIMAL'}
+       y cada candidato limita su timeout individual a PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS (25s).
     """
     assert gemini.MODERN_FLASH_MODELS[:3] == (
         "gemini-3.6-flash",
         "gemini-3-flash-preview",
-        "gemini-3.5-flash-lite",
+        "gemma-4-26b-a4b-it",
     )
+    assert "gemma-4-26b-a4b-it" in gemini.MINIMAL_THINKING_FLASH_MODELS
+    assert gemini.MODERN_FLASH_MODELS.index("gemma-4-26b-a4b-it") < gemini.MODERN_FLASH_MODELS.index(
+        "gemini-3.5-flash-lite"
+    )
+    assert gemini.IMAGE_AUTOCOMPLETE_MAX_EDGE_PX == 768
 
     db = TestingSessionLocal()
     gemini.save_active_model(db, "gemini-3-flash-preview")
