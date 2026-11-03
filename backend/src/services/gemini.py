@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -60,15 +61,26 @@ DEFAULT_FLASH_MODEL = "gemini-3.6-flash"
 # Modelos Gemini Flash actuales en Google Generative Language API v1beta (ordenados por estabilidad y velocidad)
 MODERN_FLASH_MODELS: tuple[str, ...] = (
     "gemini-3.6-flash",
+    "gemini-3-flash-preview",
     "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-flash-lite-latest",
-    "gemini-3-flash-preview",
     "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-flash-latest",
 )
+
+# Modelos Gemini 3 Flash que soportan thinkingLevel MINIMAL para extraccion JSON ultrarrapida (~2.5s)
+MINIMAL_THINKING_FLASH_MODELS: frozenset[str] = frozenset(
+    {
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-lite-preview",
+    }
+)
+PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS = 15.0
+PER_CANDIDATE_CONNECTION_TIMEOUT_SECONDS = 8.0
 
 # Modelos retirados para claves en Google AI Studio que deben ignorarse
 RETIRED_FLASH_MODELS: frozenset[str] = frozenset(
@@ -470,26 +482,40 @@ def check_connection(api_key: str, *, db: Session | None = None) -> ConnectionRe
     body = {"contents": [{"parts": [{"text": "ping"}]}], "generationConfig": {"maxOutputTokens": 8}}
     candidate_models = build_candidate_flash_models(api_key, preferred_model=initial_model, db=db)
 
+    raw_timeout = float(settings.GEMINI_TIMEOUT_SECONDS or 15.0)
+    per_candidate_timeout = (
+        min(raw_timeout, PER_CANDIDATE_CONNECTION_TIMEOUT_SECONDS)
+        if len(candidate_models) > 1
+        else raw_timeout
+    )
+    deadline = time.monotonic() + raw_timeout
+
     response = None
     active_model = candidate_models[0] if candidate_models else initial_model
     for idx, candidate in enumerate(candidate_models):
         active_model = candidate
         url = f"{base_url}/v1beta/models/{candidate}:generateContent"
+        remaining = deadline - time.monotonic()
+        if idx > 0 and remaining <= 0:
+            return ConnectionResult(
+                False, "TIMEOUT", "Error de red con Google: tiempo de espera agotado.", active_model
+            )
+        attempt_timeout = min(per_candidate_timeout, max(0.05, remaining)) if idx > 0 else per_candidate_timeout
         try:
             response = httpx.post(
                 url,
                 json=body,
                 headers={"x-goog-api-key": api_key.strip()},
-                timeout=settings.GEMINI_TIMEOUT_SECONDS,
+                timeout=attempt_timeout,
             )
         except httpx.TimeoutException:
-            if idx < len(candidate_models) - 1:
+            if idx < len(candidate_models) - 1 and (deadline - time.monotonic()) > 0.05:
                 continue
             return ConnectionResult(
                 False, "TIMEOUT", "Error de red con Google: tiempo de espera agotado.", active_model
             )
         except httpx.HTTPError:
-            if idx < len(candidate_models) - 1:
+            if idx < len(candidate_models) - 1 and (deadline - time.monotonic()) > 0.05:
                 continue
             return ConnectionResult(
                 False, "NETWORK", "Error de red con Google: no se pudo establecer la conexión.", active_model
@@ -988,21 +1014,56 @@ def autocomplete_publication(
 
     base_url = settings.GEMINI_API_BASE_URL.rstrip("/")
     candidate_models = build_candidate_flash_models(api_key, preferred_model=initial_model, db=db)
+    stored_model = get_stored_model(db)
+    if _is_valid_flash_model(stored_model):
+        candidate_models = [stored_model] + [m for m in candidate_models if m != stored_model]
+
+    raw_timeout = float(settings.GEMINI_TIMEOUT_SECONDS or 45.0)
+    per_candidate_timeout = (
+        min(raw_timeout, PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS)
+        if len(candidate_models) > 1
+        else raw_timeout
+    )
+    deadline = time.monotonic() + raw_timeout
 
     response = None
+    parsed_suggestions: dict[str, Any] | None = None
     active_model = candidate_models[0] if candidate_models else initial_model
     for idx, candidate in enumerate(candidate_models):
         active_model = candidate
         url = f"{base_url}/v1beta/models/{candidate}:generateContent"
+        remaining = deadline - time.monotonic()
+        if idx > 0 and remaining <= 0:
+            return AutocompleteResult(
+                False,
+                "TIMEOUT",
+                f"{AUTOCOMPLETE_ERROR_PREFIX} (tiempo de espera agotado).",
+                active_model,
+                {},
+            )
+        attempt_timeout = min(per_candidate_timeout, max(0.05, remaining)) if idx > 0 else per_candidate_timeout
+        candidate_body = dict(body)
+        if candidate in MINIMAL_THINKING_FLASH_MODELS:
+            candidate_body["generationConfig"] = {
+                **body["generationConfig"],
+                "thinkingConfig": {"thinkingLevel": "MINIMAL"},
+            }
         try:
             response = httpx.post(
                 url,
-                json=body,
+                json=candidate_body,
                 headers={"x-goog-api-key": api_key.strip()},
-                timeout=settings.GEMINI_TIMEOUT_SECONDS,
+                timeout=attempt_timeout,
             )
+            if response.status_code == 400 and "thinkingConfig" in candidate_body.get("generationConfig", {}):
+                response = httpx.post(
+                    url,
+                    json=body,
+                    headers={"x-goog-api-key": api_key.strip()},
+                    timeout=attempt_timeout,
+                )
         except httpx.TimeoutException:
-            if idx < len(candidate_models) - 1:
+            if idx < len(candidate_models) - 1 and (deadline - time.monotonic()) > 0.05:
                 continue
             return AutocompleteResult(
                 False,
@@ -1012,7 +1073,7 @@ def autocomplete_publication(
                 {},
             )
         except httpx.HTTPError:
-            if idx < len(candidate_models) - 1:
+            if idx < len(candidate_models) - 1 and (deadline - time.monotonic()) > 0.05:
                 continue
             return AutocompleteResult(
                 False,
@@ -1032,6 +1093,14 @@ def autocomplete_publication(
 
         if response.status_code in (404, 429, 503) and idx < len(candidate_models) - 1:
             continue
+        if response.status_code == 200:
+            try:
+                resp_json = response.json()
+                parsed_suggestions = _extract_candidate_json(resp_json)
+            except ValueError:
+                parsed_suggestions = None
+            if parsed_suggestions is None and idx < len(candidate_models) - 1:
+                continue
         break
 
     assert response is not None

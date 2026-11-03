@@ -626,3 +626,74 @@ def test_autocomplete_timeout_fallback_and_large_image_downscaling(monkeypatch):
         db.close()
     finally:
         monkeypatch.setattr(gemini.httpx, "post", real_post)
+
+
+def test_stored_active_model_priority_minimal_thinking_and_per_candidate_timeout_cap(monkeypatch):
+    """
+    SRV-246:
+    1. MODERN_FLASH_MODELS prioriza gemini-3-flash-preview inmediatamente después de gemini-3.6-flash.
+    2. Si GEMINI_ACTIVE_MODEL está guardado en app_settings (ej. gemini-3-flash-preview), autocomplete_publication
+       lo intenta en primer lugar sin bloquearse en modelos con cuota agotada.
+    3. Para gemini-3-flash-preview se envía thinkingConfig={'thinkingLevel': 'MINIMAL'} y cada candidato
+       limita su timeout individual a PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS (15s).
+    """
+    assert gemini.MODERN_FLASH_MODELS[:3] == (
+        "gemini-3.6-flash",
+        "gemini-3-flash-preview",
+        "gemini-3.5-flash-lite",
+    )
+
+    db = TestingSessionLocal()
+    gemini.save_active_model(db, "gemini-3-flash-preview")
+
+    monkeypatch.setattr(
+        gemini,
+        "build_candidate_flash_models",
+        lambda *_args, **_kwargs: ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3-flash-preview"],
+    )
+
+    captured_calls: list[dict] = []
+    real_post = gemini.httpx.post
+
+    def fake_post(url: str, **kwargs):
+        captured_calls.append({"url": url, "json": kwargs.get("json"), "timeout": kwargs.get("timeout")})
+        return gemini.httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps(
+                                        {
+                                            "title": "Feria UPA 2026",
+                                            "location": "Campus UPA - San Lorenzo",
+                                            "event_start": "2026-11-07T10:00",
+                                            "is_event": True,
+                                        }
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(gemini.httpx, "post", fake_post)
+    try:
+        res = gemini.autocomplete_publication(
+            "AIzaValidKeyForStoredModelPriorityTest",
+            form_data={"title": "", "content": "Feria el 07/11/2026 a las 10:00 en Campus UPA", "location": ""},
+            db=db,
+        )
+        assert res.ok is True
+        assert res.model == "gemini-3-flash-preview"
+        assert len(captured_calls) == 1
+        assert "gemini-3-flash-preview" in captured_calls[0]["url"]
+        assert captured_calls[0]["timeout"] == gemini.PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS
+        assert captured_calls[0]["json"]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "MINIMAL"}
+    finally:
+        monkeypatch.setattr(gemini.httpx, "post", real_post)
+        db.close()
