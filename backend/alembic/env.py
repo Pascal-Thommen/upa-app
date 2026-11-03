@@ -15,7 +15,7 @@ from src.database import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Überschreibe die Datenbank-URL dynamisch aus pydantic settings, falls noch nicht explizit gesetzt
 if not config.get_main_option("sqlalchemy.url") or config.get_main_option("sqlalchemy.url") == "driver://user:pass@localhost/dbname":

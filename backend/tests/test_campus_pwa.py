@@ -6,13 +6,7 @@ import json
 import os
 import re
 import shutil
-import socket
 import struct
-import subprocess
-import sys
-import time
-import urllib.error
-import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -26,27 +20,17 @@ from src.database import Base, get_db
 from src.main import app
 from src.models import User
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = BACKEND_DIR.parent
+from tests.conftest import (
+    BACKEND_DIR,
+    REPO_ROOT,
+    free_tcp_port,
+    managed_uvicorn_server,
+    run_managed_command,
+    seed_sqlite_database,
+)
+
 WEB_APP = REPO_ROOT / "web-app"
 WEB_TESTS = WEB_APP / "tests"
-
-SEED_SCRIPT = """
-from src.database import SessionLocal, engine, run_alembic_migrations
-from src.models import User
-
-run_alembic_migrations(engine)
-db = SessionLocal()
-db.add_all(
-    [
-        User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL", "TIE"]),
-        User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion Marketing", role="editor", groups=["ALL"]),
-        User(id=3, email="ana.gomez@upa.edu.py", full_name="Ana Gomez", role="user", groups=["ALL", "TIE"]),
-    ]
-)
-db.commit()
-db.close()
-"""
 
 
 def _png_dimensions(path: Path) -> tuple[int, int]:
@@ -179,6 +163,7 @@ def isolated_db():
     finally:
         app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=test_engine)
+        test_engine.dispose()
 
 
 def test_oauth_campus_return_to_and_callback_fragment(monkeypatch, isolated_db):
@@ -262,12 +247,6 @@ def test_feed_includes_event_registration_status_for_user(isolated_db):
         client.delete(f"/api/publications/{event_id}", headers={"Authorization": f"Bearer {admin_token}"})
 
 
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-
-
 def _ensure_node_modules(test_dir: Path, required_packages: tuple[str, ...] = ("jsdom", "jsqr")) -> None:
     node_modules = test_dir / "node_modules"
     if all((node_modules / pkg).is_dir() for pkg in required_packages):
@@ -275,7 +254,7 @@ def _ensure_node_modules(test_dir: Path, required_packages: tuple[str, ...] = ("
     npm = shutil.which("npm")
     assert npm is not None, f"npm es necesario para instalar dependencias de prueba en {test_dir}"
     cmd = "ci" if (test_dir / "package-lock.json").is_file() else "install"
-    subprocess.run(
+    run_managed_command(
         [npm, "--prefix", str(test_dir), cmd, "--no-audit", "--no-fund"],
         cwd=REPO_ROOT,
         check=True,
@@ -287,12 +266,11 @@ def _run_node(file: Path, env: dict[str, str]) -> int:
     node = shutil.which("node")
     assert node is not None, "Node.js es necesario para ejecutar las pruebas de la PWA"
     _ensure_node_modules(WEB_TESTS)
-    result = subprocess.run(
-        [node, "--test", "--test-reporter=tap", str(file)],
+    result = run_managed_command(
+        [node, "--test", "--test-concurrency=1", "--test-reporter=tap", str(file)],
         cwd=REPO_ROOT,
         env=env,
-        capture_output=True,
-        text=True,
+        check=False,
         timeout=180,
     )
     output = result.stdout + result.stderr
@@ -305,14 +283,22 @@ def _run_node(file: Path, env: dict[str, str]) -> int:
 
 
 @pytest.fixture(scope="module")
-def live_backend(tmp_path_factory):
+def live_backend(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest):
     workdir = tmp_path_factory.mktemp("campus-live")
-    port = _free_port()
+    port = free_tcp_port()
     base_url = f"http://127.0.0.1:{port}"
+    db_url = seed_sqlite_database(
+        workdir / "campus.db",
+        [
+            User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL", "TIE"]),
+            User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion Marketing", role="editor", groups=["ALL"]),
+            User(id=3, email="ana.gomez@upa.edu.py", full_name="Ana Gomez", role="user", groups=["ALL", "TIE"]),
+        ],
+    )
     env = {
         **os.environ,
         "PYTHONPATH": str(BACKEND_DIR),
-        "DATABASE_URL": f"sqlite:///{workdir / 'campus.db'}",
+        "DATABASE_URL": db_url,
         "UPLOAD_DIR": str(workdir / "uploads"),
         "PUBLIC_BASE_URL": base_url,
         "FEED_SYNC_ENABLED": "false",
@@ -321,35 +307,8 @@ def live_backend(tmp_path_factory):
         "GOOGLE_SERVICE_ACCOUNT_FILE": str(workdir / "no-sa.json"),
         "FCM_SERVICE_ACCOUNT_FILE": str(workdir / "no-fcm.json"),
     }
-    subprocess.run([sys.executable, "-c", SEED_SCRIPT], cwd=BACKEND_DIR, env=env, check=True, timeout=60)
-    log_path = workdir / "uvicorn.log"
-    with open(log_path, "wb") as log:
-        server = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", str(port)],
-            cwd=BACKEND_DIR,
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-        )
-        try:
-            deadline = time.time() + 45
-            while True:
-                assert server.poll() is None, log_path.read_text()[-2000:]
-                try:
-                    with urllib.request.urlopen(f"{base_url}/health", timeout=2) as resp:
-                        if resp.status == 200:
-                            break
-                except (urllib.error.URLError, ConnectionError, TimeoutError):
-                    pass
-                assert time.time() < deadline, "uvicorn no inicio a tiempo"
-                time.sleep(0.25)
-            yield base_url
-        finally:
-            server.terminate()
-            try:
-                server.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                server.kill()
+    with managed_uvicorn_server(workdir, env, port, request=request):
+        yield base_url
 
 
 def test_campus_core_unit_tests_pass():

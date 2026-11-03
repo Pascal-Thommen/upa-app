@@ -192,18 +192,17 @@ def test_pyright_configuration_in_pyproject_toml():
 
 def test_pyright_passes_on_backend_and_catches_type_errors(tmp_path: Path):
     import shutil
-    import subprocess
+
+    from tests.conftest import run_managed_command
 
     pyright_bin = shutil.which("pyright")
     if not pyright_bin:
         return
 
     backend_dir = Path(__file__).resolve().parent.parent
-    clean_run = subprocess.run(
+    clean_run = run_managed_command(
         [pyright_bin],
         cwd=str(backend_dir),
-        capture_output=True,
-        text=True,
         timeout=60,
         check=False,
     )
@@ -223,11 +222,9 @@ def test_pyright_passes_on_backend_and_catches_type_errors(tmp_path: Path):
         "    return raw_id + 1\n".replace("compute_ user_id", "compute_user_id"),
         encoding="utf-8",
     )
-    broken_run = subprocess.run(
+    broken_run = run_managed_command(
         [pyright_bin],
         cwd=str(sample_project),
-        capture_output=True,
-        text=True,
         timeout=60,
         check=False,
     )
