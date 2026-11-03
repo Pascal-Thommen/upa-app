@@ -595,6 +595,7 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.md",
         repo_root / "docs" / "UPA_App_Manual_de_Usuario.md",
         repo_root / "docs" / "UPA_App_Informe_del_Proyecto.md",
+        repo_root / "docs" / "PRESENTACION_LEITPLAN.md",
         repo_root / "docs" / "PFLICHTENHEFT.md",
         repo_root / "docs" / "FRONTEND_INTEGRATION_GUIDE.md",
         repo_root / "docs" / "api_documentation.md",
@@ -657,6 +658,51 @@ def test_pwa_and_ai_documentation_integrity():
     ):
         assert required_informe_term in informe_md_text, (
             f"Missing {required_informe_term} in UPA_App_Informe_del_Proyecto.md"
+        )
+
+    pptx_path = repo_root / "docs" / "UPA_App_Presentacion_Final.pptx"
+    assert pptx_path.is_file(), "Missing docs/UPA_App_Presentacion_Final.pptx"
+    with zipfile.ZipFile(pptx_path) as zf:
+        slide_entries = sorted(
+            name for name in zf.namelist() if re.match(r"^ppt/slides/slide\d+\.xml$", name)
+        )
+        notes_entries = sorted(
+            name
+            for name in zf.namelist()
+            if re.match(r"^ppt/notesSlides/notesSlide\d+\.xml$", name)
+        )
+        all_slides_xml = "\n".join(zf.read(name).decode("utf-8") for name in slide_entries)
+    assert len(slide_entries) == 7, f"Expected 7 slides in .pptx, got {len(slide_entries)}"
+    assert len(notes_entries) == 7, f"Expected 7 speaker notes in .pptx, got {len(notes_entries)}"
+    for required_pptx_term in (
+        "UPA App: Plataforma Digital y Campus Movil",
+        "Pascal Thommen",
+        "Theresa Bauer",
+        "Natasha Colman",
+        "Single Source of Truth",
+        "Autocompletar con IA",
+        "Gemini 4 Argon",
+        "Zero-Mock",
+        "app.upa.edu.py",
+        "UPA Academico",
+    ):
+        assert required_pptx_term in all_slides_xml, f"Missing {required_pptx_term} in .pptx slides"
+
+    leitplan_text = (repo_root / "docs" / "PRESENTACION_LEITPLAN.md").read_text(encoding="utf-8")
+    for slide_idx in range(1, 8):
+        assert f"### Folie {slide_idx}:" in leitplan_text
+    for required_leitplan_term in (
+        "5 Minutos Presentacion",
+        "5 Minutos Demostracion en Vivo",
+        "Pascal Thommen, Theresa Bauer, Natasha Colman",
+        "Google Slides Gemini Sidebar",
+        "Gemini 4 Argon",
+        "Zero-Mock",
+        "app.upa.edu.py",
+        "UPA Academico",
+    ):
+        assert required_leitplan_term in leitplan_text, (
+            f"Missing {required_leitplan_term} in PRESENTACION_LEITPLAN.md"
         )
 
     official_md_text = (repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.md").read_text(encoding="utf-8")
