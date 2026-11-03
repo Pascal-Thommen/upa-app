@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U upa_user -d upa_app"]
       interval: 5s
@@ -40,6 +40,8 @@ services:
       DATABASE_URL: postgresql://upa_user:upa_password@postgres:5432/upa_app
       ALLOWED_EMAIL_DOMAIN: upa.edu.py
       GOOGLE_CLIENT_ID: "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com"
+      GOOGLE_SERVICE_ACCOUNT_FILE: /app/secrets/service-account.json
+      AI_EVENT_EXTRACTION_ENABLED: "true"
     ports:
       - "8000:8000"
     volumes:
