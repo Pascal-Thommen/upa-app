@@ -1124,6 +1124,8 @@
       rawFile && ["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(rawMime)
         ? rawFile
         : null;
+    const hasUploadedServerMedia = String(values.imageUrl || "").trim().includes("/uploads/");
+    const fileForUpload = hasUploadedServerMedia ? null : file;
     const hasSourceContext = Core.hasAutocompleteSourceContext
       ? Core.hasAutocompleteSourceContext(values, file)
       : Boolean(
@@ -1134,7 +1136,7 @@
         );
     setAiBusy(button, true);
     try {
-      const suggestions = await getClient().autocompletePublicationAi(reqPayload, file);
+      const suggestions = await getClient().autocompletePublicationAi(reqPayload, fileForUpload);
       const baseForMerge = {
         ...values,
         targetGroups: effectiveTargetGroups,

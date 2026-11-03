@@ -3,6 +3,7 @@
 import base64
 import json
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -335,27 +336,55 @@ def extract_event_from_instagram_post(
 
     base_url = settings.GEMINI_API_BASE_URL.rstrip("/")
     candidate_models = gemini.build_candidate_flash_models(api_key, db=db)
+    stored_model = gemini.get_stored_model(db)
+    if gemini._is_valid_flash_model(stored_model):
+        candidate_models = [stored_model] + [m for m in candidate_models if m != stored_model]
+
+    raw_timeout = float(settings.GEMINI_TIMEOUT_SECONDS or 45.0)
+    per_candidate_timeout = (
+        min(raw_timeout, gemini.PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS)
+        if len(candidate_models) > 1
+        else raw_timeout
+    )
+    deadline = time.monotonic() + raw_timeout
 
     response: httpx.Response | None = None
     active_model = candidate_models[0] if candidate_models else settings.GEMINI_MODEL
     for idx, candidate in enumerate(candidate_models):
         active_model = candidate
         url = f"{base_url}/v1beta/models/{candidate}:generateContent"
+        remaining = deadline - time.monotonic()
+        if idx > 0 and remaining <= 0:
+            return AIEventExtractionResult(is_event=False)
+        attempt_timeout = min(per_candidate_timeout, max(0.05, remaining)) if idx > 0 else per_candidate_timeout
+        candidate_body = dict(body)
+        if candidate in gemini.MINIMAL_THINKING_FLASH_MODELS:
+            candidate_body["generationConfig"] = {
+                **body["generationConfig"],
+                "thinkingConfig": {"thinkingLevel": "MINIMAL"},
+            }
         try:
             response = httpx.post(
                 url,
-                json=body,
+                json=candidate_body,
                 headers={"x-goog-api-key": api_key.strip()},
-                timeout=settings.GEMINI_TIMEOUT_SECONDS,
+                timeout=attempt_timeout,
             )
+            if response.status_code == 400 and "thinkingConfig" in candidate_body.get("generationConfig", {}):
+                response = httpx.post(
+                    url,
+                    json=body,
+                    headers={"x-goog-api-key": api_key.strip()},
+                    timeout=attempt_timeout,
+                )
         except httpx.TimeoutException:
             logger.warning("[AI Extractor] Timeout consultando Google Gemini (%s).", candidate)
-            if idx < len(candidate_models) - 1:
+            if idx < len(candidate_models) - 1 and (deadline - time.monotonic()) > 0.05:
                 continue
             return AIEventExtractionResult(is_event=False)
         except httpx.HTTPError as exc:
             logger.warning("[AI Extractor] Error de red consultando Google Gemini: %s", exc)
-            if idx < len(candidate_models) - 1:
+            if idx < len(candidate_models) - 1 and (deadline - time.monotonic()) > 0.05:
                 continue
             return AIEventExtractionResult(is_event=False)
         except Exception as exc:
