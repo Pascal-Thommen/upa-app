@@ -313,7 +313,10 @@ def extract_event_from_instagram_post(
     parts: list[dict[str, Any]] = [{"text": prompt}]
     if resolved_bytes:
         processed_bytes, processed_mime = gemini.preprocess_image_for_gemini(
-            resolved_bytes, resolved_mime or "image/jpeg"
+            resolved_bytes,
+            resolved_mime or "image/jpeg",
+            max_bytes_threshold=gemini.IMAGE_AUTOCOMPLETE_THRESHOLD_BYTES,
+            max_edge_px=gemini.IMAGE_AUTOCOMPLETE_MAX_EDGE_PX,
         )
         parts.append(
             {

@@ -48,6 +48,8 @@ FREE_TIER_QUOTA_RPM = 15
 
 IMAGE_DOWNSCALE_THRESHOLD_BYTES = 1_500_000
 IMAGE_MAX_EDGE_PX = 1568
+IMAGE_AUTOCOMPLETE_THRESHOLD_BYTES = 250_000
+IMAGE_AUTOCOMPLETE_MAX_EDGE_PX = 768
 
 # Orden de prioridad oficial de modelos gratuitos Gemini Flash en Google AI Studio (mas reciente primero)
 PREFERRED_FLASH_MODELS: tuple[str, ...] = (
@@ -58,28 +60,34 @@ PREFERRED_FLASH_MODELS: tuple[str, ...] = (
 )
 DEFAULT_FLASH_MODEL = "gemini-3.6-flash"
 
-# Modelos Gemini Flash actuales en Google Generative Language API v1beta (ordenados por estabilidad y velocidad)
+# Modelos Gemini Flash y Gemma 4 multimodales actuales en Google Generative Language API v1beta
+# (ordenados por estabilidad, velocidad y disponibilidad de cuota en Free Tier)
 MODERN_FLASH_MODELS: tuple[str, ...] = (
     "gemini-3.6-flash",
     "gemini-3-flash-preview",
-    "gemini-3.5-flash-lite",
-    "gemini-3.5-flash",
+    "gemma-4-26b-a4b-it",
     "gemini-3.1-flash-lite",
-    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
     "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-flash-latest",
+    "gemini-flash-lite-latest",
 )
 
-# Modelos Gemini 3 Flash que soportan thinkingLevel MINIMAL para extraccion JSON ultrarrapida (~2.5s)
+# Modelos Gemini 3 / Gemma 4 que soportan thinkingLevel MINIMAL para extraccion JSON rapida
 MINIMAL_THINKING_FLASH_MODELS: frozenset[str] = frozenset(
     {
+        "gemini-3.6-flash",
         "gemini-3-flash-preview",
+        "gemma-4-26b-a4b-it",
         "gemini-3.1-flash-lite",
         "gemini-3.1-flash-lite-preview",
+        "gemini-3.5-flash",
     }
 )
-PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS = 15.0
+PER_CANDIDATE_AUTOCOMPLETE_TIMEOUT_SECONDS = 25.0
 PER_CANDIDATE_CONNECTION_TIMEOUT_SECONDS = 8.0
 
 # Modelos retirados para claves en Google AI Studio que deben ignorarse
@@ -992,7 +1000,12 @@ def autocomplete_publication(
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
     if image_bytes and image_mime_type:
-        processed_bytes, processed_mime = preprocess_image_for_gemini(image_bytes, image_mime_type)
+        processed_bytes, processed_mime = preprocess_image_for_gemini(
+            image_bytes,
+            image_mime_type,
+            max_bytes_threshold=IMAGE_AUTOCOMPLETE_THRESHOLD_BYTES,
+            max_edge_px=IMAGE_AUTOCOMPLETE_MAX_EDGE_PX,
+        )
         parts.append(
             {
                 "inline_data": {
