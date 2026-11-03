@@ -593,6 +593,7 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "web-app" / "README.md",
         repo_root / "web-admin" / "README.md",
         repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.md",
+        repo_root / "docs" / "UPA_App_Manual_de_Usuario.md",
         repo_root / "docs" / "UPA_App_Informe_del_Proyecto.md",
         repo_root / "docs" / "PFLICHTENHEFT.md",
         repo_root / "docs" / "FRONTEND_INTEGRATION_GUIDE.md",
@@ -614,6 +615,7 @@ def test_pwa_and_ai_documentation_integrity():
     }
     docx_files = {p.name for p in (repo_root / "docs").glob("*.docx")}
     assert "UPA_App_Documentacion_Arquitectura.docx" in docx_files
+    assert "UPA_App_Manual_de_Usuario.docx" in docx_files
     assert "UPA_App_Informe_del_Proyecto.docx" in docx_files
     assert docx_files.issubset(allowed_docx)
 
@@ -758,3 +760,62 @@ def test_pwa_and_ai_documentation_integrity():
         "/api/ai/test-connection",
     ):
         assert snippet in api_doc_text
+
+
+def test_user_manual_documentation_integrity():
+    import ast
+    import zipfile
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    md_path = repo_root / "docs" / "UPA_App_Manual_de_Usuario.md"
+    docx_path = repo_root / "docs" / "UPA_App_Manual_de_Usuario.docx"
+    script_path = repo_root / "scripts" / "generar_manual_usuario.py"
+
+    assert md_path.is_file()
+    assert docx_path.is_file()
+    assert script_path.is_file()
+
+    script_source = script_path.read_text(encoding="utf-8")
+    ast.parse(script_source)
+    for screen_num in range(1, 10):
+        assert f'"screen_{screen_num}"' in script_source
+
+    md_text = md_path.read_text(encoding="utf-8")
+    assert "## Parte A: Campus PWA" in md_text
+    assert "## Parte B: Web-Admin Cockpit" in md_text
+    for screen_num in range(1, 10):
+        assert f"Pantalla {screen_num} (Screen {screen_num}):" in md_text
+        assert f"CONTENEDOR DE CAPTURA #{screen_num}:" in md_text
+        assert f"Figura {screen_num}:" in md_text
+
+    for required_term in (
+        "Sí, asistiré",
+        "No asistiré",
+        "Google Classroom",
+        "@upa.edu.py",
+        "Sistema",
+        "Modo Claro",
+        "Modo Oscuro",
+        "Autocompletar con IA",
+        "Google Workspace",
+        "publicaciones",
+        "grupos",
+        "roles",
+        "ia",
+        "apis",
+        "historial",
+        "admin_audit_logs",
+    ):
+        assert required_term in md_text, f"Missing {required_term} in UPA_App_Manual_de_Usuario.md"
+
+    with zipfile.ZipFile(docx_path) as zf:
+        doc_xml = zf.read("word/document.xml").decode("utf-8")
+        media_entries = [name for name in zf.namelist() if name.startswith("word/media/")]
+
+    assert len(media_entries) == 9, f"Expected 9 screen container images in manual .docx, got {len(media_entries)}"
+    assert 'w:val="both"' in doc_xml, "Expected justified (Blocksatz) paragraph alignment in .docx"
+    for screen_num in range(1, 10):
+        assert f"Pantalla {screen_num} (Screen {screen_num}):" in doc_xml
+        assert f"CONTENEDOR DE CAPTURA #{screen_num}:" in doc_xml
+        assert f"Figura {screen_num}:" in doc_xml
