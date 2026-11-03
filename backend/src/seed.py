@@ -1,10 +1,46 @@
+import json
+import re
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal, engine, run_alembic_migrations
-from .models import AudienceGroup, Post, User, UserRole
+from .models import AdminAuditLog, AudienceGroup, Post, User, UserRole
 from .schemas.user import REDUNDANT_GROUP_TAGS, sanitize_user_groups
+
+_SEED_LINE_UPLOAD_RE = re.compile(r"^https?://[^/\s]+/uploads/", re.IGNORECASE)
+_SEED_ANY_UPLOAD_RE = re.compile(r"https?://[^/\s\"']+/uploads/", re.IGNORECASE)
+
+
+def _normalize_stored_upload_urls(db: Session) -> None:
+    """Normaliza rutas heredadas con IP/Host antes de /uploads/ en posts y registros de auditoria."""
+    for post in db.query(Post).filter(Post._stored_media_url.isnot(None)).all():
+        raw_val = post._stored_media_url
+        if not raw_val or "/uploads/" not in raw_val:
+            continue
+        lines = raw_val.split("\n")
+        cleaned_lines = [
+            _SEED_LINE_UPLOAD_RE.sub("/uploads/", line.strip()) if line.strip() else ""
+            for line in lines
+        ]
+        cleaned_val = "\n".join(cleaned_lines)
+        if cleaned_val != raw_val:
+            post._stored_media_url = cleaned_val
+
+    for post in db.query(Post).filter(Post.link_url.isnot(None)).all():
+        if post.link_url and "/uploads/" in post.link_url:
+            cleaned_link = _SEED_LINE_UPLOAD_RE.sub("/uploads/", post.link_url.strip())
+            if cleaned_link != post.link_url:
+                post.link_url = cleaned_link
+
+    for log_entry in db.query(AdminAuditLog).all():
+        if not isinstance(log_entry.details, dict):
+            continue
+        serialized = json.dumps(log_entry.details, ensure_ascii=False)
+        if "/uploads/" in serialized:
+            replaced = _SEED_ANY_UPLOAD_RE.sub("/uploads/", serialized)
+            if replaced != serialized:
+                log_entry.details = json.loads(replaced)
 
 
 def seed_database():
@@ -177,6 +213,7 @@ def seed_database():
                     updated_perms.append("ia")
                 existing_role.permissions = updated_perms
 
+        _normalize_stored_upload_urls(db)
         db.commit()
         print("[Seed] Carga inicial finalizada correctamente.")
     finally:

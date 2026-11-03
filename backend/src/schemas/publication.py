@@ -16,6 +16,7 @@ from .post import (
     format_paraguay_datetime,
     format_paraguay_time,
     normalize_target_groups,
+    normalize_upload_path,
     parse_24h_time,
     parse_paraguay_datetime,
 )
@@ -378,8 +379,8 @@ class PublicationResponse(BaseModel):
         summary_text = (
             raw_caption if raw_caption else (full_content[:140] + "..." if len(full_content) > 140 else full_content)
         )
-        media = (getattr(post, "media_url", None) or "").strip()
-        img = (getattr(post, "image_url", None) or media).strip()
+        media = normalize_upload_path(getattr(post, "media_url", None))
+        img = normalize_upload_path(getattr(post, "image_url", None) or media)
         created = ensure_utc_datetime(getattr(post, "created_at", None))
         published = effective_published_at(post)
         raw_updated = getattr(post, "updated_at", None)

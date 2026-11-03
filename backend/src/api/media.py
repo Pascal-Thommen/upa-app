@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import tempfile
 import uuid
 from pathlib import Path
@@ -89,11 +90,36 @@ def sniff_content_type(header: bytes) -> str | None:
     return None
 
 
-def _build_public_url(request: Request, filename: str) -> str:
+_UPLOAD_URL_RE = re.compile(r"^https?://[^/\s]+(/uploads/\S*)$", re.IGNORECASE)
+
+
+def normalize_upload_url(raw_url: str | None) -> str:
+    """
+    Normaliza rutas de archivos subidos localmente a '/uploads/<filename>' (o con prefijo
+    PUBLIC_BASE_URL si se configuro explicitamente), eliminando esquemas/IPs heredados
+    (ej. 'http://100.110.128.107/uploads/...') que causan errores de Mixed-Content en HTTPS.
+    """
+    if not raw_url:
+        return ""
+    clean = str(raw_url).strip()
+    if not clean:
+        return ""
+    match = _UPLOAD_URL_RE.match(clean)
+    if match:
+        relative_path = match.group(1)
+    elif clean.startswith(f"{UPLOADS_URL_PREFIX}/"):
+        relative_path = clean
+    else:
+        return clean
+
     base = (settings.PUBLIC_BASE_URL or "").strip().rstrip("/")
     if not base:
-        return f"{UPLOADS_URL_PREFIX}/{filename}"
-    return f"{base}{UPLOADS_URL_PREFIX}/{filename}"
+        return relative_path
+    return f"{base}{relative_path}"
+
+
+def _build_public_url(request: Request, filename: str) -> str:
+    return normalize_upload_url(f"{UPLOADS_URL_PREFIX}/{filename}")
 
 
 def _bad_request(detail: str) -> HTTPException:

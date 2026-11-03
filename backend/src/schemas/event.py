@@ -11,6 +11,7 @@ from .post import (
     format_paraguay_datetime,
     format_paraguay_time,
     normalize_target_groups,
+    normalize_upload_path,
 )
 
 
@@ -95,8 +96,8 @@ class EventResponse(BaseModel):
         if end_dt is not None and end_dt < start_dt:
             end_dt = None
         loc = (getattr(post, "location", None) or "").strip() or "Campus UPA"
-        media = (getattr(post, "media_url", None) or "").strip()
-        img = (getattr(post, "image_url", None) or media).strip()
+        media = normalize_upload_path(getattr(post, "media_url", None))
+        img = normalize_upload_path(getattr(post, "image_url", None) or media)
 
         raw_regs = getattr(post, "registrations", None) or []
         reg_status: str | None = None

@@ -5,7 +5,31 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..config import settings
+
 ASUNCION_TZ = ZoneInfo("America/Asuncion")
+_SCHEMA_UPLOAD_URL_RE = re.compile(r"^https?://[^/\s]+(/uploads/\S*)$", re.IGNORECASE)
+
+
+def normalize_upload_path(raw_url: Any) -> str:
+    """Normaliza URLs de archivos locales subidos a '/uploads/<filename>' (o con PUBLIC_BASE_URL si se configuro)."""
+    if not raw_url:
+        return ""
+    clean = str(raw_url).strip()
+    if not clean:
+        return ""
+    match = _SCHEMA_UPLOAD_URL_RE.match(clean)
+    if match:
+        rel_path = match.group(1)
+    elif clean.startswith("/uploads/"):
+        rel_path = clean
+    else:
+        return clean
+
+    base = (settings.PUBLIC_BASE_URL or "").strip().rstrip("/")
+    if not base:
+        return rel_path
+    return f"{base}{rel_path}"
 
 
 def parse_paraguay_datetime(raw: Any) -> datetime | None:
@@ -159,7 +183,7 @@ def effective_reminders(post: Any) -> list[int]:
 
 def extra_detail_fields(post: Any) -> dict[str, str]:
     """Campos adicionales de enlace para la aplicacion movil (nunca nulos)."""
-    link_url = (getattr(post, "link_url", None) or "").strip()
+    link_url = normalize_upload_path(getattr(post, "link_url", None))
     if not link_url and (getattr(post, "post_type", None) or "") == "INSTAGRAM":
         link_url = (getattr(post, "permalink", None) or "").strip()
     link_label = (getattr(post, "link_label", None) or "").strip()

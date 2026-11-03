@@ -183,11 +183,29 @@
       .replace(/'/g, "&#39;");
   }
 
-  function safeUrl(url) {
+  function normalizeUploadUrl(url) {
     const clean = String(url || "").trim();
+    if (!clean) return "";
+    return clean.replace(/^https?:\/\/[^/\s]+(\/uploads\/)/i, "$1");
+  }
+
+  function safeUrl(url) {
+    const clean = normalizeUploadUrl(url);
     if (/^https?:\/\//i.test(clean)) return clean;
     if (clean.startsWith("/") && !clean.startsWith("//")) return clean;
     return "";
+  }
+
+  function replaceBrokenThumbWithPlaceholder(imgEl) {
+    if (!imgEl || typeof imgEl.replaceWith !== "function") return;
+    const doc = imgEl.ownerDocument || (typeof document !== "undefined" ? document : null);
+    if (!doc) return;
+    const placeholder = doc.createElement("div");
+    placeholder.className = "ed-thumb-placeholder";
+    placeholder.setAttribute("aria-hidden", "true");
+    placeholder.textContent = "UPA";
+    const target = (typeof imgEl.closest === "function" && imgEl.closest(".ed-thumb-link")) || imgEl;
+    target.replaceWith(placeholder);
   }
 
   function isImageUrl(url) {
@@ -562,7 +580,7 @@
     const isNews = postType === POST_TYPE_INSTAGRAM || postType === POST_TYPE_URGENT ? true : Boolean(v.isNews);
     const isEvent = postType === POST_TYPE_URGENT ? false : Boolean(v.isEvent);
     const targetGroups = cleanGroups(v.targetGroups);
-    const imageUrl = String(v.imageUrl || "").trim();
+    const imageUrl = normalizeUploadUrl(v.imageUrl || "");
     const isScheduled = Boolean(v.scheduled) || v.publishMode === "scheduled";
     const rawCaption = isNews
       ? postType === POST_TYPE_INSTAGRAM
@@ -644,7 +662,7 @@
       category: p.category || "",
       pinned: Boolean(p.is_pinned),
       expiresAt: isoToDatetimeLocal(p.expires_at),
-      imageUrl: p.media_url || p.image_url || "",
+      imageUrl: normalizeUploadUrl(p.media_url || p.image_url || ""),
       permalink: p.permalink || "",
       linkLabel,
       linkUrl,
@@ -814,11 +832,15 @@
     if (!items || items.length === 0) {
       return `<tr><td colspan="5" class="ed-empty">No hay publicaciones para mostrar.</td></tr>`;
     }
+    const thumbOnError =
+      "this.onerror=null;if(window.UpaEditorial&&window.UpaEditorial.replaceBrokenThumbWithPlaceholder){window.UpaEditorial.replaceBrokenThumbWithPlaceholder(this);}else{const p=document.createElement('div');p.className='ed-thumb-placeholder';p.setAttribute('aria-hidden','true');p.textContent='UPA';(this.closest('.ed-thumb-link')||this).replaceWith(p);}";
     return items
       .map((item) => {
-        const img = safeUrl(item.media_url || item.image_url);
+        const rawMedia =
+          isVideoUrl(item.media_url) && item.image_url ? item.image_url : item.media_url || item.image_url;
+        const img = safeUrl(rawMedia);
         const thumb = img
-          ? `<a href="${escapeHtml(img)}" target="_blank" rel="noopener noreferrer" class="ed-thumb-link" title="Abrir original"><img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy"></a>`
+          ? `<a href="${escapeHtml(img)}" target="_blank" rel="noopener noreferrer" class="ed-thumb-link" title="Abrir original"><img src="${escapeHtml(img)}" alt="" class="ed-thumb" loading="lazy" onerror="${thumbOnError}"></a>`
           : `<div class="ed-thumb-placeholder" aria-hidden="true">UPA</div>`;
 
         const sectionTags = [];
@@ -1126,7 +1148,9 @@
     extractDetailMessage,
     validateUploadFile,
     escapeHtml,
+    normalizeUploadUrl,
     safeUrl,
+    replaceBrokenThumbWithPlaceholder,
     isImageUrl,
     isVideoUrl,
     mediaTypeForUrl,
