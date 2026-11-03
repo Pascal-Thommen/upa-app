@@ -7,6 +7,7 @@ logger = logging.getLogger("upa.config")
 
 DEFAULT_GOOGLE_CLIENT_ID = "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com"
 DEFAULT_ALLOWED_EMAIL_DOMAIN = "upa.edu.py"
+DEFAULT_JWT_SECRET = "upa_super_secure_jwt_secret_dev_2026"
 
 
 class Settings(BaseSettings):
@@ -27,7 +28,7 @@ class Settings(BaseSettings):
     GOOGLE_SERVICE_ACCOUNT_FILE: str = "./secrets/service-account.json"
     GOOGLE_ADMIN_DELEGATED_USER: str = "soporte.ti@upa.edu.py"
 
-    JWT_SECRET: str = "upa_super_secure_jwt_secret_dev_2026"
+    JWT_SECRET: str = DEFAULT_JWT_SECRET
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
 
@@ -96,6 +97,20 @@ class Settings(BaseSettings):
             and self.allowed_email_domain_configured
         )
 
+    @property
+    def jwt_secret_is_default(self) -> bool:
+        """True si JWT_SECRET esta vacio o utiliza el valor por defecto de desarrollo."""
+        secret = (self.JWT_SECRET or "").strip()
+        return not secret or secret == DEFAULT_JWT_SECRET
+
+    def model_post_init(self, __context: Any) -> None:
+        if (self.APP_ENV or "").strip().lower() in ("production", "prod") and self.jwt_secret_is_default:
+            logger.warning(
+                "Seguridad JWT: APP_ENV=%s esta utilizando el JWT_SECRET por defecto de desarrollo. "
+                "Defina un JWT_SECRET unico y seguro en el entorno de produccion.",
+                self.APP_ENV,
+            )
+
     def oauth_config_summary(self) -> dict[str, Any]:
         """Resumen del estado de carga de credenciales OAuth para el logging de arranque."""
         return {
@@ -134,6 +149,18 @@ def log_oauth_config_status(target: Settings | None = None) -> None:
         "dominios no institucionales.",
         ", ".join(faltantes) or "credenciales no determinadas",
     )
+
+
+def log_jwt_secret_status(target: Settings | None = None) -> None:
+    """Advierte en el arranque si en entorno de produccion se utiliza el JWT_SECRET por defecto."""
+    config = target or settings
+    env_name = (config.APP_ENV or "").strip().lower()
+    if env_name in ("production", "prod") and config.jwt_secret_is_default:
+        logger.warning(
+            "Seguridad JWT: APP_ENV=%s esta utilizando el JWT_SECRET por defecto de desarrollo. "
+            "Defina un JWT_SECRET unico y seguro en el entorno de produccion.",
+            config.APP_ENV,
+        )
 
 
 settings = Settings()

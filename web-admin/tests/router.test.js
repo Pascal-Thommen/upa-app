@@ -670,8 +670,14 @@ test("modulo ia: index.html renombra reiter a IA, consolida 1-Klick-Save, precar
   assert.ok(indexHtml.includes('id="ai-input-system-prompt-instagram"'));
   assert.ok(indexHtml.includes('id="btn-ai-restore-defaults"'));
   assert.ok(indexHtml.includes('id="btn-ai-save-test"'));
-  assert.ok(indexHtml.includes("Standard wiederherstellen"));
-  assert.ok(indexHtml.includes("Konfiguration speichern &amp; Verbindung testen"));
+  assert.ok(indexHtml.includes('title="Restaurar valores por defecto"'));
+  assert.ok(indexHtml.includes('title="Guardar configuración y probar conexión"'));
+  assert.ok(!indexHtml.includes("Standard wiederherstellen"));
+  assert.ok(!indexHtml.includes("Konfiguration speichern"));
+  assert.ok(!indexHtml.includes("Token manual (desarrollo)"));
+  assert.ok(!indexHtml.includes('id="form-login"'));
+  assert.ok(!indexHtml.includes('id="input-token"'));
+  assert.ok(!indexHtml.includes('id="input-classroom-token"'));
   assert.ok(indexHtml.includes("Guardar configuración y probar conexión"));
   assert.ok(indexHtml.includes("https://aistudio.google.com/app/apikey"));
   assert.ok(indexHtml.includes("Create API key"));
@@ -743,4 +749,20 @@ test("modulo ia: index.html renombra reiter a IA, consolida 1-Klick-Save, precar
   keyInput.value = "AIza********1234";
   form.dispatchEvent({ type: "submit" });
   assert.ok(keyErr.textContent.includes("al menos 10 caracteres"));
+});
+
+test("grupos widget: visibilidad de #tile-mailgroups depende de rol admin o permisos grupos/apis sin hardcodear correo", async () => {
+  const env = createTestEnvironment("/dashboard/apis", "?token=jwt-coord-grupos");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const tile = env.document.getElementById("tile-mailgroups");
+  // En el mock inicial google_groups y groups (sin ALL) están vacíos -> oculto
+  assert.ok(tile.classList.contains("hidden"));
+
+  // Editor con permiso 'grupos' y otro correo distinto de pascal.thommen ve el widget cuando tiene grupos
+  env.router.applyUserPermissions({
+    email: "coordinacion.grupos@upa.edu.py",
+    role: "editor",
+    permissions: ["publicaciones", "grupos"],
+  });
 });

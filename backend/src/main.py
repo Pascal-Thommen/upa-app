@@ -27,7 +27,7 @@ from .api.publications import router as publications_router
 from .api.roles import router as roles_router
 from .api.users import router as users_router
 from .auth import get_current_user_optional
-from .config import settings
+from .config import log_jwt_secret_status, settings
 from .database import engine, get_db, run_alembic_migrations
 from .models import Post, User
 from .schemas.classroom import ClassroomDeadlineResponse
@@ -44,6 +44,7 @@ from .services.scheduler import start_feed_sync_scheduler, stop_feed_sync_schedu
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log_jwt_secret_status()
     try:
         run_alembic_migrations(engine)
         seed_database()

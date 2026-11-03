@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-and-lint:
     name: Backend Tests & Linting
@@ -20,20 +24,30 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Set up Node.js (pruebas del Cockpit de Redaccion)
+      - name: Set up Node.js (pruebas de PWA y Cockpit de Redaccion)
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
+      - name: Install Frontend Test Dependencies
+        run: |
+          npm --prefix web-app/tests ci
+          npm --prefix web-admin/tests ci
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt
+          pip install "ruff>=0.8,<1" -r backend/requirements.txt
+
+      - name: Run Ruff Linter & Zero-Mock Audit
+        run: |
+          ruff check .
+          python scripts/audit_zero_mock.py
 
       - name: Run Pytest
         run: |
           cd backend
-          pytest tests/
+          PYTHONPATH=. pytest -v tests/
 
   docker-build-and-verify:
     name: Docker Build & Verification
@@ -45,7 +59,8 @@ jobs:
 
       - name: Validate Docker Compose Configuration
         run: |
-          docker compose config
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.beta.yml config -q
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

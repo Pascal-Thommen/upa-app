@@ -5,7 +5,9 @@ from pathlib import Path
 from src.config import (
     DEFAULT_ALLOWED_EMAIL_DOMAIN,
     DEFAULT_GOOGLE_CLIENT_ID,
+    DEFAULT_JWT_SECRET,
     Settings,
+    log_jwt_secret_status,
     log_oauth_config_status,
 )
 
@@ -111,6 +113,12 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     assert "/home/pasc/.config/upa-app/.env" in compose_text
     assert "./backend/.env" in compose_text
     assert "/home/pasc/.config/upa-app/secrets:/app/secrets:ro" in compose_text
+    assert '"127.0.0.1:5432:5432"' in compose_text
+    assert '"5432:5432"' not in compose_text
+
+    beta_compose_text = (repo_root / "docker-compose.beta.yml").read_text(encoding="utf-8")
+    assert '"127.0.0.1:5433:5432"' in beta_compose_text
+    assert '"5433:5432"' not in beta_compose_text
 
     nginx_text = (repo_root / "web-admin" / "nginx.conf").read_text(encoding="utf-8")
     assert "public, max-age=86400" in nginx_text
@@ -120,6 +128,32 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     assert "try_files $uri $uri/ /index.html;" in nginx_text
     assert "proxy_set_header Host $http_host;" in nginx_text
     assert "proxy_set_header Host $host;" not in nginx_text
+    assert "map $http_x_forwarded_proto $forwarded_proto" in nginx_text
+    assert "proxy_set_header X-Forwarded-Proto $forwarded_proto;" in nginx_text
+    assert "proxy_set_header X-Forwarded-Proto https;" not in nginx_text
+
+
+def test_jwt_secret_validation_warns_in_production_when_default(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="upa.config"):
+        prod_default = Settings(_env_file=None, APP_ENV="production", JWT_SECRET=DEFAULT_JWT_SECRET)
+    assert prod_default.jwt_secret_is_default is True
+    assert "JWT_SECRET" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="upa.config"):
+        prod_custom = Settings(_env_file=None, APP_ENV="production", JWT_SECRET="secreto_produccion_unico_2026_seguro")
+        log_jwt_secret_status(prod_custom)
+    assert prod_custom.jwt_secret_is_default is False
+    assert "JWT_SECRET" not in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="upa.config"):
+        dev_default = Settings(_env_file=None, APP_ENV="development", JWT_SECRET=DEFAULT_JWT_SECRET)
+        log_jwt_secret_status(dev_default)
+    assert dev_default.jwt_secret_is_default is True
+    assert "JWT_SECRET" not in caplog.text
 
 
 def test_index_html_asset_version_busts_cache_and_roles_header_matches_permissions():

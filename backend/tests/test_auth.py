@@ -86,6 +86,8 @@ def test_get_me_shows_mailgroups_exclusively_for_pascal():
 
 
 def test_users_me_and_auth_me_enforce_empty_groups_for_non_admins():
+    from src.models import UserRole
+
     db = TestingSessionLocal()
     editor = User(
         id=40,
@@ -95,7 +97,27 @@ def test_users_me_and_auth_me_enforce_empty_groups_for_non_admins():
         groups=["ALL", "TIE", "Estudiantes TIE 2025", "Docentes"],
         google_groups=[{"id": "g1", "name": "Estudiantes TIE 2025", "email": "tie2025@upa.edu.py", "description": ""}],
     )
-    db.add(editor)
+    grupos_mgr = User(
+        id=41,
+        email="coordinacion.grupos@upa.edu.py",
+        full_name="Coordinacion Grupos",
+        role="editor",
+        groups=["ALL", "TIE", "Estudiantes TIE 2025"],
+        google_groups=[{"id": "g1", "name": "Estudiantes TIE 2025", "email": "tie2025@upa.edu.py", "description": ""}],
+    )
+    db.add_all(
+        [
+            editor,
+            grupos_mgr,
+            UserRole(
+                id=10,
+                email="coordinacion.grupos@upa.edu.py",
+                name="Coordinacion Grupos",
+                permissions=["publicaciones", "grupos"],
+                is_primary=False,
+            ),
+        ]
+    )
     db.commit()
     db.close()
 
@@ -110,6 +132,17 @@ def test_users_me_and_auth_me_enforce_empty_groups_for_non_admins():
         payload = resp.json()
         assert payload["groups"] == []
         assert payload["google_groups"] == []
+
+    # Cuentas con permiso 'grupos' o rol 'admin' (sin depender de un correo hardcodeado) ven sus grupos sincronizados
+    mgr_token = create_access_token(
+        data={"sub": "41", "email": "coordinacion.grupos@upa.edu.py", "role": "editor"}
+    )
+    mgr_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {mgr_token}"})
+    assert mgr_resp.status_code == 200
+    mgr_payload = mgr_resp.json()
+    assert mgr_payload["groups"] == ["Estudiantes TIE 2025"]
+    assert len(mgr_payload["google_groups"]) == 1
+    assert mgr_payload["google_groups"][0]["email"] == "tie2025@upa.edu.py"
 
 
 def test_create_publication_forbidden_for_normal_student():

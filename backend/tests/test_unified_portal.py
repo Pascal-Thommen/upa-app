@@ -599,6 +599,11 @@ def test_web_admin_ux_invariants_clean_labels_and_no_legacy_noise():
         "Comunidad y Distribución",
         "btn-dev-admin-login",
         "Acceso rápido",
+        "Token manual (desarrollo)",
+        "form-login",
+        "input-token",
+        "Standard wiederherstellen",
+        "Konfiguration speichern",
     ):
         assert forbidden_text not in index_html
         assert forbidden_text not in app_js

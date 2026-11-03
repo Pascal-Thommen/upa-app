@@ -16,9 +16,6 @@ const DOM_ELEMENTS = {
   viewLogin: document.getElementById("view-login"),
   viewRestricted: document.getElementById("view-restricted"),
   viewDashboard: document.getElementById("view-dashboard"),
-  formLogin: document.getElementById("form-login"),
-  inputToken: document.getElementById("input-token"),
-  inputClassroomToken: document.getElementById("input-classroom-token"),
   loginAlert: document.getElementById("login-alert"),
   authActions: document.getElementById("auth-actions"),
   userMenuWrapper: document.getElementById("user-menu-wrapper"),
@@ -359,8 +356,12 @@ function renderUserProfile(user) {
   }
   setApiStatusBadge("api-status-classroom", hasClassroom ? "active" : "unconfigured");
 
-  // Regla de privacidad para el mosaico personal de grupos de Google Workspace
-  const isExclusiveUser = String(user.email || "").toLowerCase() === "pascal.thommen@upa.edu.py";
+  // Regla de visibilidad para el mosaico de grupos de Google Workspace (rol admin o permisos grupos/apis)
+  const userPerms = normalizeUserPermissions(user);
+  const canViewGoogleGroups =
+    String(user.role || "").toLowerCase() === "admin" ||
+    userPerms.includes("grupos") ||
+    userPerms.includes("apis");
   const realGoogleGroups =
     Array.isArray(user.google_groups) && user.google_groups.length > 0
       ? user.google_groups
@@ -369,7 +370,7 @@ function renderUserProfile(user) {
         : [];
 
   if (DOM_ELEMENTS.tileMailgroups) {
-    if (isExclusiveUser && realGoogleGroups.length > 0) {
+    if (canViewGoogleGroups && realGoogleGroups.length > 0) {
       DOM_ELEMENTS.tileMailgroups.classList.remove("hidden");
       if (DOM_ELEMENTS.groupsCount) DOM_ELEMENTS.groupsCount.textContent = `${realGoogleGroups.length}`;
       if (DOM_ELEMENTS.userGroupsContainer) {
@@ -835,66 +836,6 @@ window.handleGoogleCredentialResponse = async function (response) {
     showLoginAlert("Error de conexión durante el inicio de sesión.", "error");
   }
 };
-
-async function handleLoginSubmit(event) {
-  event.preventDefault();
-  const token = DOM_ELEMENTS.inputToken ? DOM_ELEMENTS.inputToken.value.trim() : "";
-  const classroomToken = DOM_ELEMENTS.inputClassroomToken ? DOM_ELEMENTS.inputClassroomToken.value.trim() : "";
-
-  if (!token) {
-    showLoginAlert("Ingrese un token de Google o JWT de sesión.", "error");
-    return;
-  }
-
-  showLoginAlert("Validando acceso...", "info");
-
-  try {
-    const googleLoginResp = await fetch("/api/auth/google", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id_token: token,
-        classroom_token: classroomToken || null,
-      }),
-    });
-
-    if (googleLoginResp.ok) {
-      const authData = await googleLoginResp.json();
-      setStoredToken(authData.access_token);
-      showLoginAlert("Inicio de sesión exitoso.", "success");
-      await refreshDashboard();
-      return;
-    }
-
-    if (googleLoginResp.status === 403) {
-      const err = await googleLoginResp.json().catch(() => ({}));
-      showLoginAlert(err.detail || "Acceso restringido a correos @upa.edu.py.", "error");
-      return;
-    }
-
-    setStoredToken(token);
-    const testMeResp = await apiRequest("/api/auth/me");
-    if (testMeResp.ok) {
-      if (classroomToken) {
-        await apiRequest("/api/auth/classroom-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ classroom_token: classroomToken }),
-        });
-      }
-      showLoginAlert("Sesión validada correctamente.", "success");
-      await refreshDashboard();
-      return;
-    }
-
-    setStoredToken(null);
-    showLoginAlert("Token inválido o expirado.", "error");
-  } catch (error) {
-    console.error("Error durante el inicio de sesión:", error);
-    setStoredToken(null);
-    showLoginAlert("Error de conexión con el servidor.", "error");
-  }
-}
 
 async function handleClassroomTokenSubmit(event) {
   event.preventDefault();
@@ -2465,7 +2406,6 @@ function init() {
     });
   }
 
-  if (DOM_ELEMENTS.formLogin) DOM_ELEMENTS.formLogin.addEventListener("submit", handleLoginSubmit);
   if (DOM_ELEMENTS.btnLogout) DOM_ELEMENTS.btnLogout.addEventListener("click", logout);
 
   if (DOM_ELEMENTS.userMenuBtn && DOM_ELEMENTS.userProfileDropdown) {

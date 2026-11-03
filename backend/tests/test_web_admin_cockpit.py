@@ -75,7 +75,23 @@ def _parse_tap_summary(output: str) -> dict[str, int]:
     return summary
 
 
+def _ensure_node_modules(test_dir: Path, required_packages: tuple[str, ...] = ("jsdom",)) -> None:
+    node_modules = test_dir / "node_modules"
+    if all((node_modules / pkg).is_dir() for pkg in required_packages):
+        return
+    npm = shutil.which("npm")
+    assert npm is not None, f"npm es necesario para instalar dependencias de prueba en {test_dir}"
+    cmd = "ci" if (test_dir / "package-lock.json").is_file() else "install"
+    subprocess.run(
+        [npm, "--prefix", str(test_dir), cmd, "--no-audit", "--no-fund"],
+        cwd=REPO_ROOT,
+        check=True,
+        timeout=180,
+    )
+
+
 def _run_node_tests(node: str, files: list[Path], env: dict[str, str]) -> dict[str, int]:
+    _ensure_node_modules(WEB_TESTS)
     result = subprocess.run(
         [node, "--test", "--test-reporter=tap", *[str(f) for f in files]],
         cwd=REPO_ROOT,
