@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+!backend/.env.example
 *.env
 
 # API Keys, Tokens and Credentials
@@ -94,3 +95,13 @@ out/
 .DS_Store
 Thumbs.db
 uploads/
+
+# ==========================================
+# BINARY DOCUMENTS (DOCS DIRECTORY)
+# ==========================================
+docs/*.pdf
+docs/*.docx
+docs/*.doc
+docs/*.odt
+docs/*.pptx
+docs/*.xlsx
