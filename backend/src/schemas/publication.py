@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .event import EventRegistrationEntry
 from .post import (
     ASUNCION_TZ,
+    effective_permalink,
     effective_published_at,
     effective_reminders,
     ensure_utc_datetime,
@@ -443,7 +444,7 @@ class PublicationResponse(BaseModel):
             media_type=(getattr(post, "media_type", None) or "").strip(),
             media_url=media,
             image_url=img,
-            permalink=(getattr(post, "permalink", None) or "").strip(),
+            permalink=effective_permalink(post),
             **extra_detail_fields(post),
             views_count=views_count,
             attending_count=attending_count,

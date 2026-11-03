@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .classroom import ClassroomDeadlineResponse
 from .event import EventResponse
 from .post import (
+    effective_permalink,
     effective_published_at,
     ensure_utc_datetime,
     extra_detail_fields,
@@ -147,7 +148,7 @@ class FeedItemResponse(BaseModel):
             media_type=(getattr(post, "media_type", None) or "").strip(),
             media_url=media,
             image_url=img,
-            permalink=(getattr(post, "permalink", None) or "").strip(),
+            permalink=effective_permalink(post),
             **extra_detail_fields(post),
             is_registered=is_registered,
             registered_count=0,

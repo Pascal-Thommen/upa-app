@@ -489,7 +489,8 @@
         const remainder = entityBreak === -1 ? "" : rawUrl.slice(entityBreak);
         const { url, suffix } = trimTrailingUrlPunctuation(candidate);
         if (!url) return match;
-        const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+        const rawHref = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+        const href = /instagram\.com/i.test(rawHref) ? normalizeInstagramUrl(rawHref) || rawHref : rawHref;
         return `<a class="rich-link" href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${suffix}${remainder}`;
       }
       if (hashtag) {
@@ -506,6 +507,45 @@
     if (!url) return "";
     if (/^https?:\/\//i.test(url)) return url;
     if (url.startsWith("/") && !url.startsWith("//")) return url;
+    return "";
+  }
+
+  const DEFAULT_INSTAGRAM_PROFILE_URL = "https://www.instagram.com/upalemana/";
+  const IG_SHORTCODE_RE = /^[A-Za-z0-9_-]{5,32}$/;
+  const IG_RESERVED_PREFIX_RE = /^(?:insta_|ig_|sk_)/i;
+  const IG_POST_URL_RE =
+    /^(https?:\/\/(?:www\.|m\.)?instagram\.com)\/(?:(?!p\/|reel\/|reels\/|tv\/|stories\/|explore\/|accounts\/|about\/|developer\/|legal\/|direct\/)[^/?#]+\/)?(p|reel|reels|tv)\/([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/i;
+
+  function isLikelyInstagramShortcode(code) {
+    const clean = String(code || "").trim();
+    if (!clean || /^\d+$/.test(clean) || IG_RESERVED_PREFIX_RE.test(clean)) return false;
+    return IG_SHORTCODE_RE.test(clean);
+  }
+
+  function normalizeInstagramUrl(value, options) {
+    const opts = options || {};
+    let raw = String(value || "").trim();
+    if (/^(?:www\.|m\.)?instagram\.com\//i.test(raw)) {
+      raw = `https://${raw}`;
+    }
+    const url = safeUrl(raw);
+    if (url) {
+      const m = IG_POST_URL_RE.exec(url);
+      if (m) {
+        const host = m[1].replace(/^https?:\/\/m\.instagram\.com$/i, "https://www.instagram.com");
+        const kind = m[2].toLowerCase() === "reels" ? "reel" : m[2].toLowerCase();
+        return `${host}/${kind}/${m[3]}/`;
+      }
+      if (!opts.fallbackIfGeneric || !/^https?:\/\/(?:www\.|m\.)?instagram\.com\/upalemana\/?$/i.test(url)) {
+        return url;
+      }
+    }
+    if (opts.instagramId && isLikelyInstagramShortcode(opts.instagramId)) {
+      const kind = /video|reel/i.test(String(opts.mediaType || "")) ? "reel" : "p";
+      return `https://www.instagram.com/${kind}/${String(opts.instagramId).trim()}/`;
+    }
+    if (url) return url;
+    if (opts.isInstagram) return DEFAULT_INSTAGRAM_PROFILE_URL;
     return "";
   }
 
@@ -529,15 +569,36 @@
   function videoPosterUrl(post) {
     if (!post) return DEFAULT_VIDEO_POSTER;
     const imgCandidate = safeUrl(post.image_url || post.thumbnail_url);
-    if (imgCandidate && !isVideoUrl(imgCandidate)) return imgCandidate;
     const mediaCandidate = safeUrl(post.media_url);
+    if (imgCandidate && !isVideoUrl(imgCandidate)) {
+      if (
+        /\.fbcdn\.net\//i.test(imgCandidate) &&
+        mediaCandidate &&
+        !isVideoUrl(mediaCandidate) &&
+        !/\.fbcdn\.net\//i.test(mediaCandidate)
+      ) {
+        return mediaCandidate;
+      }
+      return imgCandidate;
+    }
     if (mediaCandidate && !isVideoUrl(mediaCandidate)) return mediaCandidate;
     return DEFAULT_VIDEO_POSTER;
   }
 
   function videoExternalUrl(post) {
     if (!post) return "";
-    return safeUrl(post.permalink || post.link_url);
+    const raw = post.permalink || post.link_url || "";
+    const isIg =
+      String(post.post_type || "").toUpperCase() === "INSTAGRAM" || /instagram\.com/i.test(String(raw));
+    if (isIg) {
+      return normalizeInstagramUrl(raw, {
+        isInstagram: String(post.post_type || "").toUpperCase() === "INSTAGRAM",
+        instagramId: post.instagram_id,
+        mediaType: post.media_type,
+        fallbackIfGeneric: true,
+      });
+    }
+    return safeUrl(raw);
   }
 
   function postKind(post) {
@@ -577,16 +638,33 @@
 
   function resolveDetailLinks(detail) {
     const d = detail || {};
-    const linkUrl = safeUrl(d.linkUrl);
-    const source = safeUrl(d.source);
-    const norm = (u) => u.replace(/\/+$/, "").toLowerCase();
     const isInstaType = d.kind === "instagram" || String(d.postType || "").toUpperCase() === "INSTAGRAM";
-    const isInstaLink = (u, lbl) => /instagram\.com/i.test(u) || lbl === "Ver en Instagram";
+    const isInstaLink = (u, lbl) => /instagram\.com/i.test(String(u || "")) || lbl === "Ver en Instagram";
+    const igMeta = {
+      isInstagram: isInstaType,
+      instagramId: d.instagramId || (d.media && d.media.instagram_id) || "",
+      mediaType: d.mediaType || (d.media && d.media.media_type) || "",
+      fallbackIfGeneric: true,
+    };
+    const rawLink = safeUrl(d.linkUrl);
+    const rawSource = safeUrl(d.source);
+    const linkUrl =
+      isInstaType || isInstaLink(rawLink || d.linkUrl, d.linkLabel)
+        ? normalizeInstagramUrl(d.linkUrl, igMeta)
+        : rawLink;
+    const source =
+      isInstaType || isInstaLink(rawSource || d.source, d.sourceLabel)
+        ? normalizeInstagramUrl(d.source, igMeta)
+        : rawSource;
+    const norm = (u) => u.replace(/\/+$/, "").toLowerCase();
     const sameTarget = Boolean(linkUrl && source && norm(linkUrl) === norm(source));
     const bothInsta = Boolean(linkUrl && source && isInstaLink(linkUrl, d.linkLabel) && isInstaLink(source, d.sourceLabel));
 
     if (isInstaType || sameTarget || bothInsta) {
-      const href = source || linkUrl;
+      const href =
+        source ||
+        linkUrl ||
+        (isInstaType ? normalizeInstagramUrl("", igMeta) : "");
       if (!href) return [];
       const isInstagram = isInstaType || isInstaLink(href, d.sourceLabel) || isInstaLink(href, d.linkLabel);
       return [
@@ -1016,6 +1094,9 @@
     escapeHtml,
     linkifyText,
     safeUrl,
+    DEFAULT_INSTAGRAM_PROFILE_URL,
+    isLikelyInstagramShortcode,
+    normalizeInstagramUrl,
     DEFAULT_VIDEO_POSTER,
     isVideoUrl,
     hasPlayableVideoStream,

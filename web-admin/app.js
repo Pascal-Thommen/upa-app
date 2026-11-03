@@ -626,12 +626,26 @@ async function loadCampusFeed() {
       .map((post) => {
         const title = post.title || post.summary || "Publicación UPA";
         const dateStr = post.published_at ? new Date(post.published_at).toLocaleDateString("es-PY") : "";
-        const linkUrl = post.link_url || post.permalink || "";
-        const linkLabel = post.link_label || (post.post_type === "INSTAGRAM" ? "Ver en Instagram" : "Abrir enlace");
         const isIg = post.post_type === "INSTAGRAM";
+        const rawLink = post.link_url || post.permalink || "";
+        const linkUrl =
+          isIg && window.EditorialCore && typeof window.EditorialCore.normalizeInstagramUrl === "function"
+            ? window.EditorialCore.normalizeInstagramUrl(rawLink, {
+                isInstagram: true,
+                instagramId: post.instagram_id,
+                mediaType: post.media_type,
+              })
+            : rawLink;
+        const linkLabel = post.link_label || (isIg ? "Ver en Instagram" : "Abrir enlace");
+        const imgSrc =
+          post.image_url && !/\.fbcdn\.net\//i.test(post.image_url)
+            ? post.image_url
+            : post.media_url && !/\.(mp4|webm|mov)(\?|#|$)/i.test(post.media_url)
+              ? post.media_url
+              : post.image_url || "";
 
-        const imageHtml = post.image_url
-          ? `<img src="${escapeHtml(post.image_url)}" alt="" class="feed-card-img" loading="lazy">`
+        const imageHtml = imgSrc
+          ? `<img src="${escapeHtml(imgSrc)}" alt="" class="feed-card-img" loading="lazy">`
           : `<div class="feed-card-placeholder">UPA Campus</div>`;
 
         return `

@@ -26,6 +26,7 @@ from ..schemas.post import (
     effective_reminders,
     ensure_utc_datetime,
     normalize_category,
+    normalize_instagram_url,
     normalize_target_groups,
     user_can_access_post,
 )
@@ -287,11 +288,23 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
     clean_link_url = normalize_upload_url(payload.link_url) or None if payload.link_url and payload.link_url.strip() else None
     clean_link_label = payload.link_label.strip() if payload.link_label and payload.link_label.strip() else None
     if final_type == "INSTAGRAM":
-        insta_permalink = (post.permalink or payload.permalink or "").strip()
+        raw_insta_perm = (post.permalink or payload.permalink or "").strip()
+        insta_permalink = normalize_instagram_url(
+            raw_insta_perm,
+            instagram_id=post.instagram_id,
+            media_type=post.media_type or payload.media_type,
+            is_instagram=True,
+            fallback_if_generic=True,
+        )
         if insta_permalink:
+            post.permalink = insta_permalink
             clean_link_url = insta_permalink
         if clean_link_url and not clean_link_label:
             clean_link_label = "Ver en Instagram"
+    elif clean_link_url and "instagram.com" in clean_link_url.lower():
+        clean_link_url = (
+            normalize_instagram_url(clean_link_url, media_type=payload.media_type or post.media_type) or clean_link_url
+        )
 
     post.title = clean_title
     post.post_type = final_type
@@ -325,7 +338,10 @@ def _validate_and_apply(post: Post, payload: PublicationWrite, *, is_create: boo
             post.image_url = None
         post.media_type = _infer_media_type(post.media_url, payload.media_type)
         if payload.permalink is not None:
-            post.permalink = payload.permalink.strip() or None
+            raw_perm = payload.permalink.strip()
+            if raw_perm and "instagram.com" in raw_perm.lower():
+                raw_perm = normalize_instagram_url(raw_perm, media_type=post.media_type) or raw_perm
+            post.permalink = raw_perm or None
 
     post.link_url = clean_link_url
     post.link_label = clean_link_label

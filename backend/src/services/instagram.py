@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import DEFAULT_VIDEO_POSTER_FALLBACK, Post, is_video_stream_url
-from ..schemas.post import ASUNCION_TZ
+from ..schemas.post import ASUNCION_TZ, DEFAULT_INSTAGRAM_PROFILE_URL, normalize_instagram_url
 from ..schemas.publication import clean_group_codes, extract_instagram_teaser
 from .ai_extractor import extract_event_from_instagram_post, to_utc_datetime
 
@@ -26,6 +26,13 @@ class NormalizedSocialPost:
     image_url: str = ""
 
     def __post_init__(self) -> None:
+        self.permalink = normalize_instagram_url(
+            self.permalink,
+            instagram_id=self.instagram_id,
+            media_type=self.media_type,
+            is_instagram=True,
+            fallback_if_generic=True,
+        )
         if not self.image_url:
             if self.media_url and not is_video_stream_url(self.media_url):
                 self.image_url = self.media_url
@@ -40,7 +47,7 @@ class InstagramSyncService:
     y transacciones atomicas sobre PostgreSQL.
     """
 
-    DEFAULT_PERMALINK_FALLBACK = "https://www.instagram.com/upalemana"
+    DEFAULT_PERMALINK_FALLBACK = DEFAULT_INSTAGRAM_PROFILE_URL
     DEFAULT_VIDEO_THUMBNAIL_FALLBACK = DEFAULT_VIDEO_POSTER_FALLBACK
 
     def extract_title_from_caption(self, caption: str) -> str:
@@ -73,7 +80,13 @@ class InstagramSyncService:
             )
         else:
             image_url = raw_thumb_url or media_url
-        permalink = item.get("permalink") or self.DEFAULT_PERMALINK_FALLBACK
+        permalink = normalize_instagram_url(
+            item.get("permalink") or "",
+            instagram_id=media_id,
+            media_type=media_type,
+            is_instagram=True,
+            fallback_if_generic=True,
+        )
 
         timestamp = None
         raw_ts = item.get("timestamp")
@@ -107,14 +120,15 @@ class InstagramSyncService:
         media_type = item.get("pic_type") or item.get("media_type") or ("VIDEO" if item.get("video_url") else "IMAGE")
         primary_pic = (
             item.get("image_url")
-            or item.get("post_link")
             or item.get("full_pic_src")
             or item.get("pic_src")
             or item.get("picture")
+            or item.get("post_link")
             or ""
         )
         thumb_url = (
             item.get("thumbnail_url")
+            or item.get("image_url")
             or item.get("thumbnail")
             or primary_pic
             or ""
@@ -134,11 +148,18 @@ class InstagramSyncService:
             )
         else:
             image_url = thumb_url or media_url
-        permalink = (
+        raw_permalink = (
             item.get("link")
             or item.get("permalink")
             or item.get("post_url")
-            or (f"https://www.instagram.com/p/{media_id}/" if media_id else self.DEFAULT_PERMALINK_FALLBACK)
+            or ""
+        )
+        permalink = normalize_instagram_url(
+            raw_permalink,
+            instagram_id=media_id,
+            media_type=media_type,
+            is_instagram=True,
+            fallback_if_generic=True,
         )
 
         timestamp = None
@@ -269,7 +290,11 @@ class InstagramSyncService:
                     existing.media_url = item.media_url
                     existing.image_url = item.image_url
                     existing.permalink = item.permalink
-                    if not existing.link_url:
+                    if (
+                        not existing.is_edited
+                        or not existing.link_url
+                        or "instagram.com" in (existing.link_url or "").lower()
+                    ):
                         existing.link_url = item.permalink
                     if not existing.link_label:
                         existing.link_label = "Ver en Instagram"

@@ -138,6 +138,21 @@ def test_parse_sociablekit_item():
     assert parsed.media_url == "https://sociablekit.com/images/robotica.jpg"
     assert parsed.permalink == "https://instagram.com/p/sk999/"
 
+    # Normalizacion de URLs con nombre de usuario intermedio (/upalemana/p/... y /upalemana/reel/...) y prioridad de image_url
+    raw_upalemana = {
+        "id": "DfC-9wJFV6u",
+        "pic_text_raw": "Charla sobre Storytelling en la UPA",
+        "pic_type": "carousel",
+        "image_url": "https://data-image.sociablekit.com/sources/instagram-feed/upalemana/DfC-9wJFV6u-thumbnail.webp",
+        "thumbnail": "https://instagram.fmnl4-1.fna.fbcdn.net/v/t39.30808-6/expired.jpg",
+        "link": "https://www.instagram.com/upalemana/p/DfC-9wJFV6u/",
+        "date_time_posted": "2026-10-29T01:36:35+08:00",
+    }
+    parsed_upa = service.parse_sociablekit_item(raw_upalemana)
+    assert parsed_upa.permalink == "https://www.instagram.com/p/DfC-9wJFV6u/"
+    assert parsed_upa.media_url == "https://data-image.sociablekit.com/sources/instagram-feed/upalemana/DfC-9wJFV6u-thumbnail.webp"
+    assert parsed_upa.image_url == "https://data-image.sociablekit.com/sources/instagram-feed/upalemana/DfC-9wJFV6u-thumbnail.webp"
+
 
 def test_sync_posts_persistence_and_idempotence():
     service = InstagramSyncService()
