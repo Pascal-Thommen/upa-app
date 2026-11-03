@@ -2,7 +2,7 @@
  * Controlador de Publicaciones Unificadas (web-admin).
  *
  * Conecta la vista de lista y el editor modular de `index.html` con el cliente REST real de
- * `editorial-core.js` (`/api/publications`, `/api/media/upload`, `/api/news/sync-instagram`,
+ * `editorial-core.js` (`/api/publications`, `/api/media/upload`,
  * `/api/history/post`). Sin datos simulados: toda lectura y escritura ocurre contra PostgreSQL.
  */
 (function () {
@@ -1247,30 +1247,6 @@
     }
   }
 
-  async function syncInstagram() {
-    const button = $("ed-btn-sync");
-    const statusEl = $("ed-sync-status");
-    setBusy(button, true, "Sincronizando...");
-    if (statusEl) statusEl.textContent = "Consultando Instagram...";
-    try {
-      const result = await getClient().syncInstagram();
-      const summary = Core.describeSyncResult(result);
-      showNotice(summary.type, summary.message);
-      if (statusEl) {
-        statusEl.textContent = `Sincronizado ${new Date().toLocaleTimeString("es-PY", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })}`;
-      }
-      await loadPublications();
-    } catch (error) {
-      if (statusEl) statusEl.textContent = "Error al sincronizar";
-      showNotice("error", Core.describeError(error));
-    } finally {
-      setBusy(button, false);
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // Modos e inicialización
   // ---------------------------------------------------------------------------
@@ -1321,7 +1297,6 @@
     if ($("ed-btn-toggle-participants")) {
       $("ed-btn-toggle-participants").addEventListener("click", toggleParticipants);
     }
-    if ($("ed-btn-sync")) $("ed-btn-sync").addEventListener("click", syncInstagram);
     if ($("ed-pub-autocomplete-ai")) {
       $("ed-pub-autocomplete-ai").addEventListener("click", autocompletePublicationWithAi);
     }
