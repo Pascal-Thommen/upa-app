@@ -101,6 +101,7 @@ uploads/
 # ==========================================
 docs/*.pdf
 docs/*.docx
+!docs/UPA_App_Documentacion_Arquitectura.docx
 docs/*.doc
 docs/*.odt
 docs/*.pptx

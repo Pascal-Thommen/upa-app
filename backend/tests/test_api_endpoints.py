@@ -592,6 +592,7 @@ def test_pwa_and_ai_documentation_integrity():
         repo_root / "AGENTS.md",
         repo_root / "web-app" / "README.md",
         repo_root / "web-admin" / "README.md",
+        repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.md",
         repo_root / "docs" / "PFLICHTENHEFT.md",
         repo_root / "docs" / "FRONTEND_INTEGRATION_GUIDE.md",
         repo_root / "docs" / "api_documentation.md",
@@ -603,8 +604,45 @@ def test_pwa_and_ai_documentation_integrity():
     ]
 
     assert not (repo_root / "docs" / "DATABASE_CLEANUP_AUDIT.md").exists()
-    for ext in ("*.pdf", "*.docx"):
-        assert list((repo_root / "docs").glob(ext)) == []
+    assert list((repo_root / "docs").glob("*.pdf")) == []
+    docx_files = [p.name for p in (repo_root / "docs").glob("*.docx")]
+    assert docx_files == ["UPA_App_Documentacion_Arquitectura.docx"]
+
+    import zipfile
+
+    docx_path = repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.docx"
+    with zipfile.ZipFile(docx_path) as zf:
+        doc_xml = zf.read("word/document.xml").decode("utf-8")
+        media_entries = [name for name in zf.namelist() if name.startswith("word/media/")]
+    assert len(media_entries) >= 2, "Expected embedded architecture and ER diagram images in .docx"
+    for ch_num in range(1, 10):
+        assert f"Capítulo {ch_num}:" in doc_xml
+    for forbidden_native_term in ("Kotlin", "Jetpack Compose", "Android Studio", "MVVM"):
+        assert forbidden_native_term not in doc_xml
+
+    official_md_text = (repo_root / "docs" / "UPA_App_Documentacion_Arquitectura.md").read_text(encoding="utf-8")
+    for ch_num in range(1, 10):
+        assert f"## Capítulo {ch_num}:" in official_md_text
+    for required_doc_term in (
+        "Progressive Web App",
+        "Single Source of Truth",
+        "menos de 1.000 estudiantes",
+        "SociableKIT",
+        "Google Gemini Flash",
+        "dbdiagram.io",
+        "users",
+        "posts",
+        "event_registrations",
+        "post_views",
+        "admin_audit_logs",
+        "device_tokens",
+        "audience_groups",
+        "user_roles",
+        "app_settings",
+    ):
+        assert required_doc_term in official_md_text, f"Missing {required_doc_term} in architecture documentation"
+    for forbidden_native_term in ("Kotlin", "Jetpack Compose", "Android Studio", "MVVM"):
+        assert forbidden_native_term not in official_md_text
 
     link_pattern = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
