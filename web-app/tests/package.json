@@ -3,7 +3,7 @@
   "private": true,
   "description": "Pruebas de la PWA Campus UPA (logica, interfaz y servidor real).",
   "scripts": {
-    "test": "node --test campus-core.test.js campus-dom.test.js"
+    "test": "node --test --test-concurrency=1 campus-core.test.js campus-dom.test.js"
   },
   "devDependencies": {
     "jsdom": "26.1.0",

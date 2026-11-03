@@ -14,41 +14,23 @@ import json
 import os
 import re
 import shutil
-import socket
-import subprocess
-import sys
-import time
-import urllib.error
-import urllib.request
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from src.auth import create_access_token
-
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = BACKEND_DIR.parent
-WEB_TESTS = REPO_ROOT / "web-admin" / "tests"
-
-SEED_SCRIPT = """
-from src.database import SessionLocal, engine, run_alembic_migrations
 from src.models import User
 
-run_alembic_migrations(engine)
-db = SessionLocal()
-db.add_all(
-    [
-        User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL", "TIE"]),
-        User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion Marketing", role="editor", groups=["ALL"]),
-        User(id=3, email="ana.gomez@upa.edu.py", full_name="Ana Gomez", role="user", groups=["ALL", "TIE"]),
-        User(id=4, email="luis.benitez@upa.edu.py", full_name="Luis Benitez", role="user", groups=["ALL", "TIE"]),
-        User(id=5, email="dom.estudiante1@upa.edu.py", full_name="Carla Rojas", role="user", groups=["ALL", "TIE"]),
-        User(id=6, email="dom.estudiante2@upa.edu.py", full_name="Diego Vera", role="user", groups=["ALL", "TIE"]),
-    ]
+from tests.conftest import (
+    BACKEND_DIR,
+    REPO_ROOT,
+    free_tcp_port,
+    managed_uvicorn_server,
+    run_managed_command,
+    seed_sqlite_database,
 )
-db.commit()
-db.close()
-"""
+
+WEB_TESTS = REPO_ROOT / "web-admin" / "tests"
 
 
 def _require_node() -> str:
@@ -58,12 +40,6 @@ def _require_node() -> str:
             pytest.fail("Node.js es obligatorio en CI para las pruebas del Cockpit de Redaccion.")
         pytest.skip("Node.js no disponible: pruebas del Cockpit omitidas (solo permitido fuera de CI).")
     return node
-
-
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
 
 
 def _parse_tap_summary(output: str) -> dict[str, int]:
@@ -82,7 +58,7 @@ def _ensure_node_modules(test_dir: Path, required_packages: tuple[str, ...] = ("
     npm = shutil.which("npm")
     assert npm is not None, f"npm es necesario para instalar dependencias de prueba en {test_dir}"
     cmd = "ci" if (test_dir / "package-lock.json").is_file() else "install"
-    subprocess.run(
+    run_managed_command(
         [npm, "--prefix", str(test_dir), cmd, "--no-audit", "--no-fund"],
         cwd=REPO_ROOT,
         check=True,
@@ -92,12 +68,11 @@ def _ensure_node_modules(test_dir: Path, required_packages: tuple[str, ...] = ("
 
 def _run_node_tests(node: str, files: list[Path], env: dict[str, str]) -> dict[str, int]:
     _ensure_node_modules(WEB_TESTS)
-    result = subprocess.run(
-        [node, "--test", "--test-reporter=tap", *[str(f) for f in files]],
+    result = run_managed_command(
+        [node, "--test", "--test-concurrency=1", "--test-reporter=tap", *[str(f) for f in files]],
         cwd=REPO_ROOT,
         env=env,
-        capture_output=True,
-        text=True,
+        check=False,
         timeout=240,
     )
     output = result.stdout + result.stderr
@@ -110,15 +85,26 @@ def _run_node_tests(node: str, files: list[Path], env: dict[str, str]) -> dict[s
 
 
 @pytest.fixture(scope="module")
-def live_backend(tmp_path_factory):
-    """Servidor uvicorn real con SQLite en disco y directorio de subidas real."""
+def live_backend(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest):
+    """Servidor uvicorn real con SQLite en disco, directorio de subidas real y teardown determinista."""
     workdir = tmp_path_factory.mktemp("cockpit-live")
-    port = _free_port()
+    port = free_tcp_port()
     base_url = f"http://127.0.0.1:{port}"
+    db_url = seed_sqlite_database(
+        workdir / "cockpit.db",
+        [
+            User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL", "TIE"]),
+            User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion Marketing", role="editor", groups=["ALL"]),
+            User(id=3, email="ana.gomez@upa.edu.py", full_name="Ana Gomez", role="user", groups=["ALL", "TIE"]),
+            User(id=4, email="luis.benitez@upa.edu.py", full_name="Luis Benitez", role="user", groups=["ALL", "TIE"]),
+            User(id=5, email="dom.estudiante1@upa.edu.py", full_name="Carla Rojas", role="user", groups=["ALL", "TIE"]),
+            User(id=6, email="dom.estudiante2@upa.edu.py", full_name="Diego Vera", role="user", groups=["ALL", "TIE"]),
+        ],
+    )
     env = {
         **os.environ,
         "PYTHONPATH": str(BACKEND_DIR),
-        "DATABASE_URL": f"sqlite:///{workdir / 'cockpit.db'}",
+        "DATABASE_URL": db_url,
         "UPLOAD_DIR": str(workdir / "uploads"),
         "PUBLIC_BASE_URL": base_url,
         "FEED_SYNC_ENABLED": "false",
@@ -127,38 +113,9 @@ def live_backend(tmp_path_factory):
         "GOOGLE_SERVICE_ACCOUNT_FILE": str(workdir / "no-service-account.json"),
         "FCM_SERVICE_ACCOUNT_FILE": str(workdir / "no-fcm.json"),
     }
-    subprocess.run([sys.executable, "-c", SEED_SCRIPT], cwd=BACKEND_DIR, env=env, check=True, timeout=60)
 
-    log_path = workdir / "uvicorn.log"
-    with open(log_path, "wb") as log:
-        server = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", str(port)],
-            cwd=BACKEND_DIR,
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-        )
-        try:
-            deadline = time.time() + 45
-            while True:
-                if server.poll() is not None:
-                    pytest.fail(f"uvicorn termino prematuramente:\n{log_path.read_text()[-3000:]}")
-                try:
-                    with urllib.request.urlopen(f"{base_url}/health", timeout=2) as response:
-                        if response.status == 200:
-                            break
-                except (urllib.error.URLError, ConnectionError, TimeoutError):
-                    pass
-                if time.time() > deadline:
-                    pytest.fail(f"uvicorn no respondio en 45 s:\n{log_path.read_text()[-3000:]}")
-                time.sleep(0.3)
-            yield {"base_url": base_url, "env": env}
-        finally:
-            server.terminate()
-            try:
-                server.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                server.kill()
+    with managed_uvicorn_server(workdir, env, port, request=request):
+        yield {"base_url": base_url, "env": env}
 
 
 def test_cockpit_core_unit_tests_pass():
