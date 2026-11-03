@@ -111,23 +111,29 @@ class AuthResponse(BaseModel):
     user: UserResponse = Field(..., description="Perfil completo del usuario autenticado")
 
 
+def _can_view_google_groups(role: str | None = None, permissions: list[str] | None = None) -> bool:
+    """Determina si la cuenta puede consultar grupos de Google Workspace (rol admin o permisos grupos/apis)."""
+    normalized_role = (role or "").strip().lower()
+    if normalized_role == "admin":
+        return True
+    perms = {str(p or "").strip().lower() for p in (permissions or [])}
+    return bool(perms & {"grupos", "apis"})
+
+
 def _filter_user_groups_for_privacy(
     email: str,
     groups: list[Any] | None,
     role: str | None = None,
+    permissions: list[str] | None = None,
 ) -> list[str]:
     """
     Aplica la politica estricta de privacidad de grupos:
-    - Los usuarios regulares (rol distinto de admin) reciben invariablemente un arreglo vacio [].
+    - Solo cuentas con rol 'admin' o permisos 'grupos' / 'apis' reciben los grupos sincronizados.
+    - Los usuarios regulares y editores sin esos permisos reciben invariablemente un arreglo vacio [].
     - Nunca se exponen listas internas ni las pseudo-etiquetas redundantes ALL o TIE aislado.
     """
-    normalized_role = (role or "").strip().lower()
-    normalized_email = (email or "").strip().lower()
-    if normalized_role and normalized_role != "admin":
-        return []
-    if not normalized_role and normalized_email != "pascal.thommen@upa.edu.py":
-        return []
-    if normalized_email != "pascal.thommen@upa.edu.py" and normalized_role != "admin":
+    _ = email
+    if not _can_view_google_groups(role=role, permissions=permissions):
         return []
     return sanitize_user_groups(groups)
 
@@ -136,12 +142,11 @@ def _filter_google_groups_for_privacy(
     email: str,
     google_groups: list[Any] | None,
     role: str | None = None,
+    permissions: list[str] | None = None,
 ) -> list[GoogleGroupDetail]:
-    """Garantiza visibilidad exclusiva de Google Groups para administracion autorizada sin valores nulos."""
-    normalized_role = (role or "").strip().lower()
-    if normalized_role and normalized_role != "admin":
-        return []
-    if (email or "").strip().lower() != "pascal.thommen@upa.edu.py":
+    """Garantiza visibilidad exclusiva de Google Groups para cuentas con rol admin o permisos grupos/apis."""
+    _ = email
+    if not _can_view_google_groups(role=role, permissions=permissions):
         return []
     sanitized: list[GoogleGroupDetail] = []
     for g in google_groups or []:
@@ -196,6 +201,7 @@ def _build_user_response(user: User, permissions: list[str] | None = None) -> Us
     clean_email = (user.email or "").strip().lower()
     clean_name = (user.full_name or "").strip() or _derive_full_name(clean_email)
     clean_role = (user.role or "user").strip() or "user"
+    perms = list(permissions or [])
     has_token = bool(
         (user.classroom_token and str(user.classroom_token).strip())
         or (getattr(user, "classroom_refresh_token", None) and str(user.classroom_refresh_token).strip())
@@ -205,10 +211,12 @@ def _build_user_response(user: User, permissions: list[str] | None = None) -> Us
         email=clean_email,
         full_name=clean_name,
         role=clean_role,
-        groups=_filter_user_groups_for_privacy(clean_email, user.groups, role=clean_role),
-        google_groups=_filter_google_groups_for_privacy(clean_email, user.google_groups, role=clean_role),
+        groups=_filter_user_groups_for_privacy(clean_email, user.groups, role=clean_role, permissions=perms),
+        google_groups=_filter_google_groups_for_privacy(
+            clean_email, user.google_groups, role=clean_role, permissions=perms
+        ),
         has_classroom_token=has_token,
-        permissions=list(permissions or []),
+        permissions=perms,
     )
 
 
