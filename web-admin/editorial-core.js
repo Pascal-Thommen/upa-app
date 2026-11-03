@@ -71,7 +71,7 @@
     errNetwork: "No se pudo contactar con el servidor. Verifique la conexión a la red.",
     errUnauthorized: "Su sesión ha expirado. Inicie sesión nuevamente.",
     errForbidden: "No tiene permisos de redacción para esta acción.",
-    errNotFound: "El elemento ya no existe (posiblemente fue eliminado).",
+    errNotFound: "Publicación no encontrada.",
     errServer: "Error interno del servidor. Intente nuevamente más tarde.",
     errUploadTooLarge: "El archivo supera el límite de 10 MB.",
     errUploadType: "Tipo de archivo no permitido. Formatos válidos: JPG, PNG, WEBP, MP4, WEBM y PDF.",

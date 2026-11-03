@@ -926,3 +926,269 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
 
   window.close();
 });
+
+test("DOM Publicaciones Deep Linking y Enrutamiento URL: sincroniza URL, soporta atras/adelante, F5 y maneja IDs invalidos", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const { JSDOM } = require("jsdom");
+
+  const webAdminDir = path.resolve(__dirname, "..");
+  let html = fs.readFileSync(path.join(webAdminDir, "index.html"), "utf8");
+  html = html.replace(/<script\s+src="[^"]*"><\/script>/g, "");
+
+  const mockPosts = [
+    {
+      id: 60,
+      title: "Congreso Internacional UPA",
+      caption: "Inscripciones abiertas",
+      content: "Detalles completos del congreso anual.",
+      post_type: "MANUAL",
+      is_news: true,
+      is_event: true,
+      event_start: "2026-11-25T18:00:00Z",
+      event_end: "2026-11-25T20:00:00Z",
+      location: "Auditorio Principal",
+      has_registration: true,
+      target_groups: ["ALL", "TIE"],
+      is_edited: true,
+      views_count: 12,
+      attending_count: 4,
+      declined_count: 1,
+    },
+    {
+      id: 61,
+      title: "Aviso Biblioteca",
+      caption: "Nuevo horario",
+      content: "Abierto hasta las 21:00.",
+      post_type: "MANUAL",
+      is_news: true,
+      is_event: false,
+      has_registration: false,
+      target_groups: ["ALL"],
+      is_edited: true,
+      views_count: 5,
+      attending_count: 0,
+      declined_count: 0,
+    },
+  ];
+
+  function mountCockpitDom(initialUrl) {
+    const dom = new JSDOM(html, {
+      url: initialUrl,
+      runScripts: "outside-only",
+      pretendToBeVisual: true,
+    });
+    const { window } = dom;
+    const { document } = window;
+
+    window.AbortController = AbortController;
+    window.FormData = FormData;
+    window.File = File;
+    window.Blob = Blob;
+    window.confirm = () => true;
+    window.alert = () => {};
+    window.Element.prototype.scrollIntoView = function () {};
+    window.localStorage.setItem("upa_access_token", "test-jwt-token");
+
+    window.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init && init.method) || "GET";
+      if (url.endsWith("/health")) {
+        return new Response(JSON.stringify({ status: "healthy" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/auth/me")) {
+        return new Response(
+          JSON.stringify({
+            id: 1,
+            email: "pascal.thommen@upa.edu.py",
+            full_name: "Pascal Thommen",
+            role: "admin",
+            permissions: ["publicaciones", "grupos", "roles", "apis", "ia", "historial"],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (url.includes("/api/groups")) {
+        return new Response(
+          JSON.stringify([
+            { id: "ALL", name: "Toda la comunidad UPA" },
+            { id: "TIE", name: "Ingeniería Empresarial" },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (url.includes("/api/ai/config")) {
+        return new Response(
+          JSON.stringify({
+            configured: true,
+            masked_key: "AIza********1234",
+            source: "database",
+            model: "gemini-2.0-flash",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const pubDetailMatch = /\/api\/publications\/(\d+)$/.exec(url.split("?")[0]);
+      if (pubDetailMatch) {
+        const idNum = Number(pubDetailMatch[1]);
+        if (method === "GET") {
+          const found = mockPosts.find((p) => p.id === idNum);
+          if (!found) {
+            return new Response(JSON.stringify({ detail: "Publicación no encontrada." }), {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          return new Response(JSON.stringify(found), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (method === "PUT") {
+          const idx = mockPosts.findIndex((p) => p.id === idNum);
+          const body = JSON.parse(init.body || "{}");
+          const updated = { ...(mockPosts[idx] || { id: idNum }), ...body, id: idNum };
+          if (idx >= 0) mockPosts[idx] = updated;
+          return new Response(JSON.stringify(updated), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (method === "DELETE") {
+          const idx = mockPosts.findIndex((p) => p.id === idNum);
+          if (idx >= 0) mockPosts.splice(idx, 1);
+          return new Response(JSON.stringify({ status: "deleted", id: idNum }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+      if (url.split("?")[0].endsWith("/api/publications") && method === "GET") {
+        return new Response(JSON.stringify(mockPosts), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.split("?")[0].endsWith("/api/publications") && method === "POST") {
+        const body = JSON.parse(init.body || "{}");
+        const created = { id: 75, ...body, views_count: 0, attending_count: 0, declined_count: 0 };
+        mockPosts.unshift(created);
+        return new Response(JSON.stringify(created), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/api/v1/feed")) {
+        return new Response(JSON.stringify({ posts: mockPosts }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    for (const script of ["editorial-core.js", "editorial.js", "app.js"]) {
+      window.eval(fs.readFileSync(path.join(webAdminDir, script), "utf8"));
+    }
+    document.dispatchEvent(new window.Event("DOMContentLoaded"));
+    return { dom, window, document };
+  }
+
+  // 1. Navegación interactiva desde la tabla: clic en publicación -> URL /dashboard/publicaciones/60 -> Volver / Atrás
+  const s1 = mountCockpitDom("http://127.0.0.1:8185/dashboard/publicaciones");
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones");
+  assert.ok(!s1.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(s1.document.getElementById("ed-editor-card").classList.contains("hidden"));
+
+  const row60 = s1.document.querySelector('tr[data-pub-id="60"]');
+  assert.ok(row60, "La fila de la publicación #60 debe renderizarse en la tabla");
+  row60.click();
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones/60");
+  assert.ok(s1.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(!s1.document.getElementById("ed-editor-card").classList.contains("hidden"));
+  assert.equal(s1.document.getElementById("ed-pub-id").value, "60");
+  assert.equal(s1.document.getElementById("ed-pub-title").value, "Congreso Internacional UPA");
+
+  // Botón Atrás del navegador (popstate) regresa a la tabla sin recargar la página
+  s1.window.history.back();
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones");
+  assert.ok(!s1.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(s1.document.getElementById("ed-editor-card").classList.contains("hidden"));
+
+  // Botón Adelante del navegador vuelve a abrir la publicación #60
+  s1.window.history.forward();
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones/60");
+  assert.ok(!s1.document.getElementById("ed-editor-card").classList.contains("hidden"));
+  assert.equal(s1.document.getElementById("ed-pub-id").value, "60");
+
+  // Botón "<- Volver" cierra el editor y restablece la URL a /dashboard/publicaciones
+  s1.document.getElementById("ed-btn-back").click();
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones");
+  assert.ok(!s1.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(s1.document.getElementById("ed-editor-card").classList.contains("hidden"));
+
+  // Clic en "+ Nueva publicación" cambia URL a /dashboard/publicaciones/nueva y "Cancelar" vuelve a /dashboard/publicaciones
+  s1.document.getElementById("ed-btn-new-pub").click();
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones/nueva");
+  assert.ok(!s1.document.getElementById("ed-editor-card").classList.contains("hidden"));
+  assert.equal(s1.document.getElementById("ed-pub-id").value, "");
+
+  s1.document.getElementById("ed-pub-cancel").click();
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones");
+  assert.ok(!s1.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+
+  // Guardar una publicación existente restablece la URL a /dashboard/publicaciones
+  await s1.window.UpaCockpit.openEditPublication(61);
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones/61");
+  s1.document.getElementById("ed-pub-title").value = "Aviso Biblioteca Actualizado";
+  s1.document.getElementById("ed-form-pub").dispatchEvent(new s1.window.Event("submit", { cancelable: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(s1.window.location.pathname, "/dashboard/publicaciones");
+  assert.ok(!s1.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  s1.window.close();
+
+  // 2. Deep Linking y Recarga F5 en /dashboard/publicaciones/60: abre directamente el formulario de edición
+  const s2 = mountCockpitDom("http://127.0.0.1:8185/dashboard/publicaciones/60");
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(s2.window.location.pathname, "/dashboard/publicaciones/60");
+  assert.ok(s2.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(!s2.document.getElementById("ed-editor-card").classList.contains("hidden"));
+  assert.equal(s2.document.getElementById("ed-pub-id").value, "60");
+  assert.equal(s2.document.getElementById("ed-pub-title").value, "Congreso Internacional UPA");
+  s2.window.close();
+
+  // 3. Deep Linking y Recarga F5 en /dashboard/publicaciones/nueva: abre directamente el formulario de nueva publicación
+  const s3 = mountCockpitDom("http://127.0.0.1:8185/dashboard/publicaciones/nueva");
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(s3.window.location.pathname, "/dashboard/publicaciones/nueva");
+  assert.ok(s3.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(!s3.document.getElementById("ed-editor-card").classList.contains("hidden"));
+  assert.equal(s3.document.getElementById("ed-pub-id").value, "");
+  assert.equal(s3.document.getElementById("ed-pub-form-title").textContent, "Nueva publicación");
+  s3.window.close();
+
+  // 4. Caso de error: ID inexistente (/dashboard/publicaciones/99999) muestra aviso "Publicación no encontrada",
+  // vuelve a la lista y corrige la URL a /dashboard/publicaciones
+  const s4 = mountCockpitDom("http://127.0.0.1:8185/dashboard/publicaciones/99999");
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(s4.window.location.pathname, "/dashboard/publicaciones");
+  assert.ok(!s4.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
+  assert.ok(s4.document.getElementById("ed-editor-card").classList.contains("hidden"));
+  const notice4 = s4.document.getElementById("ed-notice");
+  assert.ok(!notice4.classList.contains("hidden"));
+  assert.ok(notice4.textContent.includes("Publicación no encontrada"));
+  s4.window.close();
+});

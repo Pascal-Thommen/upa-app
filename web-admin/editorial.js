@@ -816,10 +816,53 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Navegación Lista <-> Editor y operaciones CRUD
+  // Navegación Lista <-> Editor, Deep Linking y operaciones CRUD
   // ---------------------------------------------------------------------------
 
-  function openListView() {
+  const PUBLICATIONS_BASE_PATH = "/dashboard/publicaciones";
+
+  function syncPublicationsUrl(targetPath, options) {
+    const opts = options || {};
+    if (opts.updateUrl === false) return;
+    if (typeof window === "undefined" || !window.history || !window.location) return;
+    const currentPath = (window.location.pathname || "").replace(/\/+$/, "") || "/dashboard";
+    if (currentPath === targetPath && !opts.replace) return;
+    const stateObj = opts.state || { route: "publicaciones" };
+    if (opts.replace) {
+      window.history.replaceState(stateObj, "", targetPath);
+    } else {
+      window.history.pushState(stateObj, "", targetPath);
+    }
+  }
+
+  function parsePublicationsLocationPath(rawPath) {
+    const clean = String(rawPath || "")
+      .split("?")[0]
+      .split("#")[0]
+      .replace(/\/+$/, "");
+    const lower = clean.toLowerCase();
+    if (lower === "/dashboard/publicaciones" || lower === "/dashboard" || !lower) {
+      return { subroute: "list", publicationId: null, invalidPublicationId: null };
+    }
+    if (lower === "/dashboard/publicaciones/nueva") {
+      return { subroute: "nueva", publicationId: null, invalidPublicationId: null };
+    }
+    const idMatch = /^\/dashboard\/publicaciones\/([1-9]\d*)$/.exec(lower);
+    if (idMatch) {
+      return { subroute: "edit", publicationId: idMatch[1], invalidPublicationId: null };
+    }
+    if (lower.startsWith("/dashboard/publicaciones/")) {
+      return {
+        subroute: "invalid",
+        publicationId: null,
+        invalidPublicationId: clean.slice("/dashboard/publicaciones/".length),
+      };
+    }
+    return { subroute: null, publicationId: null, invalidPublicationId: null };
+  }
+
+  function openListView(options) {
+    const opts = options && typeof options === "object" && !("preventDefault" in options) ? options : {};
     state.editingItem = null;
     hideParticipants();
     const listCard = $("ed-publications-list-card");
@@ -835,9 +878,20 @@
     if (state.publicationsLoaded) {
       renderFilteredRows();
     }
+    syncPublicationsUrl(PUBLICATIONS_BASE_PATH, {
+      updateUrl: opts.updateUrl !== false,
+      replace: Boolean(opts.replace),
+      state: { route: "publicaciones", subroute: null, publicationId: null },
+    });
   }
 
-  async function openNewPublication() {
+  async function openNewPublication(options) {
+    const opts = options && typeof options === "object" && !("preventDefault" in options) ? options : {};
+    syncPublicationsUrl(`${PUBLICATIONS_BASE_PATH}/nueva`, {
+      updateUrl: opts.updateUrl !== false,
+      replace: Boolean(opts.replace),
+      state: { route: "publicaciones", subroute: "nueva", publicationId: null },
+    });
     await Promise.all([syncAvailableGroups(true), syncAiAvailability()]);
     const allGroupIds = state.groupCatalog.map((g) => g.value);
     const defaults = Core.publicationToFormValues({
@@ -863,22 +917,46 @@
     $("ed-editor-card").classList.remove("hidden");
   }
 
-  async function openEditPublication(id) {
+  async function openEditPublication(id, options) {
+    const opts = options && typeof options === "object" && !("preventDefault" in options) ? options : {};
+    const cleanId = String(id === null || id === undefined ? "" : id).trim();
+    if (!/^[1-9]\d*$/.test(cleanId)) {
+      showNotice("error", (Core.TEXTS && Core.TEXTS.errNotFound) || "Publicación no encontrada.");
+      openListView({ updateUrl: true, replace: true });
+      return null;
+    }
+    syncPublicationsUrl(`${PUBLICATIONS_BASE_PATH}/${encodeURIComponent(cleanId)}`, {
+      updateUrl: opts.updateUrl !== false,
+      replace: Boolean(opts.replace),
+      state: { route: "publicaciones", subroute: "edit", publicationId: cleanId },
+    });
     await Promise.all([syncAvailableGroups(true), syncAiAvailability()]);
-    let item = state.publications.find((p) => String(p.id) === String(id)) || null;
+    let item = state.publications.find((p) => String(p.id) === cleanId) || null;
     try {
-      item = await getClient().getPublication(id);
+      item = await getClient().getPublication(cleanId);
     } catch (error) {
+      if (error && (error.status === 404 || error.kind === "not_found" || error.status === 422)) {
+        state.publications = state.publications.filter((p) => String(p.id) !== cleanId);
+        showNotice("error", (Core.TEXTS && Core.TEXTS.errNotFound) || "Publicación no encontrada.");
+        openListView({ updateUrl: true, replace: true });
+        return null;
+      }
       if (!item) {
         showNotice("error", Core.describeError(error));
-        return;
+        openListView({ updateUrl: true, replace: true });
+        return null;
       }
     }
-    if (item && item.id !== undefined) {
-      const idx = state.publications.findIndex((p) => String(p.id) === String(item.id));
-      if (idx >= 0) {
-        state.publications[idx] = item;
-      }
+    if (!item || item.id === undefined || item.id === null) {
+      showNotice("error", (Core.TEXTS && Core.TEXTS.errNotFound) || "Publicación no encontrada.");
+      openListView({ updateUrl: true, replace: true });
+      return null;
+    }
+    const idx = state.publications.findIndex((p) => String(p.id) === String(item.id));
+    if (idx >= 0) {
+      state.publications[idx] = item;
+    } else {
+      state.publications.unshift(item);
     }
     fillPublicationForm(Core.publicationToFormValues(item), item);
     const listHist = $("ed-list-history");
@@ -886,6 +964,7 @@
     $("ed-publications-list-card").classList.add("hidden");
     $("ed-editor-card").classList.remove("hidden");
     loadItemHistory(item.id);
+    return item;
   }
 
   function renderFilteredRows() {
@@ -1278,10 +1357,45 @@
     if (editorial) loadPanelData();
   }
 
-  function loadPanelData() {
+  async function loadPanelData(options) {
     if (!state.allowed) return;
-    openListView();
-    loadPublications();
+    const opts = options && typeof options === "object" ? options : {};
+    let subroute = opts.subroute || null;
+    let pubId = opts.publicationId || null;
+    let invalidPubId = opts.invalidPublicationId || null;
+
+    if (!subroute && !invalidPubId && typeof window !== "undefined" && window.location) {
+      const parsed = parsePublicationsLocationPath(window.location.pathname);
+      subroute = parsed.subroute;
+      pubId = parsed.publicationId;
+      invalidPubId = parsed.invalidPublicationId;
+    }
+
+    if (subroute === "invalid" || invalidPubId) {
+      showNotice("error", (Core.TEXTS && Core.TEXTS.errNotFound) || "Publicación no encontrada.");
+      openListView({ updateUrl: true, replace: true });
+      await loadPublications();
+      return;
+    }
+
+    if (subroute === "nueva") {
+      await Promise.all([
+        openNewPublication({ updateUrl: false }),
+        loadPublications({ silent: true }),
+      ]);
+      return;
+    }
+
+    if (subroute === "edit" && pubId) {
+      await Promise.all([
+        openEditPublication(pubId, { updateUrl: false }),
+        loadPublications({ silent: true }),
+      ]);
+      return;
+    }
+
+    openListView({ updateUrl: opts.updateUrl !== false });
+    await loadPublications();
   }
 
   function initOnce() {
@@ -1410,6 +1524,14 @@
         }
       });
     }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("popstate", () => {
+        if (!window.UpaRouter && state.allowed && state.mode === "editorial") {
+          loadPanelData({ updateUrl: false });
+        }
+      });
+    }
   }
 
   function userHasPublicationsPerm(user) {
@@ -1485,9 +1607,11 @@
     loadPanelData,
     loadPublications,
     refreshGroupsCatalog,
-    openEditPublication,
-    openNewPublication,
-  };
+        openEditPublication,
+        openNewPublication,
+        openListView,
+        syncRouteState: loadPanelData,
+      };
 
   window.UpaCockpit = UpaCockpit;
 })();
