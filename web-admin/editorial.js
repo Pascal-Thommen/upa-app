@@ -1307,6 +1307,43 @@
     }
   }
 
+  function setSyncBusy(button, busy) {
+    if (!button) return;
+    if (busy) {
+      if (!button.dataset.origHtml) {
+        button.dataset.origHtml = button.innerHTML;
+      }
+      button.innerHTML = `<span class="ed-ai-spinner" aria-hidden="true"></span><span>Sincronizando...</span>`;
+      button.disabled = true;
+      button.setAttribute("aria-disabled", "true");
+      button.classList.add("is-loading");
+    } else {
+      if (button.dataset.origHtml) {
+        button.innerHTML = button.dataset.origHtml;
+      }
+      button.disabled = false;
+      button.setAttribute("aria-disabled", "false");
+      button.classList.remove("is-loading");
+    }
+  }
+
+  async function syncInstagram() {
+    const button = $("ed-btn-sync");
+    setSyncBusy(button, true);
+    try {
+      const result = await getClient().syncInstagram();
+      const summary = Core.describeSyncResult(result);
+      showNotice(summary.type, summary.message);
+      await loadPublications();
+      return result;
+    } catch (error) {
+      showNotice("error", Core.describeError(error));
+      return null;
+    } finally {
+      setSyncBusy(button, false);
+    }
+  }
+
   function hideParticipants() {
     state.participantsPubId = null;
     const panel = $("ed-participants");
@@ -1418,6 +1455,7 @@
       if (btn) btn.addEventListener("click", () => applyFilter(key));
     });
 
+    if ($("ed-btn-sync")) $("ed-btn-sync").addEventListener("click", syncInstagram);
     if ($("ed-btn-new-pub")) $("ed-btn-new-pub").addEventListener("click", openNewPublication);
     if ($("ed-btn-back")) $("ed-btn-back").addEventListener("click", openListView);
     if ($("ed-pub-cancel")) $("ed-pub-cancel").addEventListener("click", openListView);
@@ -1615,6 +1653,7 @@
     applyMode,
     loadPanelData,
     loadPublications,
+    syncInstagram,
     refreshGroupsCatalog,
         openEditPublication,
         openNewPublication,

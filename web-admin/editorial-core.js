@@ -1015,14 +1015,15 @@
       if (synced === 0) {
         return {
           type: "info",
-          message: r.message || "Sincronización completada: no se recibieron publicaciones nuevas.",
+          message:
+            r.message || "Publicaciones de Instagram sincronizadas exitosamente: no se recibieron publicaciones nuevas.",
         };
       }
       return {
         type: "success",
-        message: `Sincronización completada: ${synced} publicaciones (${Number(r.created_count || 0)} nuevas, ${Number(
-          r.updated_count || 0
-        )} actualizadas).`,
+        message: `Publicaciones de Instagram sincronizadas exitosamente: ${synced} publicaciones (${Number(
+          r.created_count || 0
+        )} nuevas, ${Number(r.updated_count || 0)} actualizadas).`,
       };
     }
     return { type: "error", message: "Respuesta inesperada del servidor al sincronizar Instagram." };

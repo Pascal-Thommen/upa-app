@@ -765,9 +765,15 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   assert.ok(aiBtn, "El botón Autocompletar con IA debe existir en el editor");
   assert.equal(aiBtn.textContent.trim(), "Autocompletar con IA");
   assert.equal(document.getElementById("btn-refresh"), null, "El botón Recargar datos fue eliminado del header");
-  assert.equal(document.getElementById("ed-btn-sync"), null, "El botón Sincronizar Instagram fue eliminado de la toolbar");
-  assert.equal(document.getElementById("ed-sync-status"), null, "El estado de sync manual fue eliminado de la toolbar");
+  const syncBtn = document.getElementById("ed-btn-sync");
+  assert.ok(syncBtn, "El botón Sincronizar Instagram debe existir en la barra de herramientas");
+  assert.ok(syncBtn.textContent.includes("Sincronizar Instagram"));
   assert.ok(document.getElementById("ed-btn-new-pub"), "El botón + Nueva publicación permanece como acción principal");
+  assert.equal(
+    syncBtn.nextElementSibling,
+    document.getElementById("ed-btn-new-pub"),
+    "El botón Sincronizar Instagram debe estar directamente a la izquierda de + Nueva publicación"
+  );
 
   // 1. Sin token de Gemini configurado: botón deshabilitado, gris y con tooltip explicativo
   assert.equal(aiBtn.disabled, true);
@@ -923,6 +929,60 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   assert.ok(placeholder, "Debe renderizarse el marcador de posición UPA");
   assert.equal(placeholder.textContent, "UPA");
   assert.equal(placeholder.getAttribute("aria-hidden"), "true");
+
+  // 8. SRV-257: Clic en "Sincronizar Instagram" llama a POST /api/publications/sync-instagram, muestra estado de carga, toast de éxito y recarga la tabla
+  let syncBusyObserved = "";
+  let syncDisabledObserved = false;
+  let syncSpinnerObserved = false;
+  let syncPostCalled = false;
+  let publicationsReloadedAfterSync = false;
+  window.fetch = async (input, init) => {
+    const url = String(input);
+    const method = (init && init.method) || "GET";
+    if (url.includes("/api/publications/sync-instagram") && method === "POST") {
+      syncPostCalled = true;
+      syncBusyObserved = syncBtn.textContent.trim();
+      syncDisabledObserved = syncBtn.disabled;
+      syncSpinnerObserved = Boolean(syncBtn.querySelector(".ed-ai-spinner"));
+      return new Response(
+        JSON.stringify({ status: "success", synced_count: 2, created_count: 2, updated_count: 0 }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (url.includes("/api/publications") && method === "GET") {
+      if (syncPostCalled) publicationsReloadedAfterSync = true;
+      return new Response(
+        JSON.stringify([
+          {
+            id: 91,
+            title: "Nuevo Post Instagram UPA",
+            post_type: "INSTAGRAM",
+            is_news: true,
+            is_event: false,
+            target_groups: ["ALL"],
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return origFetch(input, init);
+  };
+
+  window.UpaCockpit.openListView();
+  syncBtn.click();
+  await new Promise((r) => setTimeout(r, 50));
+
+  assert.equal(syncPostCalled, true, "Debe invocar POST /api/publications/sync-instagram");
+  assert.equal(syncBusyObserved, "Sincronizando...");
+  assert.equal(syncDisabledObserved, true);
+  assert.equal(syncSpinnerObserved, true);
+  assert.equal(syncBtn.disabled, false);
+  assert.ok(syncBtn.textContent.includes("Sincronizar Instagram"));
+  assert.equal(publicationsReloadedAfterSync, true, "Debe recargar la tabla tras sincronizar");
+  assert.ok(
+    document.getElementById("ed-notice").textContent.includes("Publicaciones de Instagram sincronizadas exitosamente")
+  );
+  assert.ok(tbody.textContent.includes("Nuevo Post Instagram UPA"));
 
   window.close();
 });
