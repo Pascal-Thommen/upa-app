@@ -420,3 +420,40 @@ def test_graph_api_v21_endpoint_and_auto_discovery(monkeypatch):
     finally:
         db.close()
         loop.close()
+
+
+def test_sync_posts_deduplicates_sociablekit_shortcode_and_graph_api_id():
+    service = InstagramSyncService()
+    db = TestingSessionLocal()
+    try:
+        # 1. Bestehender SociableKIT-Eintrag mit Shortcode als instagram_id
+        sk_item = NormalizedSocialPost(
+            instagram_id="DfSG3s8jsFy",
+            caption="Pasantía internacional UPA",
+            media_type="carousel",
+            media_url="https://data-image.sociablekit.com/old.webp",
+            permalink="https://www.instagram.com/p/DfSG3s8jsFy/",
+            timestamp=datetime.now(UTC),
+        )
+        res1 = service.sync_posts(db, [sk_item], author_id=1)
+        assert res1["created_count"] == 1
+
+        # 2. Graph API liefert denselben Post mit numerischer ID und identischem Permalink
+        graph_item = NormalizedSocialPost(
+            instagram_id="18114511375879455",
+            caption="Pasantía internacional UPA (Graph API v21.0)",
+            media_type="CAROUSEL_ALBUM",
+            media_url="https://scontent.cdninstagram.com/v/fresh.jpg",
+            permalink="https://www.instagram.com/p/DfSG3s8jsFy/",
+            timestamp=datetime.now(UTC),
+        )
+        res2 = service.sync_posts(db, [graph_item], author_id=1)
+        assert res2["created_count"] == 0
+        assert res2["updated_count"] == 1
+
+        all_posts = db.query(Post).filter(Post.permalink == "https://www.instagram.com/p/DfSG3s8jsFy/").all()
+        assert len(all_posts) == 1
+        assert all_posts[0].instagram_id == "18114511375879455"
+        assert all_posts[0].media_url == "https://scontent.cdninstagram.com/v/fresh.jpg"
+    finally:
+        db.close()
