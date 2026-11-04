@@ -49,6 +49,61 @@ class InstagramSyncService:
 
     DEFAULT_PERMALINK_FALLBACK = DEFAULT_INSTAGRAM_PROFILE_URL
     DEFAULT_VIDEO_THUMBNAIL_FALLBACK = DEFAULT_VIDEO_POSTER_FALLBACK
+    GRAPH_API_VERSION = "v21.0"
+    GRAPH_API_BASE_URL = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+
+    async def discover_instagram_account_id(
+        self,
+        token: str,
+        client: httpx.AsyncClient | None = None,
+    ) -> str:
+        """Resuelve dinamicamente el ID de la cuenta de Instagram Business via GET /me/accounts."""
+        clean_token = (token or "").strip()
+        if not clean_token:
+            return ""
+
+        url = f"{self.GRAPH_API_BASE_URL}/me/accounts"
+        params = {
+            "fields": "instagram_business_account",
+            "access_token": clean_token,
+        }
+
+        async def _request(http_client: httpx.AsyncClient) -> str:
+            response = await http_client.get(url, params=params, timeout=10.0)
+            if response.status_code == 401:
+                logger.error("[Instagram API Auto-Discovery] Token de acceso no valido o vencido (HTTP 401).")
+                return ""
+            if response.status_code != 200:
+                logger.warning(
+                    "[Instagram API Auto-Discovery] Respuesta inesperada %s: %s",
+                    response.status_code,
+                    response.text,
+                )
+                return ""
+            data = response.json()
+            for page in data.get("data", []):
+                ig_acc = page.get("instagram_business_account")
+                if isinstance(ig_acc, dict) and ig_acc.get("id"):
+                    discovered_id = str(ig_acc["id"]).strip()
+                    if discovered_id:
+                        logger.info(
+                            "[Instagram API Auto-Discovery] Instagram Business Account ID resuelto: %s",
+                            discovered_id,
+                        )
+                        return discovered_id
+            return ""
+
+        try:
+            if client is not None:
+                return await _request(client)
+            async with httpx.AsyncClient(timeout=10.0) as owned_client:
+                return await _request(owned_client)
+        except httpx.RequestError as exc:
+            logger.error("[Instagram API Auto-Discovery Error de Red] %s", exc)
+            return ""
+        except Exception as exc:
+            logger.error("[Instagram API Auto-Discovery Error] %s", exc)
+            return ""
 
     def extract_title_from_caption(self, caption: str) -> str:
         """Extrae un titulo conciso a partir de la primera linea del pie de foto (maximo 200 caracteres)."""
@@ -181,20 +236,28 @@ class InstagramSyncService:
         )
 
     async def fetch_from_graph_api(self, token: str, account_id: str = "") -> list[NormalizedSocialPost]:
-        """Obtiene publicaciones recientes desde la Instagram Graph API con timeout de 10 s."""
-        if account_id:
-            url = f"https://graph.facebook.com/v19.0/{account_id}/media"
-        else:
-            url = "https://graph.instagram.com/me/media"
+        """Obtiene publicaciones recientes desde la Instagram Graph API v21.0 con timeout de 10 s."""
+        clean_token = (token or "").strip()
+        if not clean_token:
+            return []
 
         params = {
-            "fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp",
-            "access_token": token,
+            "fields": "id,caption,media_type,media_url,permalink,timestamp,thumbnail_url",
+            "access_token": clean_token,
             "limit": 25,
         }
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
+                resolved_account_id = (account_id or "").strip()
+                if not resolved_account_id:
+                    resolved_account_id = await self.discover_instagram_account_id(clean_token, client=client)
+
+                if resolved_account_id:
+                    url = f"{self.GRAPH_API_BASE_URL}/{resolved_account_id}/media"
+                else:
+                    url = "https://graph.instagram.com/me/media"
+
                 response = await client.get(url, params=params, timeout=10.0)
                 if response.status_code == 401:
                     logger.error("[Instagram API] Token de acceso no valido o vencido.")

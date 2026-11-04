@@ -333,3 +333,90 @@ def test_graph_api_timeout_and_error_handling(monkeypatch):
         assert posts == []
     finally:
         loop.close()
+
+
+def test_graph_api_v21_endpoint_and_auto_discovery(monkeypatch):
+    import asyncio
+
+    import httpx
+
+    service = InstagramSyncService()
+    called_urls: list[str] = []
+
+    real_payload = {
+        "data": [
+            {
+                "id": "18114511375879455",
+                "caption": "🇩🇪✨ Pasantía internacional: una experiencia que trasciende fronteras.\n\nFlorencia Luzko, estudiante de Ingeniería Empresarial de la Universidad Paraguayo Alemana (UPA).",
+                "media_type": "CAROUSEL_ALBUM",
+                "media_url": "https://scontent.cdninstagram.com/v/t39.30808-6/885659832_n.jpg",
+                "permalink": "https://www.instagram.com/p/DfSG3s8jsFy/",
+                "timestamp": "2026-11-03T14:34:17+0000",
+            },
+            {
+                "id": "18105980801628640",
+                "caption": "En el marco del módulo de Ética y Negocios Sociales en la UPA.\nTres charlas magistrales con referentes del ámbito empresarial.",
+                "media_type": "CAROUSEL_ALBUM",
+                "media_url": "https://scontent.cdninstagram.com/v/t39.30808-6/878081348_n.jpg",
+                "permalink": "https://www.instagram.com/p/DfITcEbo0om/",
+                "timestamp": "2026-10-30T19:11:42+0000",
+            },
+        ]
+    }
+
+    async def _graph_get(self, url, *args, **kwargs):
+        called_urls.append(str(url))
+        request = httpx.Request("GET", url)
+        if "/me/accounts" in str(url):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "instagram_business_account": {"id": "17841402165726045"},
+                            "id": "1430225163860663",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, json=real_payload, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _graph_get)
+    loop = asyncio.new_event_loop()
+    db = TestingSessionLocal()
+    try:
+        # 1. Auto-Discovery (account_id leer) löst 17841402165726045 über v21.0/me/accounts auf
+        posts = loop.run_until_complete(service.fetch_from_graph_api(token="valid-token", account_id=""))
+        assert len(posts) == 2
+        assert any("https://graph.facebook.com/v21.0/me/accounts" in u for u in called_urls)
+        assert any("https://graph.facebook.com/v21.0/17841402165726045/media" in u for u in called_urls)
+        assert posts[0].instagram_id == "18114511375879455"
+        assert posts[0].permalink == "https://www.instagram.com/p/DfSG3s8jsFy/"
+
+        # 2. Persistenz in DB & Fallback bei HTTP 401
+        sync_res = service.sync_posts(db, posts, author_id=1)
+        assert sync_res["created_count"] == 2
+
+        async def _unauthorized_get(self, url, *args, **kwargs):
+            return httpx.Response(
+                401,
+                json={"error": {"message": "Invalid OAuth access token.", "code": 190}},
+                request=httpx.Request("GET", url),
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", _unauthorized_get)
+        posts_401 = loop.run_until_complete(
+            service.fetch_from_graph_api(token="expired-token", account_id="17841402165726045")
+        )
+        assert posts_401 == []
+
+        # Bereits persistierte Beiträge bleiben über /api/v1/feed unversehrt abrufbar
+        feed_res = client.get("/api/v1/feed")
+        assert feed_res.status_code == 200
+        feed_ids = {p["instagram_id"] for p in feed_res.json()["posts"]}
+        assert "18114511375879455" in feed_ids
+        assert "18105980801628640" in feed_ids
+    finally:
+        db.close()
+        loop.close()
