@@ -1985,6 +1985,17 @@ function applyRoute(routeName, options = {}) {
   if (activeView) activeView.classList.remove("hidden");
 
   if (effectiveRoute === "publicaciones") {
+    const listCard = document.getElementById("ed-publications-list-card");
+    const editorCard = document.getElementById("ed-editor-card");
+    const listHist = document.getElementById("ed-list-history");
+    const isEditorSubroute = pubSubroute === "nueva" || (pubSubroute === "edit" && Boolean(pubId));
+    if (isEditorSubroute) {
+      if (listCard) listCard.classList.add("hidden");
+      if (editorCard) editorCard.classList.remove("hidden");
+      if (listHist) listHist.classList.add("hidden");
+    } else if (document.documentElement && document.documentElement.classList) {
+      document.documentElement.classList.remove("is-deep-editor");
+    }
     if (!options.skipDataLoad && window.UpaCockpit && typeof window.UpaCockpit.loadPanelData === "function") {
       return window.UpaCockpit.loadPanelData({
         subroute: pubSubroute,
@@ -1993,21 +2004,26 @@ function applyRoute(routeName, options = {}) {
         updateUrl: false,
       });
     }
-  } else if (effectiveRoute === "apis") {
-    if (!options.skipDataLoad) {
-      updateJsonView();
+  } else {
+    if (document.documentElement && document.documentElement.classList) {
+      document.documentElement.classList.remove("is-deep-editor");
     }
-  } else if (effectiveRoute === "grupos") {
-    if (!options.skipDataLoad) {
-      renderGroupsModule();
-    }
-  } else if (effectiveRoute === "roles") {
-    if (!options.skipDataLoad) {
-      renderAdminsModule();
-    }
-  } else if (effectiveRoute === "ia") {
-    if (!options.skipDataLoad) {
-      renderAiModule();
+    if (effectiveRoute === "apis") {
+      if (!options.skipDataLoad) {
+        updateJsonView();
+      }
+    } else if (effectiveRoute === "grupos") {
+      if (!options.skipDataLoad) {
+        renderGroupsModule();
+      }
+    } else if (effectiveRoute === "roles") {
+      if (!options.skipDataLoad) {
+        renderAdminsModule();
+      }
+    } else if (effectiveRoute === "ia") {
+      if (!options.skipDataLoad) {
+        renderAiModule();
+      }
     }
   }
 }

@@ -721,8 +721,11 @@
       viewsCount: Number(p.views_count || 0),
       attendingCount: Number(p.attending_count || 0),
       declinedCount: Number(p.declined_count || 0),
-      isEdited: p.is_edited !== undefined ? Boolean(p.is_edited) : postType !== POST_TYPE_INSTAGRAM,
+      isEdited: Boolean(p.reviewed_by_name) || (p.is_edited !== undefined ? Boolean(p.is_edited) : postType !== POST_TYPE_INSTAGRAM),
       isAiGenerated: Boolean(p.is_ai_generated || p.status === "ai"),
+      reviewedByName: String(p.reviewed_by_name || "").trim(),
+      reviewedAt: p.reviewed_at || "",
+      status: String(p.status || ""),
     };
   }
 
@@ -914,15 +917,23 @@
           }
         </div>`;
 
-        const isEdited = item.is_edited !== undefined ? Boolean(item.is_edited) : postType !== POST_TYPE_INSTAGRAM;
+        const reviewedName = String(item.reviewed_by_name || "").trim();
+        const isEdited =
+          Boolean(reviewedName) ||
+          item.status === "reviewed" ||
+          (item.is_edited !== undefined ? Boolean(item.is_edited) : postType !== POST_TYPE_INSTAGRAM);
         const isAiGenerated = Boolean(item.is_ai_generated || item.status === "ai");
-        const editBadge = isAiGenerated
-          ? isEdited
-            ? `<span class="ed-badge ed-badge-ok">Editado</span> <span class="ed-badge ed-badge-ai" title="Evento extraído automáticamente con IA">IA</span>`
-            : `<span class="ed-badge ed-badge-ai" title="Evento extraído automáticamente con IA">IA</span>`
-          : isEdited
-            ? `<span class="ed-badge ed-badge-ok">Editado</span>`
-            : `<span class="ed-badge ed-badge-warn">Pendiente</span>`;
+        let editBadge;
+        if (isEdited) {
+          const reviewerLabel = reviewedName || "Revisado";
+          editBadge = `<span class="ed-badge ed-badge-ok" title="Revisado por ${escapeHtml(reviewerLabel)}">${escapeHtml(
+            reviewerLabel
+          )}</span>`;
+        } else if (isAiGenerated) {
+          editBadge = `<span class="ed-badge ed-badge-ai" title="Evento extraído automáticamente con IA">IA</span>`;
+        } else {
+          editBadge = `<span class="ed-badge ed-badge-warn">No revisado</span>`;
+        }
 
         const pubDate = formatDateTime(item.published_at || item.created_at, opts);
         const eventDate = item.is_event && item.event_start ? formatDateTime(item.event_start, opts) : "";
@@ -1107,6 +1118,7 @@
       getPublication: (id) => request("GET", `/api/publications/${encodeURIComponent(id)}`),
       createPublication: (payload) => request("POST", "/api/publications", { json: payload }),
       updatePublication: (id, payload) => request("PUT", `/api/publications/${encodeURIComponent(id)}`, { json: payload }),
+      reviewPublication: (id) => request("POST", `/api/publications/${encodeURIComponent(id)}/review`),
       deletePublication: (id) => request("DELETE", `/api/publications/${encodeURIComponent(id)}`),
       getPublicationRegistrations: (id) => request("GET", `/api/publications/${encodeURIComponent(id)}/registrations`),
       submitPublicationRsvp: (id, status) =>

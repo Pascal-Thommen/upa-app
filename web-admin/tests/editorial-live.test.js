@@ -678,6 +678,12 @@ test("deep linking en vivo contra backend real: abrir /dashboard/publicaciones/:
   assert.equal(document.getElementById("ed-pub-id").value, String(created.id));
   assert.equal(document.getElementById("ed-pub-title").value, "Publicación Deep Link Real");
 
+  // SRV-259: Marcar como revisado con el editor ("Redaccion") actualiza reviewed_by_name al primer nombre ("Redaccion")
+  const reviewedByEditor = await ctx.editor.reviewPublication(created.id);
+  assert.equal(reviewedByEditor.status, "reviewed");
+  assert.equal(reviewedByEditor.reviewed_by_name, "Redaccion");
+  assert.ok(reviewedByEditor.reviewed_at);
+
   // Volver al listado actualiza la URL a /dashboard/publicaciones
   document.getElementById("ed-btn-back").click();
   assert.equal(window.location.pathname, "/dashboard/publicaciones");

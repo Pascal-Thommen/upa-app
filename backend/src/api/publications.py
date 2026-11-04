@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request, status
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
@@ -366,6 +367,8 @@ def list_publications(
     query = db.query(Post).options(
         selectinload(Post.registrations),
         selectinload(Post.views),
+        selectinload(Post.reviewed_by),
+        selectinload(Post.author),
     )
     if kind == "news":
         query = query.filter(Post.is_news.is_(True))
@@ -678,7 +681,12 @@ def get_publication(
 ) -> PublicationResponse:
     post = (
         db.query(Post)
-        .options(selectinload(Post.registrations), selectinload(Post.views))
+        .options(
+            selectinload(Post.registrations),
+            selectinload(Post.views),
+            selectinload(Post.reviewed_by),
+            selectinload(Post.author),
+        )
         .filter(Post.id == publication_id)
         .first()
     )
@@ -699,7 +707,7 @@ def create_publication(
     db: Session = Depends(get_db),
     editor: User = Depends(require_permission("publicaciones")),
 ) -> PublicationResponse:
-    post = Post(author_id=editor.id)
+    post = Post(author_id=editor.id, reviewed_by_id=editor.id, reviewed_at=func.now())
     _validate_and_apply(post, payload, is_create=True)
     db.add(post)
     db.flush()
@@ -789,7 +797,12 @@ def update_publication(
 ) -> PublicationResponse:
     post = (
         db.query(Post)
-        .options(selectinload(Post.registrations), selectinload(Post.views))
+        .options(
+            selectinload(Post.registrations),
+            selectinload(Post.views),
+            selectinload(Post.reviewed_by),
+            selectinload(Post.author),
+        )
         .filter(Post.id == publication_id)
         .first()
     )
@@ -805,6 +818,8 @@ def update_publication(
     if reset_publish_to_now and was_future_scheduled and (post.post_type or "").upper() != "INSTAGRAM":
         post.published_at = None
     _validate_and_apply(post, merged_write, is_create=False)
+    post.reviewed_by_id = editor.id
+    post.reviewed_at = func.now()
     changes = changed_fields(before, _snapshot_post(post))
 
     log_audit(
@@ -833,6 +848,48 @@ def update_publication(
         title, body, data = build_emergency_message(post)
         background_tasks.add_task(dispatch_emergency_push, push_tokens, title, body, data)
 
+    return PublicationResponse.from_orm_post(post)
+
+
+@router.post(
+    "/{publication_id}/review",
+    response_model=PublicationResponse,
+    summary="Marcar una publicacion como revisada sin modificar su texto",
+)
+def review_publication(
+    publication_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("publicaciones")),
+) -> PublicationResponse:
+    post = (
+        db.query(Post)
+        .options(
+            selectinload(Post.registrations),
+            selectinload(Post.views),
+            selectinload(Post.reviewed_by),
+            selectinload(Post.author),
+        )
+        .filter(Post.id == publication_id)
+        .first()
+    )
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Publicación no encontrada.")
+
+    post.reviewed_by_id = current_user.id
+    post.reviewed_at = func.now()
+    post.is_edited = True
+
+    log_audit(
+        db,
+        current_user,
+        "REVIEW_POST",
+        AUDIT_TARGET_POST,
+        target_id=post.id,
+        details={"title": post.title, "changes": ["revisión"]},
+    )
+
+    db.commit()
+    db.refresh(post)
     return PublicationResponse.from_orm_post(post)
 
 
@@ -923,7 +980,12 @@ def submit_publication_rsvp(
 ) -> PublicationResponse:
     post = (
         db.query(Post)
-        .options(selectinload(Post.registrations), selectinload(Post.views))
+        .options(
+            selectinload(Post.registrations),
+            selectinload(Post.views),
+            selectinload(Post.reviewed_by),
+            selectinload(Post.author),
+        )
         .filter(Post.id == publication_id)
         .first()
     )
@@ -974,7 +1036,12 @@ def mark_publication_viewed(
 ) -> PublicationResponse:
     post = (
         db.query(Post)
-        .options(selectinload(Post.registrations), selectinload(Post.views))
+        .options(
+            selectinload(Post.registrations),
+            selectinload(Post.views),
+            selectinload(Post.reviewed_by),
+            selectinload(Post.author),
+        )
         .filter(Post.id == publication_id)
         .first()
     )

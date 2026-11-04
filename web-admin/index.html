@@ -31,18 +31,24 @@
 
   <link rel="stylesheet" href="/dashboard/style.css?v=2.6.0">
   <link rel="stylesheet" href="/dashboard/editorial.css?v=2.6.0">
-  <script>
-    if (localStorage.getItem("upa_access_token") || localStorage.getItem("upa_auth_token") || window.location.search.includes("token=")) {
-      document.documentElement.classList.add("has-auth");
-    }
-  </script>
-  <style>
-    html.has-auth #view-login { display: none !important; }
-    html.has-auth #view-dashboard { display: block !important; }
-    html.is-restricted #view-login { display: none !important; }
-    html.is-restricted #view-dashboard { display: none !important; }
-    html.is-restricted #view-restricted { display: block !important; }
-  </style>
+    <script>
+      if (localStorage.getItem("upa_access_token") || localStorage.getItem("upa_auth_token") || window.location.search.includes("token=")) {
+        document.documentElement.classList.add("has-auth");
+        if (/^\/dashboard\/publicaciones\/(?:nueva|[1-9]\d*)\/?$/i.test(window.location.pathname || "")) {
+          document.documentElement.classList.add("is-deep-editor");
+        }
+      }
+    </script>
+    <style>
+      html.has-auth #view-login { display: none !important; }
+      html.has-auth #view-dashboard { display: block !important; }
+      html.has-auth.is-deep-editor #view-editorial { display: block !important; }
+      html.has-auth.is-deep-editor #ed-publications-list-card { display: none !important; }
+      html.has-auth.is-deep-editor #ed-editor-card { display: block !important; }
+      html.is-restricted #view-login { display: none !important; }
+      html.is-restricted #view-dashboard { display: none !important; }
+      html.is-restricted #view-restricted { display: block !important; }
+    </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
 
@@ -236,7 +242,10 @@
                   <button id="ed-btn-back" type="button" class="ed-btn ed-btn-secondary ed-btn-sm">&larr; Volver</button>
                   <h3 id="ed-pub-form-title" class="ed-card-title">Nueva publicación</h3>
                 </div>
-                <button id="ed-btn-delete-pub" type="button" class="ed-btn ed-btn-danger ed-btn-sm hidden">Eliminar</button>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button id="ed-btn-review-pub" type="button" class="ed-btn ed-btn-primary ed-btn-sm hidden">Marcar como revisado</button>
+                  <button id="ed-btn-delete-pub" type="button" class="ed-btn ed-btn-danger ed-btn-sm hidden">Eliminar</button>
+                </div>
               </div>
 
               <!-- Resumen de métricas y participantes (visible al editar) -->
@@ -247,7 +256,7 @@
                   <span id="ed-metric-attending" class="font-semibold text-emerald-700" title="Confirmaciones activas de asistencia (inscritos)">0 inscritos</span>
                   <span class="text-slate-300">&bull;</span>
                   <span id="ed-metric-declined" class="text-slate-500" title="Personas que indicaron que no asistirán o cancelaron su inscripción">0 no asisten</span>
-                  <span id="ed-metric-edited" class="ed-badge ed-badge-ok">Editado</span>
+                  <span id="ed-metric-edited" class="ed-badge ed-badge-warn">No revisado</span>
                 </div>
                 <button id="ed-btn-toggle-participants" type="button" class="ed-btn ed-btn-secondary ed-btn-sm">
                   Ver participantes
