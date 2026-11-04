@@ -123,6 +123,9 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     assert '"5433:5432"' not in beta_compose_text
     assert "FEED_SYNC_INTERVAL_MINUTES: 5" in beta_compose_text
     assert 'FEED_SYNC_ENABLED: "true"' in beta_compose_text
+    assert "/home/pasc/.config/upa-app/.env" in beta_compose_text
+    assert "EAAaYgtCKbe0" not in beta_compose_text
+    assert "INSTAGRAM_ACCESS_TOKEN:" not in beta_compose_text
 
     nginx_text = (repo_root / "web-admin" / "nginx.conf").read_text(encoding="utf-8")
     assert "public, max-age=86400" in nginx_text
