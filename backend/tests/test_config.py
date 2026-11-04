@@ -18,6 +18,8 @@ def test_default_settings():
     assert settings.HOST == "0.0.0.0"
     assert settings.ALLOWED_EMAIL_DOMAIN == "upa.edu.py"
     assert settings.APP_ENV in ("development", "production", "test", "beta")
+    assert settings.FEED_SYNC_INTERVAL_MINUTES == 5
+    assert settings.FEED_SYNC_ENABLED is True
 
 
 def test_cors_origins_list_parsing():
@@ -119,6 +121,8 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     beta_compose_text = (repo_root / "docker-compose.beta.yml").read_text(encoding="utf-8")
     assert '"127.0.0.1:5433:5432"' in beta_compose_text
     assert '"5433:5432"' not in beta_compose_text
+    assert "FEED_SYNC_INTERVAL_MINUTES: 5" in beta_compose_text
+    assert 'FEED_SYNC_ENABLED: "true"' in beta_compose_text
 
     nginx_text = (repo_root / "web-admin" / "nginx.conf").read_text(encoding="utf-8")
     assert "public, max-age=86400" in nginx_text
@@ -164,7 +168,7 @@ def test_index_html_asset_version_busts_cache_and_roles_header_matches_permissio
     repo_root = Path(__file__).resolve().parent.parent.parent
     html = (repo_root / "web-admin" / "index.html").read_text(encoding="utf-8")
     versions = set(re.findall(r"/dashboard/[\w.-]+\.(?:js|css)\?v=([\d.]+)", html))
-    assert versions == {"2.5.0"}
+    assert versions == {"2.6.0"}
     thead = html.split('<tbody id="admin-table-rows"')[0].split('aria-label="Roles"')[1]
     assert thead.count("<th ") == 8
     assert "IA</th>" in thead

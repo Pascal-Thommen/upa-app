@@ -692,12 +692,11 @@ test("modulo ia: index.html renombra reiter a IA, consolida 1-Klick-Save, precar
   assert.ok(!indexHtml.includes('id="btn-ai-save-prompt-instagram"'));
   assert.ok(!indexHtml.includes('id="btn-ai-test-connection"'));
 
-  // SRV-239: Los botones redundantes Recargar datos y Sincronizar Instagram fueron eliminados
+  // SRV-257: El botón Sincronizar Instagram está junto a + Nueva publicación; Recargar datos sigue eliminado
   assert.ok(!indexHtml.includes('id="btn-refresh"'));
   assert.ok(!indexHtml.includes("Recargar datos"));
-  assert.ok(!indexHtml.includes('id="ed-btn-sync"'));
-  assert.ok(!indexHtml.includes('id="ed-sync-status"'));
-  assert.ok(!indexHtml.includes("Sincronizar Instagram"));
+  assert.ok(indexHtml.includes('id="ed-btn-sync"'));
+  assert.ok(indexHtml.includes("Sincronizar Instagram"));
   assert.ok(indexHtml.includes('id="ed-btn-new-pub"'));
   assert.ok(indexHtml.includes("+ Nueva publicación"));
 

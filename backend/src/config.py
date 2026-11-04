@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     INSTAGRAM_ACCESS_TOKEN: str = ""
     INSTAGRAM_ACCOUNT_ID: str = ""
     SOCIABLEKIT_EMBED_ID: str = "25723525"
-    FEED_SYNC_INTERVAL_MINUTES: int = 60
+    FEED_SYNC_INTERVAL_MINUTES: int = 5
     FEED_SYNC_ENABLED: bool = True
 
     # Medien-Upload (Plakate, Banner, Dokumente)

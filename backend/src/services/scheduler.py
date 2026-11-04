@@ -29,7 +29,7 @@ async def _feed_sync_loop():
         except Exception as e:
             logger.error(f"[Feed Scheduler Fehler] {e}")
 
-        # Intervall aus Konfiguration (Standard: 60 Minuten)
+        # Intervall aus Konfiguration (Standard: 5 Minuten, 24/7 kontinuierlich)
         interval_seconds = max(settings.FEED_SYNC_INTERVAL_MINUTES * 60, 60)
         try:
             await asyncio.sleep(interval_seconds)
