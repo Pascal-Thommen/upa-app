@@ -13,6 +13,7 @@ AUDIT_TARGET_ROLE = "role"
 ACTION_VERBS = {
     "CREATE": "creó",
     "UPDATE": "modificó",
+    "REVIEW": "revisó",
     "DELETE": "eliminó",
     "ASSIGN": "autorizó",
     "REVOKE": "revocó",

@@ -382,7 +382,7 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert news3.has_registration is False
         assert news3.is_news is True
         assert news3.is_ai_generated is False
-        assert news3.status == "pending"
+        assert news3.status == "unreviewed"
         assert news3.event_start is None
         db.close()
 
@@ -394,7 +394,7 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert pubs_by_ig["ig_ai_event_1"]["status"] == "ai"
         assert pubs_by_ig["ig_ai_event_2"]["event_end"] is None
         assert pubs_by_ig["ig_regular_news_3"]["is_ai_generated"] is False
-        assert pubs_by_ig["ig_regular_news_3"]["status"] == "pending"
+        assert pubs_by_ig["ig_regular_news_3"]["status"] == "unreviewed"
 
         # Verificar que un caption minimo sin fecha ni imagen nunca genera un evento alucinado
         gemini_json_queue.append(

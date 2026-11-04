@@ -59,6 +59,24 @@ def extract_instagram_teaser(caption: str | None) -> str:
     return teaser[:300]
 
 
+def extract_user_first_name(user: Any) -> str | None:
+    """Extrae el primer nombre del usuario desde full_name o la parte local de email."""
+    if user is None:
+        return None
+    full_name = str(getattr(user, "full_name", None) or "").strip()
+    if full_name:
+        first_token = full_name.split()[0].strip()
+        if first_token:
+            return first_token
+    email = str(getattr(user, "email", None) or "").strip()
+    if email:
+        local_part = email.split("@", 1)[0].strip()
+        if local_part:
+            clean_part = local_part.replace(".", " ").replace("_", " ").replace("-", " ").split()[0].strip()
+            return clean_part.capitalize() if clean_part else local_part
+    return None
+
+
 def _resolve_event_datetimes(
     raw_start: Any,
     raw_end: Any,
@@ -339,7 +357,9 @@ class PublicationResponse(BaseModel):
     is_pinned: bool = False
     is_edited: bool = True
     is_ai_generated: bool = False
-    status: str = "edited"
+    status: str = "reviewed"
+    reviewed_by_name: str | None = None
+    reviewed_at: datetime | None = None
     has_registration: bool = False
     target_groups: list[str] = Field(default_factory=lambda: ["ALL"])
     notify_groups: list[str] = Field(default_factory=list)
@@ -409,7 +429,24 @@ class PublicationResponse(BaseModel):
         raw_is_edited = getattr(post, "is_edited", None)
         is_edited = bool(raw_is_edited) if raw_is_edited is not None else (post_type != "INSTAGRAM")
         is_ai_generated = bool(getattr(post, "is_ai_generated", False))
-        status_val = "ai" if (is_ai_generated and not is_edited) else ("edited" if is_edited else "pending")
+        reviewed_by_id = getattr(post, "reviewed_by_id", None)
+        reviewed_by_user = getattr(post, "reviewed_by", None)
+        author_user = getattr(post, "author", None)
+        raw_reviewed_at = getattr(post, "reviewed_at", None)
+
+        if reviewed_by_id is not None or is_edited:
+            status_val = "reviewed"
+            reviewed_by_name = (
+                extract_user_first_name(reviewed_by_user)
+                or extract_user_first_name(author_user)
+                or (getattr(post, "reviewed_by_name", None) or None)
+            )
+        elif is_ai_generated:
+            status_val = "ai"
+            reviewed_by_name = None
+        else:
+            status_val = "unreviewed"
+            reviewed_by_name = None
 
         return cls(
             id=int(getattr(post, "id", 0) or 0),
@@ -425,6 +462,8 @@ class PublicationResponse(BaseModel):
             is_edited=is_edited,
             is_ai_generated=is_ai_generated,
             status=status_val,
+            reviewed_by_name=reviewed_by_name,
+            reviewed_at=ensure_utc_datetime(raw_reviewed_at) if raw_reviewed_at else None,
             has_registration=bool(getattr(post, "has_registration", False)),
             target_groups=normalize_target_groups(getattr(post, "target_groups", None)),
             notify_groups=clean_group_codes(getattr(post, "notify_groups", None)),

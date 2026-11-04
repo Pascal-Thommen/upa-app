@@ -275,8 +275,100 @@ def test_instagram_publication_locks_type_and_date_and_flips_is_edited():
     assert body["is_news"] is True
     assert body["is_event"] is True
     assert body["is_edited"] is True
+    assert body["status"] == "reviewed"
+    assert body["reviewed_by_name"] == "Equipo"
+    assert body["reviewed_at"] is not None
     assert body["reminders"] == [30]
     assert datetime.fromisoformat(body["published_at"]).replace(tzinfo=UTC) == orig_ts
+
+
+def test_review_publication_endpoint_and_3_tag_status_lifecycle():
+    orig_ts = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
+    db = TestingSessionLocal()
+    ig_unreviewed = Post(
+        instagram_id="ig_unrev_001",
+        title="Post de Instagram sin revisar",
+        caption="Texto sincronizado",
+        content="Texto sincronizado completo",
+        post_type="INSTAGRAM",
+        is_news=True,
+        is_event=False,
+        is_edited=False,
+        is_ai_generated=False,
+        published_at=orig_ts,
+        target_groups=["ALL"],
+    )
+    ig_ai = Post(
+        instagram_id="ig_ai_002",
+        title="Evento extraido por IA",
+        caption="Charla el viernes",
+        content="Charla el viernes en el campus",
+        post_type="INSTAGRAM",
+        is_news=True,
+        is_event=True,
+        is_edited=False,
+        is_ai_generated=True,
+        event_start=orig_ts + timedelta(days=5),
+        published_at=orig_ts,
+        target_groups=["ALL"],
+    )
+    db.add_all([ig_unreviewed, ig_ai])
+    db.commit()
+    unrev_id = ig_unreviewed.id
+    ai_id = ig_ai.id
+    db.close()
+
+    admin_headers = auth(ADMIN_ID, ADMIN_EMAIL, "admin")
+    editor_headers = auth(EDITOR_ID, EDITOR_EMAIL, "editor")
+    student_headers = auth(STUDENT_A_ID, STUDENT_A_EMAIL, "user")
+
+    # 1. Estado inicial: unreviewed y ai
+    res_unrev = client.get(f"/api/publications/{unrev_id}", headers=admin_headers)
+    assert res_unrev.status_code == 200
+    assert res_unrev.json()["status"] == "unreviewed"
+    assert res_unrev.json()["reviewed_by_name"] is None
+    assert res_unrev.json()["reviewed_at"] is None
+
+    res_ai = client.get(f"/api/publications/{ai_id}", headers=admin_headers)
+    assert res_ai.status_code == 200
+    assert res_ai.json()["status"] == "ai"
+    assert res_ai.json()["reviewed_by_name"] is None
+
+    # 2. Estudiante no autorizado recibe 403; sin token recibe 401; ID inexistente recibe 404
+    assert client.post(f"/api/publications/{unrev_id}/review").status_code == 401
+    assert client.post(f"/api/publications/{unrev_id}/review", headers=student_headers).status_code == 403
+    assert client.post("/api/publications/999999/review", headers=admin_headers).status_code == 404
+
+    # 3. 1-Klick-Review por Pascal (admin) marca como revisado, guarda reviewed_by_id/reviewed_at y registra auditoria
+    rev_res = client.post(f"/api/publications/{unrev_id}/review", headers=admin_headers)
+    assert rev_res.status_code == 200
+    rev_body = rev_res.json()
+    assert rev_body["is_edited"] is True
+    assert rev_body["status"] == "reviewed"
+    assert rev_body["reviewed_by_name"] == "Pascal"
+    assert rev_body["reviewed_at"] is not None
+
+    # Verificar persistencia en DB y entrada en audit_log
+    db = TestingSessionLocal()
+    db_post = db.query(Post).filter(Post.id == unrev_id).one()
+    assert db_post.reviewed_by_id == ADMIN_ID
+    assert db_post.reviewed_at is not None
+    assert db_post.is_edited is True
+    audit_entry = (
+        db.query(AdminAuditLog)
+        .filter(AdminAuditLog.target_id == unrev_id, AdminAuditLog.action == "REVIEW_POST")
+        .first()
+    )
+    assert audit_entry is not None
+    assert audit_entry.admin_id == ADMIN_ID
+    db.close()
+
+    # 4. 1-Klick-Review sobre el evento IA cambia el estado de 'ai' a 'reviewed' con el nombre del revisor
+    rev_ai = client.post(f"/api/publications/{ai_id}/review", headers=editor_headers)
+    assert rev_ai.status_code == 200
+    assert rev_ai.json()["status"] == "reviewed"
+    assert rev_ai.json()["reviewed_by_name"] == "Equipo"
+    assert rev_ai.json()["is_edited"] is True
 
 
 def test_scheduled_publication_hidden_from_students_until_publish_time():

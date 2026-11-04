@@ -175,6 +175,8 @@ def seed_database():
                 send_push_notification=True,
                 reminders=[30],
                 author_id=admin.id,
+                reviewed_by_id=admin.id,
+                reviewed_at=now_ts,
                 created_at=now_ts,
                 published_at=now_ts,
             )

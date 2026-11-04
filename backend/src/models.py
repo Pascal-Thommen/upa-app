@@ -62,7 +62,7 @@ class User(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     # Relaciones
-    posts: Mapped[list["Post"]] = relationship("Post", back_populates="author")
+    posts: Mapped[list["Post"]] = relationship("Post", back_populates="author", foreign_keys="[Post.author_id]")
     registrations: Mapped[list["EventRegistration"]] = relationship(
         "EventRegistration", back_populates="user", cascade="all, delete-orphan"
     )
@@ -172,11 +172,14 @@ class Post(Base):
 
     # Metadatos
     author_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     # Relaciones
-    author: Mapped[User | None] = relationship("User", back_populates="posts")
+    author: Mapped[User | None] = relationship("User", back_populates="posts", foreign_keys=[author_id])
+    reviewed_by: Mapped[User | None] = relationship("User", foreign_keys=[reviewed_by_id])
     registrations: Mapped[list["EventRegistration"]] = relationship(
         "EventRegistration", back_populates="post", cascade="all, delete-orphan"
     )
@@ -186,11 +189,13 @@ class Post(Base):
 
     @property
     def status(self) -> str:
-        if bool(getattr(self, "is_ai_generated", False)) and not bool(getattr(self, "is_edited", False)):
+        is_edited = bool(getattr(self, "is_edited", False))
+        reviewed_by_id = getattr(self, "reviewed_by_id", None)
+        if reviewed_by_id is not None or is_edited:
+            return "reviewed"
+        if bool(getattr(self, "is_ai_generated", False)):
             return "ai"
-        if bool(getattr(self, "is_edited", False)) or (getattr(self, "post_type", "MANUAL") != "INSTAGRAM"):
-            return "edited"
-        return "pending"
+        return "unreviewed"
 
 
 class EventRegistration(Base):

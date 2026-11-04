@@ -422,7 +422,8 @@ test("renderPublicationRows y renderHistoryEntries muestran etiquetas, metricas 
   assert.ok(!html.includes("<script>"));
   assert.ok(html.includes("Noticias") && html.includes("Eventos"));
   assert.ok(html.includes("Instagram"));
-  assert.ok(html.includes("Pendiente"));
+  assert.ok(html.includes("No revisado"));
+  assert.ok(!html.includes("Pendiente"));
   assert.ok(html.includes("18 vistas"));
   assert.ok(html.includes("9 inscritos / 2 no asisten"));
 
@@ -446,6 +447,28 @@ test("renderPublicationRows y renderHistoryEntries muestran etiquetas, metricas 
   );
   assert.ok(aiHtml.includes("ed-badge-ai"));
   assert.ok(aiHtml.includes(">IA<"));
+
+  const reviewedHtml = Core.renderPublicationRows(
+    [
+      {
+        id: 44,
+        title: "Post revisado por Pascal",
+        summary: "Comunicado oficial",
+        post_type: "INSTAGRAM",
+        is_news: true,
+        is_event: false,
+        is_edited: true,
+        is_ai_generated: true,
+        status: "reviewed",
+        reviewed_by_name: "Pascal",
+        published_at: "2030-06-15T12:00:00Z",
+      },
+    ],
+    { timeZone: "UTC" }
+  );
+  assert.ok(reviewedHtml.includes("ed-badge-ok"));
+  assert.ok(reviewedHtml.includes(">Pascal<"));
+  assert.ok(!reviewedHtml.includes("Editado"));
 
   const hist = Core.renderHistoryEntries(
     [
@@ -959,6 +982,8 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
             post_type: "INSTAGRAM",
             is_news: true,
             is_event: false,
+            is_edited: false,
+            status: "unreviewed",
             target_groups: ["ALL"],
           },
         ]),
@@ -983,6 +1008,71 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
     document.getElementById("ed-notice").textContent.includes("Publicaciones de Instagram sincronizadas exitosamente")
   );
   assert.ok(tbody.textContent.includes("Nuevo Post Instagram UPA"));
+  assert.ok(tbody.textContent.includes("No revisado"));
+
+  // 9. SRV-259: Botón "Marcar como revisado" llama a POST /api/publications/:id/review, muestra toast "Marcado como revisado por Pascal" y actualiza badge a "Pascal"
+  let reviewEndpointCalled = false;
+  window.fetch = async (input, init) => {
+    const url = String(input);
+    const method = (init && init.method) || "GET";
+    if (url.endsWith("/api/publications/91") && method === "GET") {
+      return new Response(
+        JSON.stringify({
+          id: 91,
+          title: "Nuevo Post Instagram UPA",
+          post_type: "INSTAGRAM",
+          is_news: true,
+          is_event: false,
+          is_edited: false,
+          is_ai_generated: false,
+          status: "unreviewed",
+          reviewed_by_name: null,
+          target_groups: ["ALL"],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (url.endsWith("/api/publications/91/review") && method === "POST") {
+      reviewEndpointCalled = true;
+      return new Response(
+        JSON.stringify({
+          id: 91,
+          title: "Nuevo Post Instagram UPA",
+          post_type: "INSTAGRAM",
+          is_news: true,
+          is_event: false,
+          is_edited: true,
+          is_ai_generated: false,
+          status: "reviewed",
+          reviewed_by_name: "Pascal",
+          reviewed_at: "2026-11-04T20:00:00Z",
+          target_groups: ["ALL"],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return origFetch(input, init);
+  };
+
+  await window.UpaCockpit.openEditPublication(91);
+  // Al abrir el editor se limpia cualquier aviso previo (hideNotice)
+  assert.ok(document.getElementById("ed-notice").classList.contains("hidden"));
+  const reviewBtn = document.getElementById("ed-btn-review-pub");
+  assert.ok(reviewBtn, "El botón Marcar como revisado debe existir en el header del editor");
+  assert.ok(!reviewBtn.classList.contains("hidden"), "El botón debe ser visible al editar una publicación existente");
+  assert.equal(document.getElementById("ed-metric-edited").textContent, "No revisado");
+
+  reviewBtn.click();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(reviewEndpointCalled, true, "Debe invocar POST /api/publications/91/review");
+  assert.equal(document.getElementById("ed-metric-edited").textContent, "Pascal");
+  assert.ok(document.getElementById("ed-metric-edited").classList.contains("ed-badge-ok"));
+  assert.equal(document.getElementById("ed-notice").textContent, "Marcado como revisado por Pascal");
+
+  // Al volver a la lista con openListView sin keepNotice, el aviso se limpia y la fila muestra el badge verde "Pascal"
+  window.UpaCockpit.openListView();
+  assert.ok(document.getElementById("ed-notice").classList.contains("hidden"));
+  assert.ok(tbody.innerHTML.includes(">Pascal<"));
 
   window.close();
 });
@@ -1220,8 +1310,17 @@ test("DOM Publicaciones Deep Linking y Enrutamiento URL: sincroniza URL, soporta
   assert.ok(!s1.document.getElementById("ed-publications-list-card").classList.contains("hidden"));
   s1.window.close();
 
-  // 2. Deep Linking y Recarga F5 en /dashboard/publicaciones/60: abre directamente el formulario de edición
+  // 2. Deep Linking y Recarga F5 en /dashboard/publicaciones/60: abre directamente el formulario de edición sin destello de la tabla
   const s2 = mountCockpitDom("http://127.0.0.1:8185/dashboard/publicaciones/60");
+  // Inmediatamente en el primer tick (antes de que resuelvan las promesas de red), la tabla ya está oculta y el editor visible
+  assert.ok(
+    s2.document.getElementById("ed-publications-list-card").classList.contains("hidden"),
+    "La tabla de publicaciones no debe destellar al recargar F5 en /dashboard/publicaciones/:id"
+  );
+  assert.ok(
+    !s2.document.getElementById("ed-editor-card").classList.contains("hidden"),
+    "El editor debe mostrarse inmediatamente en recarga F5 de /dashboard/publicaciones/:id"
+  );
   await new Promise((r) => setTimeout(r, 60));
   assert.equal(s2.window.location.pathname, "/dashboard/publicaciones/60");
   assert.ok(s2.document.getElementById("ed-publications-list-card").classList.contains("hidden"));

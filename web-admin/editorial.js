@@ -20,6 +20,7 @@
     ready: false,
     allowed: false,
     isAdmin: false,
+    currentUser: null,
     mode: "editorial",
     filter: "all",
     publications: [],
@@ -33,6 +34,22 @@
     noticeTimer: null,
     aiConfigured: false,
   };
+
+  function getCurrentUserFirstName() {
+    const u = state.currentUser;
+    if (!u) return "";
+    const fullName = String(u.full_name || "").trim();
+    if (fullName) {
+      const first = fullName.split(/\s+/)[0];
+      if (first) return first;
+    }
+    const email = String(u.email || "").trim();
+    if (email) {
+      const local = email.split("@")[0].replace(/[._-]+/g, " ").trim().split(/\s+/)[0];
+      if (local) return local.charAt(0).toUpperCase() + local.slice(1);
+    }
+    return "";
+  }
 
   function getClient() {
     if (!state.client) {
@@ -743,6 +760,9 @@
 
     $("ed-pub-form-title").textContent = editing ? "Editar publicación" : "Nueva publicación";
     $("ed-btn-delete-pub").classList.toggle("hidden", !editing);
+    if ($("ed-btn-review-pub")) {
+      $("ed-btn-review-pub").classList.toggle("hidden", !editing);
+    }
 
     const metricsBar = $("ed-metrics-bar");
     if (metricsBar) {
@@ -756,14 +776,22 @@
         $("ed-metric-declined").textContent = `${Number(values.declinedCount || 0)} no asisten`;
         const badge = $("ed-metric-edited");
         if (badge) {
-          if (values.isAiGenerated && !values.isEdited) {
+          const reviewerName = String(
+            values.reviewedByName || (rawItem && rawItem.reviewed_by_name) || ""
+          ).trim();
+          const isReviewed =
+            Boolean(reviewerName) ||
+            values.status === "reviewed" ||
+            (rawItem && rawItem.status === "reviewed") ||
+            Boolean(values.isEdited);
+          if (isReviewed) {
+            badge.textContent = reviewerName || getCurrentUserFirstName() || "Revisado";
+            badge.className = "ed-badge ed-badge-ok";
+          } else if (values.isAiGenerated) {
             badge.textContent = "IA";
             badge.className = "ed-badge ed-badge-ai";
-          } else if (values.isEdited) {
-            badge.textContent = values.isAiGenerated ? "Editado · IA" : "Editado";
-            badge.className = "ed-badge ed-badge-ok";
           } else {
-            badge.textContent = "Pendiente";
+            badge.textContent = "No revisado";
             badge.className = "ed-badge ed-badge-warn";
           }
         }
@@ -870,6 +898,12 @@
 
   function openListView(options) {
     const opts = options && typeof options === "object" && !("preventDefault" in options) ? options : {};
+    if (!opts.keepNotice) {
+      hideNotice();
+    }
+    if (typeof document !== "undefined" && document.documentElement && document.documentElement.classList) {
+      document.documentElement.classList.remove("is-deep-editor");
+    }
     state.editingItem = null;
     hideParticipants();
     const listCard = $("ed-publications-list-card");
@@ -894,6 +928,20 @@
 
   async function openNewPublication(options) {
     const opts = options && typeof options === "object" && !("preventDefault" in options) ? options : {};
+    if (!opts.keepNotice) {
+      hideNotice();
+    }
+    const listCard = $("ed-publications-list-card");
+    const editorCard = $("ed-editor-card");
+    const listHist = $("ed-list-history");
+    const histEl = $("ed-pub-history");
+    if (listCard) listCard.classList.add("hidden");
+    if (editorCard) editorCard.classList.remove("hidden");
+    if (listHist) listHist.classList.add("hidden");
+    if (histEl) {
+      histEl.classList.add("hidden");
+      histEl.innerHTML = "";
+    }
     syncPublicationsUrl(`${PUBLICATIONS_BASE_PATH}/nueva`, {
       updateUrl: opts.updateUrl !== false,
       replace: Boolean(opts.replace),
@@ -913,25 +961,30 @@
     defaults.eventStart = "";
     defaults.eventEnd = "";
     fillPublicationForm(defaults, null);
-    const listHist = $("ed-list-history");
-    if (listHist) listHist.classList.add("hidden");
-    const histEl = $("ed-pub-history");
-    if (histEl) {
-      histEl.classList.add("hidden");
-      histEl.innerHTML = "";
+    if (listCard) listCard.classList.add("hidden");
+    if (editorCard) editorCard.classList.remove("hidden");
+    if (typeof document !== "undefined" && document.documentElement && document.documentElement.classList) {
+      document.documentElement.classList.remove("is-deep-editor");
     }
-    $("ed-publications-list-card").classList.add("hidden");
-    $("ed-editor-card").classList.remove("hidden");
   }
 
   async function openEditPublication(id, options) {
     const opts = options && typeof options === "object" && !("preventDefault" in options) ? options : {};
+    if (!opts.keepNotice) {
+      hideNotice();
+    }
     const cleanId = String(id === null || id === undefined ? "" : id).trim();
     if (!/^[1-9]\d*$/.test(cleanId)) {
       showNotice("error", (Core.TEXTS && Core.TEXTS.errNotFound) || "Publicación no encontrada.");
-      openListView({ updateUrl: true, replace: true });
+      openListView({ updateUrl: true, replace: true, keepNotice: true });
       return null;
     }
+    const listCard = $("ed-publications-list-card");
+    const editorCard = $("ed-editor-card");
+    const listHist = $("ed-list-history");
+    if (listCard) listCard.classList.add("hidden");
+    if (editorCard) editorCard.classList.remove("hidden");
+    if (listHist) listHist.classList.add("hidden");
     syncPublicationsUrl(`${PUBLICATIONS_BASE_PATH}/${encodeURIComponent(cleanId)}`, {
       updateUrl: opts.updateUrl !== false,
       replace: Boolean(opts.replace),
@@ -945,18 +998,18 @@
       if (error && (error.status === 404 || error.kind === "not_found" || error.status === 422)) {
         state.publications = state.publications.filter((p) => String(p.id) !== cleanId);
         showNotice("error", (Core.TEXTS && Core.TEXTS.errNotFound) || "Publicación no encontrada.");
-        openListView({ updateUrl: true, replace: true });
+        openListView({ updateUrl: true, replace: true, keepNotice: true });
         return null;
       }
       if (!item) {
         showNotice("error", Core.describeError(error));
-        openListView({ updateUrl: true, replace: true });
+        openListView({ updateUrl: true, replace: true, keepNotice: true });
         return null;
       }
     }
     if (!item || item.id === undefined || item.id === null) {
       showNotice("error", (Core.TEXTS && Core.TEXTS.errNotFound) || "Publicación no encontrada.");
-      openListView({ updateUrl: true, replace: true });
+      openListView({ updateUrl: true, replace: true, keepNotice: true });
       return null;
     }
     const idx = state.publications.findIndex((p) => String(p.id) === String(item.id));
@@ -966,10 +1019,12 @@
       state.publications.unshift(item);
     }
     fillPublicationForm(Core.publicationToFormValues(item), item);
-    const listHist = $("ed-list-history");
     if (listHist) listHist.classList.add("hidden");
-    $("ed-publications-list-card").classList.add("hidden");
-    $("ed-editor-card").classList.remove("hidden");
+    if (listCard) listCard.classList.add("hidden");
+    if (editorCard) editorCard.classList.remove("hidden");
+    if (typeof document !== "undefined" && document.documentElement && document.documentElement.classList) {
+      document.documentElement.classList.remove("is-deep-editor");
+    }
     loadItemHistory(item.id);
     return item;
   }
@@ -1276,7 +1331,7 @@
         ? await getClient().updatePublication(id, payload)
         : await getClient().createPublication(payload);
       showNotice("success", id ? "Publicación actualizada." : "Publicación guardada.");
-      openListView();
+      openListView({ keepNotice: true });
       await loadPublications();
       return saved;
     } catch (error) {
@@ -1284,6 +1339,41 @@
       return null;
     } finally {
       setBusy(button, false);
+    }
+  }
+
+  async function reviewCurrentPublication() {
+    const id = $("ed-pub-id") ? $("ed-pub-id").value : "";
+    if (!id) return null;
+    const btn = $("ed-btn-review-pub");
+    setBusy(btn, true, "Marcando...");
+    try {
+      const updated = await getClient().reviewPublication(id);
+      const reviewerName =
+        String((updated && updated.reviewed_by_name) || "").trim() || getCurrentUserFirstName() || "Redacción";
+      if (updated) {
+        state.editingItem = updated;
+        const idx = state.publications.findIndex((p) => String(p.id) === String(updated.id));
+        if (idx >= 0) {
+          state.publications[idx] = updated;
+        } else {
+          state.publications.unshift(updated);
+        }
+      }
+      const badge = $("ed-metric-edited");
+      if (badge) {
+        badge.textContent = reviewerName;
+        badge.className = "ed-badge ed-badge-ok";
+      }
+      renderFilteredRows();
+      loadItemHistory(id);
+      showNotice("success", `Marcado como revisado por ${reviewerName}`);
+      return updated;
+    } catch (error) {
+      showNotice("error", Core.describeError(error));
+      return null;
+    } finally {
+      setBusy(btn, false);
     }
   }
 
@@ -1298,7 +1388,7 @@
     try {
       await getClient().deletePublication(id);
       showNotice("success", "Publicación eliminada.");
-      openListView();
+      openListView({ keepNotice: true });
       await loadPublications();
     } catch (error) {
       showNotice("error", Core.describeError(error));
@@ -1419,7 +1509,7 @@
 
     if (subroute === "invalid" || invalidPubId) {
       showNotice("error", (Core.TEXTS && Core.TEXTS.errNotFound) || "Publicación no encontrada.");
-      openListView({ updateUrl: true, replace: true });
+      openListView({ updateUrl: true, replace: true, keepNotice: true });
       await loadPublications();
       return;
     }
@@ -1459,6 +1549,7 @@
     if ($("ed-btn-new-pub")) $("ed-btn-new-pub").addEventListener("click", openNewPublication);
     if ($("ed-btn-back")) $("ed-btn-back").addEventListener("click", openListView);
     if ($("ed-pub-cancel")) $("ed-pub-cancel").addEventListener("click", openListView);
+    if ($("ed-btn-review-pub")) $("ed-btn-review-pub").addEventListener("click", reviewCurrentPublication);
     if ($("ed-btn-delete-pub")) $("ed-btn-delete-pub").addEventListener("click", deleteCurrentPublication);
     if ($("ed-btn-toggle-participants")) {
       $("ed-btn-toggle-participants").addEventListener("click", toggleParticipants);
@@ -1606,6 +1697,7 @@
     },
 
     onUserLoaded(user) {
+      state.currentUser = user || null;
       state.allowed = userHasPublicationsPerm(user);
       state.isAdmin = userHasHistoryPerm(user);
       if (!state.isAdmin) {
@@ -1630,6 +1722,7 @@
     reset() {
       state.allowed = false;
       state.isAdmin = false;
+      state.currentUser = null;
       state.aiConfigured = false;
       state.publications = [];
       state.publicationsLoaded = false;
@@ -1654,12 +1747,13 @@
     loadPanelData,
     loadPublications,
     syncInstagram,
+    reviewCurrentPublication,
     refreshGroupsCatalog,
-        openEditPublication,
-        openNewPublication,
-        openListView,
-        syncRouteState: loadPanelData,
-      };
+    openEditPublication,
+    openNewPublication,
+    openListView,
+    syncRouteState: loadPanelData,
+  };
 
   window.UpaCockpit = UpaCockpit;
 })();

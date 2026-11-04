@@ -153,7 +153,7 @@ def test_alembic_full_upgrade_downgrade_and_data_preservation():
                 )
             )
 
-        # 2. Upgrade a head (008): migra datos y elimina columnas obsoletas
+        # 2. Upgrade a head (010): migra datos, elimina columnas obsoletas y agrega reviewed_by_id / reviewed_at
         command.upgrade(cfg, "head")
         insp = inspect(eng)
         user_cols = {c["name"] for c in insp.get_columns("users")}
@@ -164,6 +164,7 @@ def test_alembic_full_upgrade_downgrade_and_data_preservation():
         assert "device_token" not in user_cols
         assert {"classroom_deadlines_cache", "classroom_synced_at"} <= user_cols
         assert {"reminder_minutes_before", "push_notification_sent_at", "detail_text"}.isdisjoint(post_cols)
+        assert {"reviewed_by_id", "reviewed_at"} <= post_cols
         assert {"google_group", "is_system", "badge_class"}.isdisjoint(group_cols)
         assert "role" not in role_cols
 
@@ -191,7 +192,8 @@ def test_alembic_full_upgrade_downgrade_and_data_preservation():
              ).scalar()
              assert migrated_media == "/uploads/7f34230e3ad140689d991d3175929766.jpg"
 
-        # 3. Downgrade -1 (vuelve a 008) y luego -1 (vuelve a 007) restaurando columnas eliminadas
+        # 3. Downgrade -1 (vuelve a 009), -1 (vuelve a 008) y luego -1 (vuelve a 007) restaurando columnas eliminadas
+        command.downgrade(cfg, "-1")
         command.downgrade(cfg, "-1")
         command.downgrade(cfg, "-1")
         insp_down = inspect(eng)
