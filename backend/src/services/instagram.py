@@ -343,9 +343,45 @@ class InstagramSyncService:
                 if not item.instagram_id:
                     continue
 
-                existing = db.query(Post).filter(Post.instagram_id == item.instagram_id).first()
+                existing_by_id = db.query(Post).filter(Post.instagram_id == item.instagram_id).first()
+                existing_by_perm = None
+                if (
+                    item.permalink
+                    and item.permalink != self.DEFAULT_PERMALINK_FALLBACK
+                    and "instagram.com/" in item.permalink.lower()
+                ):
+                    existing_by_perm = (
+                        db.query(Post)
+                        .filter(Post.post_type == "INSTAGRAM", Post.permalink == item.permalink)
+                        .order_by(Post.is_edited.desc(), Post.id.asc())
+                        .first()
+                    )
+
+                existing = existing_by_id or existing_by_perm
+                if (
+                    existing_by_id is not None
+                    and existing_by_perm is not None
+                    and existing_by_id.id != existing_by_perm.id
+                ):
+                    # Fusionar duplicados creados previamente (ej. shortcode SociableKIT vs ID numerico Graph API)
+                    if existing_by_perm.is_edited and not existing_by_id.is_edited:
+                        existing = existing_by_perm
+                        duplicate = existing_by_id
+                    elif not existing_by_perm.is_edited and existing_by_id.is_edited:
+                        existing = existing_by_id
+                        duplicate = existing_by_perm
+                    elif existing_by_perm.id < existing_by_id.id:
+                        existing = existing_by_perm
+                        duplicate = existing_by_id
+                    else:
+                        existing = existing_by_id
+                        duplicate = existing_by_perm
+                    db.delete(duplicate)
+                    db.flush()
+
                 teaser = extract_instagram_teaser(item.caption)
                 if existing:
+                    existing.instagram_id = item.instagram_id
                     if not existing.is_edited:
                         existing.caption = teaser
                         existing.content = item.caption
