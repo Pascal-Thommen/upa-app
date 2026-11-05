@@ -430,19 +430,37 @@
 
     async function handleFile(file) {
       if (dz.uploading || dz.readOnly) return;
-      const check = Core.validateUploadFile(file);
-      if (!check.ok) {
-        dz.setStatus("error", check.message);
+      if (!file || !file.size) {
+        const emptyCheck = Core.validateUploadFile(file);
+        dz.setStatus("error", emptyCheck.message);
         return;
       }
+      const rawType = String(file.type || "").split(";")[0].trim().toLowerCase();
+      if (!Core.ALLOWED_UPLOAD_TYPES.includes(rawType)) {
+        dz.setStatus("error", Core.TEXTS.errUploadType);
+        return;
+      }
+
       dz.uploading = true;
-      dz.lastFile = file;
       zone.classList.add("is-uploading");
-      dz.setStatus("", `Subiendo ${file.name}...`);
       try {
-        const result = await getClient().uploadMedia(file);
-        dz.setUrl(result.url, file.name);
-        dz.setStatus("ok", `Archivo subido: ${file.name}`);
+        let uploadCandidate = file;
+        if (rawType.startsWith("image/") && typeof Core.optimizeImageBeforeUpload === "function") {
+          dz.setStatus("", `Optimizando ${file.name}...`);
+          uploadCandidate = await Core.optimizeImageBeforeUpload(file);
+        }
+
+        const check = Core.validateUploadFile(uploadCandidate);
+        if (!check.ok) {
+          dz.setStatus("error", check.message);
+          return;
+        }
+
+        dz.lastFile = uploadCandidate;
+        dz.setStatus("", `Subiendo ${uploadCandidate.name || file.name}...`);
+        const result = await getClient().uploadMedia(uploadCandidate, { skipOptimization: true });
+        dz.setUrl(result.url, uploadCandidate.name || file.name);
+        dz.setStatus("ok", `Archivo subido: ${uploadCandidate.name || file.name}`);
       } catch (error) {
         dz.setStatus("error", Core.describeError(error));
       } finally {

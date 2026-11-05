@@ -32,12 +32,15 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "video/mp4": ".mp4",
     "video/webm": ".webm",
 }
+ALLOWED_MIME_TYPES: frozenset[str] = frozenset(ALLOWED_CONTENT_TYPES.keys())
+ALLOWED_EXTENSIONS: frozenset[str] = frozenset(ALLOWED_CONTENT_TYPES.values())
 
 
 class UploadsStaticFiles(StaticFiles):
     """
     Entrega de los archivos subidos con cache para clientes moviles. Los nombres son UUID y
     nunca cambian, por lo que el contenido puede cachearse a largo plazo como inmutable.
+    Garantiza Content-Type explicito (p. ej. image/webp para .webp) independientemente del sistema operativo.
     """
 
     async def get_response(self, path: str, scope: Scope) -> Response:
@@ -45,6 +48,11 @@ class UploadsStaticFiles(StaticFiles):
         if response.status_code in (200, 304):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             response.headers["X-Content-Type-Options"] = "nosniff"
+            lower_path = path.lower()
+            for mime_type, ext in ALLOWED_CONTENT_TYPES.items():
+                if lower_path.endswith(ext):
+                    response.headers["content-type"] = mime_type
+                    break
         return response
 
 
