@@ -41,6 +41,8 @@ services:
       ALLOWED_EMAIL_DOMAIN: upa.edu.py
       GOOGLE_CLIENT_ID: "50361321197-om1eptt5qisjn8jeunkjs47o56il7s33.apps.googleusercontent.com"
       GOOGLE_SERVICE_ACCOUNT_FILE: /app/secrets/service-account.json
+      FCM_SERVICE_ACCOUNT_FILE: /app/secrets/firebase-service-account.json
+      FCM_PROJECT_ID: upa-campus-app
       AI_EVENT_EXTRACTION_ENABLED: "true"
     ports:
       - "8000:8000"

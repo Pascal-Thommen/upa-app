@@ -157,10 +157,12 @@
 
         <h3 class="section-title">Notificaciones</h3>
         <ul class="switch-list">
+          <li><label><span>Notificaciones Push</span><input type="checkbox" id="push-opt-in" data-notify="push" role="switch"></label></li>
           <li><label><span>Eventos</span><input type="checkbox" data-notify="events" role="switch"></label></li>
           <li><label><span>Avisos y comunicados</span><input type="checkbox" data-notify="announcements" role="switch"></label></li>
           <li><label><span>Fechas límite</span><input type="checkbox" data-notify="deadlines" role="switch"></label></li>
         </ul>
+        <button id="btn-push-optin" class="btn btn-secondary btn-small" type="button" hidden>Notificaciones Push</button>
         <p id="notify-hint" class="muted small" hidden></p>
 
         <button id="btn-logout" class="btn btn-danger btn-block" type="button" hidden>Cerrar sesión</button>

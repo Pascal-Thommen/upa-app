@@ -12,6 +12,9 @@
 *token*.json
 *credentials*.json
 *secret*.json
+*-adminsdk-*.json
+*firebase-service-account*.json
+*fcm-service-account*.json
 service-account*.json
 service_account*.json
 client_secret*.json

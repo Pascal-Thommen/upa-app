@@ -6,12 +6,15 @@
   "use strict";
 
   const Core = window.UpaCampusCore;
+  const firebaseConfig = Core.firebaseConfig;
+  const VAPID_PUBLIC_KEY = Core.VAPID_PUBLIC_KEY;
   const FEED_PAGE = 20;
   const REFRESH_AFTER_MS = 60 * 1000;
   const TOKEN_KEY = "upa_campus_token";
   const THEME_KEY = "upa_campus_theme";
   const INSTALL_KEY = "upa_campus_install_dismissed";
   const NOTIFIED_KEY = "upa_campus_notified";
+  const PUSH_TOKEN_KEY = "upa_campus_fcm_token";
   const FORCE_APP_KEY = "upa_campus_force_app";
   const SW_RELOAD_TS_KEY = "upa_campus_sw_reload_ts";
   const SW_UPDATED_KEY = "upa_campus_sw_updated";
@@ -65,6 +68,8 @@
     installPrompt: null,
     lastRefresh: 0,
     reloadCount: 0,
+    pushToken: null,
+    hasDeviceToken: false,
     prefs: Core.loadNotificationPrefs(local),
   };
 
@@ -318,6 +323,8 @@
   function resetSessionState() {
     state.token = null;
     state.user = null;
+    state.pushToken = null;
+    state.hasDeviceToken = false;
     state.feed = { banners: [], posts: [], received: 0, hasMore: false, loaded: false, error: null };
     state.agenda = { entries: [], loaded: false, error: null };
     state.selectedDay = null;
@@ -327,6 +334,7 @@
   async function logout(reason) {
     local.removeItem(TOKEN_KEY);
     local.removeItem(NOTIFIED_KEY);
+    local.removeItem(PUSH_TOKEN_KEY);
     session.removeItem(FORCE_APP_KEY);
     cache.clear();
     resetSessionState();
@@ -417,6 +425,7 @@
       else if (!reset) toast(Core.friendlyError(error));
     }
     renderFeed();
+    maybeOpenDeepLinkedPost();
     maybeNotify();
   }
 
@@ -452,7 +461,12 @@
 
   async function refreshAll() {
     const tasks = [loadFeed({ reset: true })];
-    if (state.token) tasks.push(loadAgenda(), loadUser());
+    if (state.token) {
+      tasks.push(loadAgenda(), loadUser());
+      if (notificationsSupported() && win.Notification.permission === "granted" && state.prefs.push !== false) {
+        tasks.push(syncPushDeviceToken());
+      }
+    }
     await Promise.all(tasks.map(track));
   }
 
@@ -1386,22 +1400,130 @@
       $("profile-email").textContent = (user && user.email) || "";
       if ($("profile-role")) $("profile-role").textContent = user ? Core.roleLabel(user) : "";
     }
+    const pushGranted = notificationsSupported() && win.Notification.permission === "granted";
     doc.querySelectorAll("[data-notify]").forEach((input) => {
-      input.checked = Boolean(state.prefs[input.getAttribute("data-notify")]);
+      const key = input.getAttribute("data-notify");
+      if (key === "push") {
+        input.checked = Boolean(state.prefs.push || state.hasDeviceToken || (pushGranted && state.prefs.push !== false));
+      } else {
+        input.checked = Boolean(state.prefs[key]);
+      }
     });
+    const optinBtn = $("btn-push-optin");
+    if (optinBtn) {
+      optinBtn.hidden = Boolean(!state.token || (pushGranted && state.hasDeviceToken));
+    }
   }
 
   function notificationsSupported() {
     return typeof win.Notification === "function";
   }
 
+  async function resolveSwRegistration() {
+    if (swRegistration) return swRegistration;
+    if ("serviceWorker" in win.navigator && typeof win.navigator.serviceWorker.getRegistration === "function") {
+      try {
+        const reg = await win.navigator.serviceWorker.getRegistration();
+        if (reg) {
+          swRegistration = reg;
+          return reg;
+        }
+      } catch (_) {
+        /* sin registro activo de Service Worker */
+      }
+    }
+    return null;
+  }
+
+  async function syncPushDeviceToken() {
+    if (!notificationsSupported() || win.Notification.permission !== "granted") {
+      return { ok: false, reason: "permission_not_granted" };
+    }
+    try {
+      const reg = await resolveSwRegistration();
+      const fcmToken = await Core.requestFcmToken({
+        firebase: win.firebase,
+        vapidKey: VAPID_PUBLIC_KEY,
+        firebaseConfig,
+        serviceWorkerRegistration: reg,
+        storage: local,
+      });
+      if (!fcmToken) return { ok: false, reason: "empty_token" };
+      state.pushToken = fcmToken;
+      local.setItem(PUSH_TOKEN_KEY, fcmToken);
+      if (state.token && api && typeof api.registerDeviceToken === "function") {
+        const response = await api.registerDeviceToken(fcmToken, "web");
+        state.hasDeviceToken = Boolean(response && response.has_device_token);
+        renderProfile();
+        return { ok: true, token: fcmToken, response };
+      }
+      renderProfile();
+      return { ok: true, token: fcmToken, response: null };
+    } catch (_) {
+      return { ok: false, reason: "registration_failed" };
+    }
+  }
+
+  async function enablePushNotifications() {
+    const hint = $("notify-hint");
+    if (hint) hint.hidden = true;
+    const pushToggle = $("push-opt-in");
+    if (!notificationsSupported()) {
+      if (pushToggle) pushToggle.checked = false;
+      state.prefs.push = false;
+      Core.saveNotificationPrefs(local, state.prefs);
+      if (hint) {
+        hint.textContent = "Este navegador no admite notificaciones. En iPhone, instala la app en la pantalla de inicio.";
+        hint.hidden = false;
+      }
+      return { ok: false, reason: "unsupported" };
+    }
+    let permission = win.Notification.permission;
+    if (permission !== "granted" && typeof win.Notification.requestPermission === "function") {
+      try {
+        const requested = await win.Notification.requestPermission();
+        permission = typeof requested === "string" ? requested : win.Notification.permission;
+      } catch (_) {
+        permission = win.Notification.permission || "denied";
+      }
+    }
+    if (permission !== "granted") {
+      if (pushToggle) pushToggle.checked = false;
+      state.prefs.push = false;
+      Core.saveNotificationPrefs(local, state.prefs);
+      if (hint) {
+        hint.textContent = "Las notificaciones están bloqueadas en tu navegador. Habilítalas en los ajustes del sitio.";
+        hint.hidden = false;
+      }
+      return { ok: false, reason: permission || "denied" };
+    }
+    state.prefs.push = true;
+    Core.saveNotificationPrefs(local, state.prefs);
+    if (pushToggle) pushToggle.checked = true;
+    const synced = await syncPushDeviceToken();
+    if (hint && synced.ok) {
+      hint.textContent = "Notificaciones Push activadas en este dispositivo.";
+      hint.hidden = false;
+    }
+    maybeNotify();
+    return synced;
+  }
+
   async function onNotifyToggle(event) {
     const input = event.target;
-    state.prefs[input.getAttribute("data-notify")] = input.checked;
+    const key = input.getAttribute("data-notify");
+    state.prefs[key] = input.checked;
     Core.saveNotificationPrefs(local, state.prefs);
     const hint = $("notify-hint");
     hint.hidden = true;
-    if (!input.checked) return;
+    if (!input.checked) {
+      renderProfile();
+      return;
+    }
+    if (key === "push") {
+      await enablePushNotifications();
+      return;
+    }
     if (!notificationsSupported()) {
       hint.textContent = "Este navegador no admite notificaciones. En iPhone, instala la app en la pantalla de inicio.";
       hint.hidden = false;
@@ -1409,7 +1531,10 @@
     }
     if (win.Notification.permission === "default") {
       try {
-        await win.Notification.requestPermission();
+        const perm = await win.Notification.requestPermission();
+        if (perm === "granted" || win.Notification.permission === "granted") {
+          await syncPushDeviceToken();
+        }
       } catch (_) {
         /* el navegador rechazo la solicitud */
       }
@@ -1419,7 +1544,24 @@
       hint.hidden = false;
       return;
     }
+    if (win.Notification.permission === "granted") {
+      await syncPushDeviceToken();
+    }
     maybeNotify();
+  }
+
+  let deepLinkConsumed = false;
+  function maybeOpenDeepLinkedPost() {
+    if (deepLinkConsumed || state.detail) return;
+    const search = String(win.location.search || "");
+    const m = /(?:^|[?&])post=(\d+)(?:&|$)/.exec(search);
+    if (!m) return;
+    const postId = Number(m[1]);
+    const target = [...(state.feed.banners || []), ...(state.feed.posts || [])].find((p) => Number(p.id) === postId);
+    if (target) {
+      deepLinkConsumed = true;
+      openDetail(detailFromPost(target));
+    }
   }
 
   async function showNotification(item) {
@@ -1775,6 +1917,9 @@
     });
     doc.querySelectorAll("[data-theme-option]").forEach((btn) => btn.addEventListener("click", () => setTheme(btn.getAttribute("data-theme-option"))));
     doc.querySelectorAll("[data-notify]").forEach((input) => input.addEventListener("change", (ev) => track(onNotifyToggle(ev))));
+    if ($("btn-push-optin")) {
+      $("btn-push-optin").addEventListener("click", () => track(enablePushNotifications()));
+    }
     $("btn-logout").addEventListener("click", () => track(logout("Sesión cerrada.")));
     $("install-action").addEventListener("click", () => track(onInstallAction()));
     $("install-dismiss").addEventListener("click", () => {
@@ -1853,6 +1998,12 @@
   }
 
   async function start() {
+    if (!win.firebase) {
+      win.firebase = Core.createFirebaseBridge({
+        storage: local,
+        getSwRegistration: () => resolveSwRegistration(),
+      });
+    }
     applyTheme(local.getItem(THEME_KEY));
     updateBetaIndicator();
     const auth = consumeAuthFragment();
@@ -1874,6 +2025,8 @@
 
   win.UpaCampus = {
     state,
+    firebaseConfig,
+    VAPID_PUBLIC_KEY,
     boot,
     start,
     idle: async () => {
@@ -1883,6 +2036,8 @@
     openDetail: (detail) => openDetail(detail),
     refresh: () => track(refreshAll()),
     checkForSwUpdate: () => checkForSwUpdate(),
+    enablePushNotifications: () => track(enablePushNotifications()),
+    syncPushDeviceToken: () => track(syncPushDeviceToken()),
     renderAgendaTimeline,
     renderAgendaSingleDay,
     scrollToAgendaDay,

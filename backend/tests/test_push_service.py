@@ -369,3 +369,56 @@ def test_build_emergency_message_falls_back_to_title_and_content(db_session):
     )
     with_content = Post(id=12, title="T", content="Detalle largo", post_type="EMERGENCY_BANNER")
     assert build_emergency_message(with_content)[1] == "Detalle largo"
+
+
+def test_users_me_device_token_registers_web_push_token(db_session):
+    tie_headers = {"Authorization": f"Bearer {create_access_token({'sub': '2'})}"}
+    resp = client.post(
+        "/api/users/me/device-token",
+        json={"device_token": "fcm_web_872606189485_student_tie_001", "platform": "web"},
+        headers=tie_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_id"] == 2
+    assert body["device_token"] == "fcm_web_872606189485_student_tie_001"
+    assert body["platform"] == "web"
+    assert body["has_device_token"] is True
+
+    stored = (
+        db_session.query(DeviceToken)
+        .filter(
+            DeviceToken.user_id == 2,
+            DeviceToken.device_token == "fcm_web_872606189485_student_tie_001",
+        )
+        .one()
+    )
+    assert stored.platform == "web"
+
+
+def test_unregistered_tokens_are_removed_from_database_on_dispatch(db_session, fcm_settings):
+    db_session.add(DeviceToken(user_id=2, device_token="dead-token-web-999", platform="web"))
+    db_session.commit()
+
+    response = client.post(
+        "/api/publications",
+        json={
+            "title": "Alerta meteorologica en campus",
+            "caption": "Suspension preventiva de actividades.",
+            "post_type": "EMERGENCY_BANNER",
+            "is_news": True,
+            "is_event": False,
+            "target_groups": ["TIE"],
+        },
+        headers=admin_headers(),
+    )
+    assert response.status_code == 201
+    assert sorted(m["token"] for m in fcm_settings.messages) == ["legacy-token-tie", "tie-phone-token-2"]
+
+    db_session.expire_all()
+    remaining = {
+        row.device_token for row in db_session.query(DeviceToken).filter(DeviceToken.user_id == 2).all()
+    }
+    assert "dead-token-web-999" not in remaining
+    assert remaining == {"legacy-token-tie", "tie-phone-token-2"}
+

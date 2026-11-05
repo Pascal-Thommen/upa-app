@@ -59,7 +59,17 @@ class DeviceTokenResponse(BaseModel):
     "/device-token",
     response_model=DeviceTokenResponse,
     status_code=status.HTTP_200_OK,
-    summary="Registrar token FCM de dispositivo movil para notificaciones push",
+    summary="Registrar token FCM de dispositivo movil o web para notificaciones push",
+    responses={
+        400: {"model": ErrorResponse, "description": "Token de dispositivo vacio o plataforma invalida"},
+        401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},
+    },
+)
+@router.post(
+    "/me/device-token",
+    response_model=DeviceTokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Registrar token FCM de dispositivo del usuario actual para notificaciones push",
     responses={
         400: {"model": ErrorResponse, "description": "Token de dispositivo vacio o plataforma invalida"},
         401: {"model": ErrorResponse, "description": "Token JWT ausente, invalido o expirado"},

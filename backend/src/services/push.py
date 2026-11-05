@@ -58,6 +58,20 @@ class _ServiceAccount:
 def load_service_account(path: str, project_id_override: str = "") -> _ServiceAccount:
     """Lee y valida la cuenta de servicio de Firebase desde disco."""
     file_path = Path(path)
+    if not file_path.is_file() and file_path.name in ("firebase-service-account.json", "fcm-service-account.json"):
+        alt_name = (
+            "fcm-service-account.json"
+            if file_path.name == "firebase-service-account.json"
+            else "firebase-service-account.json"
+        )
+        for candidate in (
+            file_path.with_name(alt_name),
+            Path("/app/secrets") / file_path.name,
+            Path("/app/secrets") / alt_name,
+        ):
+            if candidate.is_file():
+                file_path = candidate
+                break
     if not file_path.is_file():
         raise PushConfigurationError(f"Archivo de cuenta de servicio FCM no encontrado: {path}")
     try:
@@ -68,7 +82,12 @@ def load_service_account(path: str, project_id_override: str = "") -> _ServiceAc
     for key in ("client_email", "private_key", "token_uri"):
         if not isinstance(data.get(key), str) or not data[key].strip():
             raise PushConfigurationError(f"Cuenta de servicio FCM sin campo obligatorio '{key}'.")
-    project_id = (project_id_override or data.get("project_id") or "").strip()
+    file_proj = (data.get("project_id") or "").strip()
+    override = (project_id_override or "").strip()
+    if override and (override != "upa-campus-app" or not file_proj):
+        project_id = override
+    else:
+        project_id = file_proj or override
     if not project_id:
         raise PushConfigurationError("No hay FCM_PROJECT_ID ni project_id en la cuenta de servicio.")
     return _ServiceAccount(
@@ -187,7 +206,7 @@ class PushDispatcher:
             return
 
         error_code = _extract_fcm_error_code(response)
-        if response.status_code == 404 or error_code in ("UNREGISTERED", "INVALID_ARGUMENT"):
+        if response.status_code == 404 or error_code == "UNREGISTERED":
             logger.warning(
                 "[Push] Device token invalido o dado de baja (HTTP %s, %s)", response.status_code, error_code
             )
@@ -292,14 +311,76 @@ def build_emergency_message(post: Post) -> tuple[str, str, dict[str, str]]:
     return title, body, data
 
 
-async def dispatch_emergency_push(tokens: list[str], title: str, body: str, data: dict[str, str]) -> PushResult:
+def remove_invalid_tokens(invalid_tokens: list[str], db: Session | None = None) -> int:
+    """Elimina de la base de datos los device tokens invalidos o dados de baja (HTTP 404 / UNREGISTERED)."""
+    cleaned = list(dict.fromkeys(t.strip() for t in (invalid_tokens or []) if t and t.strip()))
+    if not cleaned:
+        return 0
+    if db is not None:
+        deleted = (
+            db.query(DeviceToken)
+            .filter(DeviceToken.device_token.in_(cleaned))
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return int(deleted or 0)
+
+    from ..database import SessionLocal, get_db
+
+    gen = None
+    session: Session | None = None
+    try:
+        from ..main import app
+
+        override = app.dependency_overrides.get(get_db)
+        if override is not None:
+            gen = override()
+            session = next(gen)
+    except Exception:
+        session = None
+
+    if session is None:
+        session = SessionLocal()
+    try:
+        deleted = (
+            session.query(DeviceToken)
+            .filter(DeviceToken.device_token.in_(cleaned))
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+        return int(deleted or 0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Push] No se pudieron limpiar tokens invalidos: %s", exc)
+        return 0
+    finally:
+        if gen is not None:
+            try:
+                next(gen)
+            except StopIteration:
+                pass
+        else:
+            session.close()
+
+
+async def dispatch_emergency_push(
+    tokens: list[str],
+    title: str,
+    body: str,
+    data: dict[str, str],
+    db: Session | None = None,
+) -> PushResult:
     """
-    Punto de entrada para tareas en segundo plano. Registra el intento y nunca propaga excepciones,
-    para que un fallo de FCM no afecte la publicacion ya guardada.
+    Punto de entrada para tareas en segundo plano. Registra el intento, limpia tokens dados de baja
+    (HTTP 404 / UNREGISTERED) y nunca propaga excepciones, para que un fallo de FCM no afecte la
+    publicacion ya guardada.
     """
     logger.info("[Push] Eilmeldung %s: %s destinatarios", data.get("post_id", "?"), len(tokens))
     try:
-        return await PushDispatcher.from_settings().send_to_tokens(tokens, title, body, data)
+        result = await PushDispatcher.from_settings().send_to_tokens(tokens, title, body, data)
+        if result.invalid_tokens:
+            removed = remove_invalid_tokens(result.invalid_tokens, db=db)
+            logger.info("[Push] Tokens invalidos eliminados de la base de datos: %s", removed)
+        return result
     except Exception as exc:  # noqa: BLE001 - ninguna excepcion de red debe tumbar la tarea de fondo
         logger.exception("[Push] Error inesperado en el dispatcher: %s", exc)
         return PushResult(attempted=len(tokens), failed=len(tokens), skipped_reason="unexpected_error")

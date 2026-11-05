@@ -641,3 +641,76 @@ test("SW Auto-Update helpers: canAutoReload, shouldReloadOnControllerChange y re
   assert.equal(Core.requestSkipWaiting(worker, sent), false);
   assert.deepEqual(messages, [{ type: "SKIP_WAITING" }]);
 });
+
+test("Firebase Web Push config, VAPID key y registro de device token en /api/users/me/device-token", async () => {
+  assert.equal(Core.firebaseConfig.projectId, "upa-campus-app");
+  assert.equal(Core.firebaseConfig.messagingSenderId, "872606189485");
+  assert.equal(Core.firebaseConfig.appId, "1:872606189485:web:a919d0acc99c6197614324");
+  assert.equal(
+    Core.VAPID_PUBLIC_KEY,
+    "BNfsctw3qDvmsunaO45-JUwRouboQWtn4zXAyr5ejvVYt7ZipU_VLWozAsrlFPo2nXXMNFYLMH1k_RrSqSz-Lj8",
+  );
+
+  const keyBytes = Core.urlBase64ToUint8Array(Core.VAPID_PUBLIC_KEY);
+  assert.equal(keyBytes.length, 65);
+  assert.equal(keyBytes[0], 0x04);
+
+  let receivedVapidKey = null;
+  const fcmTok = await Core.requestFcmToken({
+    firebase: {
+      messaging: () => ({
+        getToken: async (opts) => {
+          receivedVapidKey = opts.vapidKey;
+          return "fcm_web_sdk_token_1234567890";
+        },
+      }),
+    },
+  });
+  assert.equal(fcmTok, "fcm_web_sdk_token_1234567890");
+  assert.equal(receivedVapidKey, Core.VAPID_PUBLIC_KEY);
+
+  let receivedReq = null;
+  const srv = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      receivedReq = {
+        method: req.method,
+        url: req.url,
+        auth: req.headers.authorization,
+        json: JSON.parse(body || "{}"),
+      };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          user_id: 3,
+          device_token: receivedReq.json.device_token,
+          platform: receivedReq.json.platform,
+          has_device_token: true,
+          updated_at: "2026-11-05T21:00:00Z",
+        }),
+      );
+    });
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  try {
+    const api = Core.createApi({
+      baseUrl: `http://127.0.0.1:${srv.address().port}`,
+      getToken: () => "jwt-student",
+    });
+    const resp = await api.registerDeviceToken(fcmTok, "web");
+    assert.equal(resp.has_device_token, true);
+    assert.equal(resp.platform, "web");
+    assert.equal(receivedReq.method, "POST");
+    assert.equal(receivedReq.url, "/api/users/me/device-token");
+    assert.equal(receivedReq.auth, "Bearer jwt-student");
+    assert.deepEqual(receivedReq.json, {
+      device_token: "fcm_web_sdk_token_1234567890",
+      platform: "web",
+    });
+  } finally {
+    srv.close();
+  }
+});

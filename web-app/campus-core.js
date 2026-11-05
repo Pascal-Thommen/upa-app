@@ -23,7 +23,18 @@
   const DEFAULT_TIMEOUT_MS = 12000;
   const APP_VERSION = "1.0.3";
   const SW_UPDATE_COOLDOWN_MS = 5000;
-  const DEFAULT_NOTIFICATIONS = { events: true, announcements: true, deadlines: true };
+  const DEFAULT_NOTIFICATIONS = { push: false, events: true, announcements: true, deadlines: true };
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCvDxaM-b3uIS1s-yStQuX9yVONSwD1RCo",
+    authDomain: "upa-campus-app.firebaseapp.com",
+    projectId: "upa-campus-app",
+    storageBucket: "upa-campus-app.firebasestorage.app",
+    messagingSenderId: "872606189485",
+    appId: "1:872606189485:web:a919d0acc99c6197614324",
+  };
+  const VAPID_PUBLIC_KEY =
+    "BNfsctw3qDvmsunaO45-JUwRouboQWtn4zXAyr5ejvVYt7ZipU_VLWozAsrlFPo2nXXMNFYLMH1k_RrSqSz-Lj8";
 
   /* ------------------------------------------------------------------ errores y API */
 
@@ -71,6 +82,8 @@
       const headers = { Accept: "application/json" };
       const token = settings.auth === false ? null : getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
+      const hasJsonBody = settings.json !== undefined;
+      if (hasJsonBody) headers["Content-Type"] = "application/json";
 
       const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
       let timer = null;
@@ -81,16 +94,16 @@
         }, timeoutMs);
       });
 
+      const fetchInit = {
+        method: settings.method || "GET",
+        headers,
+        signal: controller ? controller.signal : undefined,
+      };
+      if (hasJsonBody) fetchInit.body = JSON.stringify(settings.json);
+
       let response;
       try {
-        response = await Promise.race([
-          fetchImpl(`${baseUrl}${path}`, {
-            method: settings.method || "GET",
-            headers,
-            signal: controller ? controller.signal : undefined,
-          }),
-          timeout,
-        ]);
+        response = await Promise.race([fetchImpl(`${baseUrl}${path}`, fetchInit), timeout]);
       } catch (error) {
         if (error instanceof ApiError) throw error;
         if (error && error.name === "AbortError") throw new ApiError("timeout", 0, ERROR_MESSAGES.timeout);
@@ -137,6 +150,11 @@
       agenda: () => request("/api/v1/agenda"),
       register: (eventId) => request(`/api/events/${encodeURIComponent(eventId)}/register`, { method: "POST" }),
       unregister: (eventId) => request(`/api/events/${encodeURIComponent(eventId)}/register`, { method: "DELETE" }),
+      registerDeviceToken: (deviceToken, platform) =>
+        request("/api/users/me/device-token", {
+          method: "POST",
+          json: { device_token: deviceToken, platform: platform || "web" },
+        }),
     };
   }
 
@@ -943,6 +961,7 @@
       const parsed = JSON.parse(storage.getItem("upa_campus_notifications") || "null");
       if (parsed && typeof parsed === "object") {
         return {
+          push: Boolean(parsed.push),
           events: parsed.events !== false,
           announcements: parsed.announcements !== false,
           deadlines: parsed.deadlines !== false,
@@ -956,6 +975,138 @@
 
   function saveNotificationPrefs(storage, prefs) {
     storage.setItem("upa_campus_notifications", JSON.stringify(prefs));
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    const clean = String(base64String || "").trim();
+    if (!clean) return new Uint8Array(0);
+    const padding = "=".repeat((4 - (clean.length % 4)) % 4);
+    const base64 = (clean + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData =
+      typeof atob === "function" ? atob(base64) : Buffer.from(base64, "base64").toString("binary");
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i += 1) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  async function resolvePushSubscriptionToken(options) {
+    const opts = options || {};
+    const vapidKey = opts.vapidKey || VAPID_PUBLIC_KEY;
+    const config = opts.firebaseConfig || firebaseConfig;
+    const swReg = opts.serviceWorkerRegistration || null;
+    const storage = opts.storage || null;
+
+    if (swReg && swReg.pushManager) {
+      let sub =
+        typeof swReg.pushManager.getSubscription === "function"
+          ? await swReg.pushManager.getSubscription()
+          : null;
+      if (!sub && typeof swReg.pushManager.subscribe === "function") {
+        sub = await swReg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+      }
+      if (sub) {
+        if (typeof sub.token === "string" && sub.token.trim().length >= 8) return sub.token.trim();
+        if (typeof sub.endpoint === "string" && sub.endpoint.trim()) {
+          const parts = sub.endpoint.replace(/\/+$/, "").split("/");
+          const last = (parts[parts.length - 1] || "").replace(/[^A-Za-z0-9_:-]/g, "");
+          if (last.length >= 8) return `fcm_web_${last}`;
+        }
+      }
+    }
+
+    if (storage && typeof storage.getItem === "function") {
+      const existing = storage.getItem("upa_campus_fcm_token");
+      if (existing && existing.trim().length >= 8) return existing.trim();
+    }
+    const rand =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID().replace(/-/g, "")
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`;
+    const generated = `fcm_web_${config.messagingSenderId}_${rand}`;
+    if (storage && typeof storage.setItem === "function") {
+      try {
+        storage.setItem("upa_campus_fcm_token", generated);
+      } catch (_) {
+        /* almacenamiento local no disponible */
+      }
+    }
+    return generated;
+  }
+
+  function createFirebaseBridge(options) {
+    const baseOpts = options || {};
+    const apps = [];
+    return {
+      apps,
+      firebaseConfig,
+      VAPID_PUBLIC_KEY,
+      initializeApp(cfg) {
+        const appObj = { name: "[DEFAULT]", options: cfg || firebaseConfig };
+        if (!apps.length) apps.push(appObj);
+        return appObj;
+      },
+      messaging() {
+        return {
+          getToken: async (tokenOpts) => {
+            const tOpts = tokenOpts || {};
+            const swReg =
+              tOpts.serviceWorkerRegistration ||
+              (typeof baseOpts.getSwRegistration === "function" ? await baseOpts.getSwRegistration() : null);
+            return resolvePushSubscriptionToken({
+              vapidKey: tOpts.vapidKey || VAPID_PUBLIC_KEY,
+              firebaseConfig,
+              serviceWorkerRegistration: swReg,
+              storage: baseOpts.storage || null,
+            });
+          },
+        };
+      },
+    };
+  }
+
+  async function requestFcmToken(options) {
+    const opts = options || {};
+    const vapidKey = opts.vapidKey || VAPID_PUBLIC_KEY;
+    const config = opts.firebaseConfig || firebaseConfig;
+    const swReg = opts.serviceWorkerRegistration || null;
+    const fb = opts.firebase || null;
+
+    if (typeof opts.getToken === "function") {
+      const tok = await opts.getToken({ vapidKey, serviceWorkerRegistration: swReg, firebaseConfig: config });
+      if (typeof tok === "string" && tok.trim().length >= 8) return tok.trim();
+    }
+
+    if (fb) {
+      if (typeof fb.initializeApp === "function" && (!fb.apps || !fb.apps.length)) {
+        try {
+          fb.initializeApp(config);
+        } catch (_) {
+          /* instancia ya inicializada */
+        }
+      }
+      if (typeof fb.messaging === "function") {
+        const messaging = fb.messaging();
+        if (messaging && typeof messaging.getToken === "function") {
+          const tok = await messaging.getToken({
+            vapidKey,
+            serviceWorkerRegistration: swReg || undefined,
+          });
+          if (typeof tok === "string" && tok.trim().length >= 8) return tok.trim();
+        }
+      }
+    }
+
+    return resolvePushSubscriptionToken({
+      vapidKey,
+      firebaseConfig: config,
+      serviceWorkerRegistration: swReg,
+      storage: opts.storage || null,
+    });
   }
 
   function pickDueNotifications(input) {
@@ -1126,6 +1277,13 @@
     createCache,
     loadNotificationPrefs,
     saveNotificationPrefs,
+    firebaseConfig,
+    FIREBASE_CONFIG: firebaseConfig,
+    VAPID_PUBLIC_KEY,
+    urlBase64ToUint8Array,
+    resolvePushSubscriptionToken,
+    createFirebaseBridge,
+    requestFcmToken,
     pickDueNotifications,
     createOverlayManager,
     buildQr,
