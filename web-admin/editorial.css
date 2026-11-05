@@ -221,6 +221,11 @@
   border-color: var(--ed-danger);
 }
 
+#group-input-email {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 .ed-check {
   display: inline-flex;
   align-items: center;

@@ -904,6 +904,55 @@ function isValidEmailAddress(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
+const UPA_EMAIL_DOMAIN = "@upa.edu.py";
+
+function normalizeUpaEmailUsername(raw) {
+  return String(raw || "")
+    .replace(/@upa\.edu\.py/gi, "")
+    .trim();
+}
+
+function composeUpaEmail(raw) {
+  const localPart = normalizeUpaEmailUsername(raw).toLowerCase();
+  if (!localPart) return "";
+  return `${localPart}${UPA_EMAIL_DOMAIN}`;
+}
+
+function isValidUpaEmailAddress(value) {
+  const email = String(value || "").trim().toLowerCase();
+  return isValidEmailAddress(email) && email.endsWith(UPA_EMAIL_DOMAIN);
+}
+
+function handleUpaEmailInputEvent(inputEl, errorId, inputId) {
+  if (!inputEl) return;
+  const cleaned = normalizeUpaEmailUsername(inputEl.value);
+  if (inputEl.value !== cleaned) {
+    inputEl.value = cleaned;
+  }
+  if (errorId && inputId) {
+    setInlineFieldError(errorId, inputId, "");
+  }
+}
+
+function handleUpaEmailPasteEvent(e, inputEl, errorId, inputId) {
+  if (!inputEl) return;
+  const pastedText =
+    e && e.clipboardData && typeof e.clipboardData.getData === "function"
+      ? e.clipboardData.getData("text/plain") || e.clipboardData.getData("text") || ""
+      : "";
+  if (pastedText) {
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
+    inputEl.value = normalizeUpaEmailUsername(pastedText);
+  } else {
+    inputEl.value = normalizeUpaEmailUsername(inputEl.value);
+  }
+  if (errorId && inputId) {
+    setInlineFieldError(errorId, inputId, "");
+  }
+}
+
 async function fetchAppGroups() {
   try {
     const res = await apiRequest("/api/groups");
@@ -2118,6 +2167,29 @@ window.UpaRouter = UpaRouter;
 // Inicialización de eventos del DOM
 // ===========================================================================
 
+function handleAddEmail() {
+  const inputEmail = document.getElementById("group-input-email");
+  if (!inputEmail) return false;
+  const cleanedLocal = normalizeUpaEmailUsername(inputEmail.value);
+  inputEmail.value = cleanedLocal;
+  const val = composeUpaEmail(cleanedLocal);
+  if (!val || !isValidUpaEmailAddress(val)) {
+    setInlineFieldError(
+      "group-email-error",
+      "group-input-email",
+      "Ingrese un correo electrónico válido (ejemplo: usuario@upa.edu.py)."
+    );
+    return false;
+  }
+  setInlineFieldError("group-email-error", "group-input-email", "");
+  if (!state.groupEditor.emails.includes(val)) {
+    state.groupEditor.emails.push(val);
+  }
+  inputEmail.value = "";
+  renderGroupEmailsChips();
+  return true;
+}
+
 function setupGroupsFormHandlers() {
   const btnCreateGroup = document.getElementById("btn-create-group");
   const btnBack = document.getElementById("btn-group-back");
@@ -2145,7 +2217,12 @@ function setupGroupsFormHandlers() {
     inputWs.addEventListener("input", () => setInlineFieldError("group-ws-custom-error", "group-input-ws-custom", ""));
   }
   if (inputEmail) {
-    inputEmail.addEventListener("input", () => setInlineFieldError("group-email-error", "group-input-email", ""));
+    inputEmail.addEventListener("input", () => {
+      handleUpaEmailInputEvent(inputEmail, "group-email-error", "group-input-email");
+    });
+    inputEmail.addEventListener("paste", (e) => {
+      handleUpaEmailPasteEvent(e, inputEmail, "group-email-error", "group-input-email");
+    });
   }
 
   if (btnCreateGroup) btnCreateGroup.addEventListener("click", () => openGroupEditor(null));
@@ -2188,28 +2265,11 @@ function setupGroupsFormHandlers() {
   }
 
   if (btnAddEmail && inputEmail) {
-    const addEmail = () => {
-      const val = inputEmail.value.trim().toLowerCase();
-      if (!val || !isValidEmailAddress(val)) {
-        setInlineFieldError(
-          "group-email-error",
-          "group-input-email",
-          "Ingrese un correo electrónico válido (ejemplo: usuario@upa.edu.py)."
-        );
-        return;
-      }
-      setInlineFieldError("group-email-error", "group-input-email", "");
-      if (!state.groupEditor.emails.includes(val)) {
-        state.groupEditor.emails.push(val);
-      }
-      inputEmail.value = "";
-      renderGroupEmailsChips();
-    };
-    btnAddEmail.addEventListener("click", addEmail);
+    btnAddEmail.addEventListener("click", handleAddEmail);
     inputEmail.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        addEmail();
+        handleAddEmail();
       }
     });
   }
@@ -2229,8 +2289,10 @@ function setupGroupsFormHandlers() {
       }
 
       if (inputEmail && inputEmail.value && inputEmail.value.trim()) {
-        const pendingEmail = inputEmail.value.trim().toLowerCase();
-        if (!isValidEmailAddress(pendingEmail)) {
+        const cleanedLocal = normalizeUpaEmailUsername(inputEmail.value);
+        inputEmail.value = cleanedLocal;
+        const pendingEmail = composeUpaEmail(cleanedLocal);
+        if (!pendingEmail || !isValidUpaEmailAddress(pendingEmail)) {
           setInlineFieldError(
             "group-email-error",
             "group-input-email",
@@ -2292,6 +2354,61 @@ function setupGroupsFormHandlers() {
   }
 }
 
+async function handleCreateRole(e) {
+  if (e && typeof e.preventDefault === "function") {
+    e.preventDefault();
+  }
+  const input = document.getElementById("input-admin-email");
+  const cleanedLocal = normalizeUpaEmailUsername(input ? input.value : "");
+  if (input) input.value = cleanedLocal;
+  const email = composeUpaEmail(cleanedLocal);
+  if (!email || !isValidUpaEmailAddress(email)) {
+    setInlineFieldError(
+      "admin-email-error",
+      "input-admin-email",
+      "Ingrese un correo institucional válido con dominio @upa.edu.py."
+    );
+    if (input && input.focus) input.focus();
+    return;
+  }
+  setInlineFieldError("admin-email-error", "input-admin-email", "");
+
+  const existing = appAdminsCache.find((item) => String(item.email || "").toLowerCase() === email);
+  const perms = existing ? normalizeUserPermissions(existing) : [];
+
+  try {
+    const res = await apiRequest("/api/roles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        name: email
+          .split("@")[0]
+          .replace(/\./g, " ")
+          .replace(/\b\w/g, (l) => l.toUpperCase()),
+        permissions: perms,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setInlineFieldError(
+        "admin-email-error",
+        "input-admin-email",
+        err.detail || "No se pudo autorizar la cuenta."
+      );
+      return;
+    }
+    if (input) input.value = "";
+    showModuleNotice("roles-notice", "success", `Cuenta ${email} agregada. Asigne los permisos en la tabla.`);
+    await renderAdminsModule();
+    if (state.currentUser && String(state.currentUser.email || "").toLowerCase() === email) {
+      await refreshCurrentUserPermissions();
+    }
+  } catch (_) {
+    showModuleNotice("roles-notice", "error", "Error de conexión al autorizar la cuenta.");
+  }
+}
+
 function setupRolesFormHandlers() {
   const formAddAdmin = document.getElementById("form-add-admin");
   const inputAdminEmail = document.getElementById("input-admin-email");
@@ -2299,61 +2416,20 @@ function setupRolesFormHandlers() {
 
   if (inputAdminEmail) {
     inputAdminEmail.addEventListener("input", () => {
-      setInlineFieldError("admin-email-error", "input-admin-email", "");
+      handleUpaEmailInputEvent(inputAdminEmail, "admin-email-error", "input-admin-email");
+    });
+    inputAdminEmail.addEventListener("paste", (e) => {
+      handleUpaEmailPasteEvent(e, inputAdminEmail, "admin-email-error", "input-admin-email");
     });
   }
 
-  formAddAdmin.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const input = document.getElementById("input-admin-email");
-    const email = (input ? input.value : "").trim().toLowerCase();
-    if (!email || !isValidEmailAddress(email) || !email.endsWith("@upa.edu.py")) {
-      setInlineFieldError(
-        "admin-email-error",
-        "input-admin-email",
-        "Ingrese un correo institucional válido con dominio @upa.edu.py."
-      );
-      if (input && input.focus) input.focus();
-      return;
-    }
-    setInlineFieldError("admin-email-error", "input-admin-email", "");
-
-    const existing = appAdminsCache.find((item) => String(item.email || "").toLowerCase() === email);
-    const perms = existing ? normalizeUserPermissions(existing) : [];
-
-    try {
-      const res = await apiRequest("/api/roles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          name: email
-            .split("@")[0]
-            .replace(/\./g, " ")
-            .replace(/\b\w/g, (l) => l.toUpperCase()),
-          permissions: perms,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        setInlineFieldError(
-          "admin-email-error",
-          "input-admin-email",
-          err.detail || "No se pudo autorizar la cuenta."
-        );
-        return;
-      }
-      if (input) input.value = "";
-      showModuleNotice("roles-notice", "success", `Cuenta ${email} agregada. Asigne los permisos en la tabla.`);
-      await renderAdminsModule();
-      if (state.currentUser && String(state.currentUser.email || "").toLowerCase() === email) {
-        await refreshCurrentUserPermissions();
-      }
-    } catch (_) {
-      showModuleNotice("roles-notice", "error", "Error de conexión al autorizar la cuenta.");
-    }
-  });
+  formAddAdmin.addEventListener("submit", handleCreateRole);
 }
+
+window.handleAddEmail = handleAddEmail;
+window.handleCreateRole = handleCreateRole;
+window.normalizeUpaEmailUsername = normalizeUpaEmailUsername;
+window.composeUpaEmail = composeUpaEmail;
 
 function setupSidebarNavigation() {
   const btnPubs = document.getElementById("nav-mod-publications");

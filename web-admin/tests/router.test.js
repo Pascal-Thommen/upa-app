@@ -20,6 +20,7 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
   let historyIndex = 0;
   const eventListeners = {};
   const fetchCalls = [];
+  const fetchRequests = [];
 
   const window = {
     location: {
@@ -133,8 +134,13 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
       },
       dispatchEvent(evt) {
         const type = evt && evt.type ? evt.type : String(evt || "");
+        const eventObj = Object.assign(
+          { preventDefault() {}, stopPropagation() {} },
+          typeof evt === "object" && evt ? evt : {},
+          { type }
+        );
         if (listeners[type]) {
-          listeners[type].forEach((cb) => cb({ type, preventDefault() {}, stopPropagation() {} }));
+          listeners[type].forEach((cb) => cb(eventObj));
         }
       },
       querySelectorAll() {
@@ -234,8 +240,9 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
     },
     Blob: class {},
     URL: { createObjectURL: () => "" },
-    fetch: async (endpoint) => {
+    fetch: async (endpoint, options) => {
       fetchCalls.push(endpoint);
+      fetchRequests.push({ endpoint, options: options || {} });
       if (endpoint === "/api/auth/me") {
         return {
           ok: true,
@@ -265,6 +272,7 @@ function createTestEnvironment(initialPath = "/dashboard/publicaciones", initial
     elements,
     localStorage,
     fetchCalls,
+    fetchRequests,
     router: window.UpaRouter,
   };
 }
@@ -764,4 +772,120 @@ test("grupos widget: visibilidad de #tile-mailgroups depende de rol admin o perm
     role: "editor",
     permissions: ["publicaciones", "grupos"],
   });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Vereinfachte E-Mail-Eingabe mit Domain-Addon & Paste-Bereinigung (SRV-263)
+// ---------------------------------------------------------------------------
+
+test("srv-263: index.html contiene addon visual fijo @upa.edu.py para group-input-email e input-admin-email", () => {
+  const indexHtml = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf8");
+  const addonClasses = "bg-slate-100 text-slate-500 font-mono text-xs px-3 border border-l-0 border-slate-300 rounded-r-xl";
+
+  assert.ok(indexHtml.includes('id="group-input-email"'));
+  assert.ok(indexHtml.includes('id="group-email-domain-addon"'));
+  assert.ok(indexHtml.includes('id="input-admin-email"'));
+  assert.ok(indexHtml.includes('id="admin-email-domain-addon"'));
+  assert.ok(indexHtml.includes(addonClasses));
+});
+
+test("srv-263: normalizacion automatica en input y paste elimina @upa.edu.py y espacios en ambos campos", () => {
+  const env = createTestEnvironment("/dashboard/grupos");
+  const groupInput = env.document.getElementById("group-input-email");
+  const adminInput = env.document.getElementById("input-admin-email");
+
+  // 1) Evento paste con clipboardData (p.ej. maria.lopez@upa.edu.py)
+  groupInput.dispatchEvent({
+    type: "paste",
+    clipboardData: {
+      getData: () => "  maria.lopez@upa.edu.py  ",
+    },
+  });
+  assert.equal(groupInput.value, "maria.lopez");
+
+  // 2) Evento input con @UPA.EDU.PY en mayúsculas o duplicado
+  groupInput.value = "  JUAN.PEREZ@UPA.EDU.PY@upa.edu.py ";
+  groupInput.dispatchEvent({ type: "input" });
+  assert.equal(groupInput.value, "JUAN.PEREZ");
+
+  // 3) Evento paste e input en el campo de roles (input-admin-email)
+  adminInput.dispatchEvent({
+    type: "paste",
+    clipboardData: {
+      getData: () => "  maria.lopez@UPA.EDU.PY ",
+    },
+  });
+  assert.equal(adminInput.value, "maria.lopez");
+
+  adminInput.value = "carlos.gomez@upa.edu.py";
+  adminInput.dispatchEvent({ type: "input" });
+  assert.equal(adminInput.value, "carlos.gomez");
+});
+
+test("srv-263: handleAddEmail y handleCreateRole componen @upa.edu.py sin duplicar dominio y validan formato", async () => {
+  const env = createTestEnvironment("/dashboard/grupos");
+  const groupInput = env.document.getElementById("group-input-email");
+  const btnAddEmail = env.document.getElementById("btn-add-group-email");
+  const groupEmailError = env.document.getElementById("group-email-error");
+  const groupChips = env.document.getElementById("group-emails-chips");
+  const groupNameInput = env.document.getElementById("group-input-name");
+  const formGroup = env.document.getElementById("form-group-editor");
+
+  // Escribir solo el usuario local "juan.perez" y pulsar Agregar correo
+  groupInput.value = "juan.perez";
+  groupInput.dispatchEvent({ type: "input" });
+  btnAddEmail.click();
+  assert.equal(groupInput.value, "");
+  assert.equal(groupEmailError.textContent, "");
+  assert.ok(groupChips.innerHTML.includes("juan.perez@upa.edu.py"));
+  assert.ok(!groupChips.innerHTML.includes("@upa.edu.py@upa.edu.py"));
+
+  // Pegar correo completo "maria.lopez@upa.edu.py" y pulsar Agregar correo
+  groupInput.dispatchEvent({
+    type: "paste",
+    clipboardData: { getData: () => "maria.lopez@upa.edu.py" },
+  });
+  assert.equal(groupInput.value, "maria.lopez");
+  btnAddEmail.click();
+  assert.ok(groupChips.innerHTML.includes("maria.lopez@upa.edu.py"));
+  assert.ok(!groupChips.innerHTML.includes("@upa.edu.py@upa.edu.py"));
+
+  // Dominio externo inválido se rechaza
+  groupInput.value = "externo@gmail.com";
+  btnAddEmail.click();
+  assert.ok(groupEmailError.textContent.includes("@upa.edu.py"));
+
+  // Guardar grupo verifica el payload enviado a POST /api/groups
+  groupInput.value = "";
+  groupNameInput.value = "Docentes UPA";
+  formGroup.dispatchEvent({ type: "submit" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const groupPost = env.fetchRequests.find((r) => r.endpoint === "/api/groups" && r.options.method === "POST");
+  assert.ok(groupPost, "Debe enviar POST /api/groups");
+  const groupBody = JSON.parse(groupPost.options.body);
+  assert.deepEqual(groupBody.emails, ["juan.perez@upa.edu.py", "maria.lopez@upa.edu.py"]);
+
+  // Roles: handleCreateRole compone @upa.edu.py y envía payload limpio a POST /api/roles
+  const adminInput = env.document.getElementById("input-admin-email");
+  const adminError = env.document.getElementById("admin-email-error");
+  const formAddAdmin = env.document.getElementById("form-add-admin");
+
+  adminInput.value = "externo@otro.com";
+  formAddAdmin.dispatchEvent({ type: "submit" });
+  assert.ok(adminError.textContent.includes("@upa.edu.py"));
+
+  adminInput.dispatchEvent({
+    type: "paste",
+    clipboardData: { getData: () => "  ana.martinez@UPA.EDU.PY  " },
+  });
+  assert.equal(adminInput.value, "ana.martinez");
+  formAddAdmin.dispatchEvent({ type: "submit" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const rolePost = env.fetchRequests.find((r) => r.endpoint === "/api/roles" && r.options.method === "POST");
+  assert.ok(rolePost, "Debe enviar POST /api/roles");
+  const roleBody = JSON.parse(rolePost.options.body);
+  assert.equal(roleBody.email, "ana.martinez@upa.edu.py");
+  assert.equal(roleBody.name, "Ana Martinez");
 });

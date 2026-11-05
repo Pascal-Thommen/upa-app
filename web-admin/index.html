@@ -510,7 +510,10 @@
                     <label class="ed-label" for="group-input-email">Cuentas individuales (@upa.edu.py)</label>
                     <div id="group-emails-chips" class="mb-2 bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-48 overflow-y-auto"></div>
                     <div class="flex gap-2">
-                      <input id="group-input-email" type="email" class="ed-input font-mono" placeholder="nombre.apellido@upa.edu.py">
+                      <div class="flex flex-1 items-stretch">
+                        <input id="group-input-email" type="text" autocomplete="off" class="ed-input font-mono rounded-l-xl rounded-r-none" placeholder="juan.perez">
+                        <span id="group-email-domain-addon" class="inline-flex items-center select-none bg-slate-100 text-slate-500 font-mono text-xs px-3 border border-l-0 border-slate-300 rounded-r-xl">@upa.edu.py</span>
+                      </div>
                       <button id="btn-add-group-email" type="button" class="ed-btn ed-btn-secondary whitespace-nowrap">Agregar correo</button>
                     </div>
                     <p id="group-email-error" class="ed-field-error" data-error-for="group-email"></p>
@@ -543,7 +546,10 @@
               <form id="form-add-admin" class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-1.5" novalidate>
                 <label class="block text-[11px] font-semibold text-slate-700" for="input-admin-email">Correo institucional</label>
                 <div class="flex flex-col sm:flex-row gap-2.5">
-                  <input id="input-admin-email" type="email" placeholder="nombre.apellido@upa.edu.py" class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-mono focus:ring-2 focus:ring-[#6c9339]" required>
+                  <div class="flex flex-1 items-stretch">
+                    <input id="input-admin-email" type="text" autocomplete="off" placeholder="juan.perez" class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-l-xl rounded-r-none bg-white font-mono focus:ring-2 focus:ring-[#6c9339]" required>
+                    <span id="admin-email-domain-addon" class="inline-flex items-center select-none bg-slate-100 text-slate-500 font-mono text-xs px-3 border border-l-0 border-slate-300 rounded-r-xl">@upa.edu.py</span>
+                  </div>
                   <button type="submit" class="ed-btn ed-btn-primary whitespace-nowrap">
                     Autorizar
                   </button>
