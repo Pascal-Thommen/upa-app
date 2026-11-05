@@ -9,6 +9,18 @@
 
 const VERSION = "1.0.3";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
+const firebaseConfig = {
+  apiKey: "AIzaSyCvDxaM-b3uIS1s-yStQuX9yVONSwD1RCo",
+  authDomain: "upa-campus-app.firebaseapp.com",
+  projectId: "upa-campus-app",
+  storageBucket: "upa-campus-app.firebasestorage.app",
+  messagingSenderId: "872606189485",
+  appId: "1:872606189485:web:a919d0acc99c6197614324",
+};
+const VAPID_PUBLIC_KEY =
+  "BNfsctw3qDvmsunaO45-JUwRouboQWtn4zXAyr5ejvVYt7ZipU_VLWozAsrlFPo2nXXMNFYLMH1k_RrSqSz-Lj8";
+const DEFAULT_NOTIFICATION_ICON = "/campus/icons/icon-192.png";
+const DEFAULT_NOTIFICATION_BADGE = "/campus/icons/favicon-32.png";
 const SHELL_FILES = [
   "/",
   "/manifest.webmanifest",
@@ -161,12 +173,85 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
+function parsePushPayload(event) {
+  let raw = {};
+  if (event && event.data) {
+    try {
+      if (typeof event.data.json === "function") {
+        raw = event.data.json() || {};
+      } else if (typeof event.data.text === "function") {
+        raw = JSON.parse(event.data.text() || "{}");
+      } else if (typeof event.data === "object") {
+        raw = event.data;
+      }
+    } catch (_) {
+      const text = typeof event.data.text === "function" ? String(event.data.text() || "").trim() : "";
+      raw = text ? { notification: { title: "UPA Campus", body: text } } : {};
+    }
+  }
+  const notification = (raw && typeof raw.notification === "object" && raw.notification) || {};
+  const data = (raw && typeof raw.data === "object" && raw.data) || {};
+  const title = String(notification.title || data.title || raw.title || "UPA Campus").trim() || "UPA Campus";
+  const body = String(notification.body || data.body || raw.body || "").trim();
+  const icon = String(notification.icon || data.icon || raw.icon || DEFAULT_NOTIFICATION_ICON).trim();
+  const badge = String(notification.badge || data.badge || raw.badge || DEFAULT_NOTIFICATION_BADGE).trim();
+  const postId = data.post_id || raw.post_id || "";
+  const deepLink =
+    data.url ||
+    notification.click_action ||
+    raw.url ||
+    (postId ? `/?post=${encodeURIComponent(String(postId))}` : "/");
+  const tag = String(notification.tag || data.tag || (postId ? `post:${postId}` : "upa-campus-push"));
+  return {
+    title,
+    options: {
+      body,
+      icon,
+      badge,
+      tag,
+      data: {
+        ...data,
+        projectId: firebaseConfig.projectId,
+        vapidKey: VAPID_PUBLIC_KEY,
+        url: deepLink,
+        post_id: postId ? String(postId) : undefined,
+      },
+    },
+  };
+}
+
+self.addEventListener("push", (event) => {
+  const { title, options } = parsePushPayload(event);
+  const showPromise =
+    self.registration && typeof self.registration.showNotification === "function"
+      ? self.registration.showNotification(title, options)
+      : Promise.resolve();
+  if (event && typeof event.waitUntil === "function") {
+    event.waitUntil(showPromise);
+  }
+});
+
 self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
+  if (event.notification && typeof event.notification.close === "function") {
+    event.notification.close();
+  }
+  const notifData = (event.notification && event.notification.data) || {};
+  const targetUrl =
+    notifData.url ||
+    (notifData.post_id ? `/?post=${encodeURIComponent(String(notifData.post_id))}` : "/");
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      if (list.length > 0 && "focus" in list[0]) return list[0].focus();
-      return self.clients.openWindow("/");
+      if (list.length > 0 && "focus" in list[0]) {
+        const client = list[0];
+        if (targetUrl && targetUrl !== "/" && typeof client.navigate === "function") {
+          return client.navigate(targetUrl).then(() => client.focus());
+        }
+        if (targetUrl && targetUrl !== "/" && typeof client.postMessage === "function") {
+          client.postMessage({ type: "NOTIFICATION_CLICK", url: targetUrl, post_id: notifData.post_id || null });
+        }
+        return client.focus();
+      }
+      return self.clients.openWindow(targetUrl || "/");
     }),
   );
 });

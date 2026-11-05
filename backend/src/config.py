@@ -47,8 +47,8 @@ class Settings(BaseSettings):
     PUBLIC_BASE_URL: str = ""  # Optional, z. B. https://api.upa.edu.py (sonst Basis-URL des Requests)
 
     # Push-Benachrichtigungen (Firebase Cloud Messaging HTTP v1)
-    FCM_SERVICE_ACCOUNT_FILE: str = "./secrets/fcm-service-account.json"
-    FCM_PROJECT_ID: str = ""  # Optional, sonst project_id aus der Service Account Datei
+    FCM_SERVICE_ACCOUNT_FILE: str = "./secrets/firebase-service-account.json"
+    FCM_PROJECT_ID: str = "upa-campus-app"  # Optional, sonst project_id aus der Service Account Datei
     FCM_TIMEOUT_SECONDS: float = 10.0
     FCM_API_BASE_URL: str = "https://fcm.googleapis.com"
 

@@ -77,6 +77,12 @@ async function openCampus(options) {
       configurable: true,
     });
   }
+  if (opts.Notification) {
+    window.Notification = opts.Notification;
+  }
+  if (opts.firebase) {
+    window.firebase = opts.firebase;
+  }
   if (opts.storage) {
     for (const [k, v] of Object.entries(opts.storage)) window.localStorage.setItem(k, v);
   }
@@ -1177,4 +1183,136 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   const offlineNavResp = await offlineNavPromise;
   assert.ok(offlineNavResp, "La navegacion principal debe funcionar sin conexion al reabrir la PWA");
+
+  // 6. Prueba de recepcion de Push en segundo plano (evento push) y deep-link en notificationclick
+  const shownNotifications = [];
+  swContext.self.registration = {
+    async showNotification(title, options) {
+      shownNotifications.push({ title, options });
+    },
+  };
+  let pushWaitPromise = null;
+  swEvents.push({
+    data: {
+      json: () => ({
+        notification: {
+          title: "Alerta urgente UPA",
+          body: "Revisión de aulas en el campus.",
+        },
+        data: {
+          type: "EMERGENCY_BANNER",
+          post_id: String(seeded.urgentId),
+        },
+      }),
+    },
+    waitUntil(p) {
+      pushWaitPromise = p;
+    },
+  });
+  await pushWaitPromise;
+  assert.equal(shownNotifications.length, 1);
+  assert.equal(shownNotifications[0].title, "Alerta urgente UPA");
+  assert.equal(shownNotifications[0].options.body, "Revisión de aulas en el campus.");
+  assert.equal(shownNotifications[0].options.icon, "/campus/icons/icon-192.png");
+  assert.equal(shownNotifications[0].options.data.url, `/?post=${seeded.urgentId}`);
+
+  let openedUrl = null;
+  let closedNotif = false;
+  swContext.self.clients.openWindow = async (url) => {
+    openedUrl = url;
+  };
+  let clickWaitPromise = null;
+  swEvents.notificationclick({
+    notification: {
+      data: shownNotifications[0].options.data,
+      close() {
+        closedNotif = true;
+      },
+    },
+    waitUntil(p) {
+      clickWaitPromise = p;
+    },
+  });
+  await clickWaitPromise;
+  assert.equal(closedNotif, true);
+  assert.equal(openedUrl, `/?post=${seeded.urgentId}`);
+});
+
+test("Notificaciones Push Web (FCM): opt-in exitoso registra token en /api/users/me/device-token y rechazo no bloquea la UI", live, async () => {
+  const student = TEST_TOKENS["ana.gomez@upa.edu.py"];
+  let requestedPermissions = 0;
+  let usedVapidKey = null;
+
+  function GrantedNotification() {}
+  GrantedNotification.permission = "default";
+  GrantedNotification.requestPermission = async () => {
+    requestedPermissions += 1;
+    GrantedNotification.permission = "granted";
+    return "granted";
+  };
+
+  const customFirebase = {
+    apps: [],
+    initializeApp(cfg) {
+      this.apps.push(cfg);
+    },
+    messaging: () => ({
+      getToken: async (opts) => {
+        usedVapidKey = opts.vapidKey;
+        return "fcm_web_ana_campus_pwa_token_2026";
+      },
+    }),
+  };
+
+  const app = await openCampus({
+    token: student,
+    Notification: GrantedNotification,
+    firebase: customFirebase,
+  });
+  try {
+    await app.click(app.document.querySelector('[data-tab="perfil"]'));
+    const pushSwitch = app.$("push-opt-in");
+    assert.ok(pushSwitch, "Debe existir el interruptor Notificaciones Push en el perfil");
+    pushSwitch.checked = true;
+    pushSwitch.dispatchEvent(new app.window.Event("change", { bubbles: true }));
+    await app.window.UpaCampus.idle();
+
+    assert.equal(requestedPermissions, 1);
+    assert.equal(
+      usedVapidKey,
+      "BNfsctw3qDvmsunaO45-JUwRouboQWtn4zXAyr5ejvVYt7ZipU_VLWozAsrlFPo2nXXMNFYLMH1k_RrSqSz-Lj8",
+    );
+    assert.equal(app.window.UpaCampus.state.hasDeviceToken, true);
+    assert.equal(app.window.UpaCampus.state.pushToken, "fcm_web_ana_campus_pwa_token_2026");
+    assert.equal(app.$("notify-hint").hidden, false);
+    assert.match(app.$("notify-hint").textContent, /Notificaciones Push activadas/);
+  } finally {
+    app.close();
+  }
+
+  // Caso de permiso denegado: no bloquea la UI y muestra indicacion clara
+  function DeniedNotification() {}
+  DeniedNotification.permission = "default";
+  DeniedNotification.requestPermission = async () => {
+    DeniedNotification.permission = "denied";
+    return "denied";
+  };
+
+  const deniedApp = await openCampus({
+    token: student,
+    Notification: DeniedNotification,
+  });
+  try {
+    await deniedApp.click(deniedApp.document.querySelector('[data-tab="perfil"]'));
+    const pushSwitch = deniedApp.$("push-opt-in");
+    pushSwitch.checked = true;
+    pushSwitch.dispatchEvent(new deniedApp.window.Event("change", { bubbles: true }));
+    await deniedApp.window.UpaCampus.idle();
+
+    assert.equal(pushSwitch.checked, false, "Si el permiso es denegado el interruptor vuelve a desactivado");
+    assert.equal(deniedApp.$("notify-hint").hidden, false);
+    assert.match(deniedApp.$("notify-hint").textContent, /bloqueadas en tu navegador/);
+  } finally {
+    deniedApp.close();
+  }
 });
