@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from src.api.media import get_upload_dir
+from src.api.media import ALLOWED_CONTENT_TYPES, ALLOWED_EXTENSIONS, ALLOWED_MIME_TYPES, get_upload_dir
 from src.auth import create_access_token
 from src.config import settings
 from src.database import Base, get_db
@@ -147,6 +147,30 @@ def test_upload_returns_exact_business_payload_and_file_is_retrievable(
     assert fetched.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert fetched.headers["x-content-type-options"] == "nosniff"
     assert fetched.headers["etag"]
+
+
+def test_webp_whitelist_and_upload_persists_with_webp_extension_and_content_type(clean_upload_dir):
+    assert "image/webp" in ALLOWED_MIME_TYPES
+    assert ".webp" in ALLOWED_EXTENSIONS
+    assert ALLOWED_CONTENT_TYPES["image/webp"] == ".webp"
+
+    response = upload(WEBP, "image/webp", filename="foto-smartphone-1080p.webp")
+    assert response.status_code == 201
+
+    body = response.json()
+    assert body["content_type"] == "image/webp"
+    assert body["filename"].endswith(".webp")
+    assert body["url"] == f"/uploads/{body['filename']}"
+    assert body["size_bytes"] == len(WEBP)
+
+    stored_file = get_upload_dir() / body["filename"]
+    assert stored_file.is_file()
+    assert stored_file.read_bytes() == WEBP
+
+    served = client.get(body["url"])
+    assert served.status_code == 200
+    assert served.headers["content-type"].split(";")[0] == "image/webp"
+    assert served.content == WEBP
 
 
 def test_conditional_request_returns_304_with_cache_headers(clean_upload_dir):

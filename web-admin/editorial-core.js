@@ -22,6 +22,8 @@
   const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
   const DEFAULT_TIMEOUT_MS = 15000;
   const UPLOAD_TIMEOUT_MS = 60000;
+  const DEFAULT_IMAGE_MAX_DIMENSION = 1080;
+  const DEFAULT_IMAGE_WEBP_QUALITY = 0.82;
 
   /** Claves canonicas de permisos del portal. */
   const PERMISSION_KEYS = ["publicaciones", "grupos", "roles", "apis", "ia", "historial"];
@@ -168,6 +170,208 @@
       return { ok: false, kind: "upload_type", message: TEXTS.errUploadType };
     }
     return { ok: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Optimizacion de imagenes en el navegador (reescalado a 1080px y WebP)
+  // ---------------------------------------------------------------------------
+
+  function calculateScaledDimensions(width, height, maxDimension = DEFAULT_IMAGE_MAX_DIMENSION) {
+    const w = Number(width);
+    const h = Number(height);
+    const limit = Number(maxDimension) > 0 ? Number(maxDimension) : DEFAULT_IMAGE_MAX_DIMENSION;
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+      return { width: 1, height: 1, scaled: false };
+    }
+    const maxEdge = Math.max(w, h);
+    if (maxEdge <= limit) {
+      return { width: Math.round(w), height: Math.round(h), scaled: false };
+    }
+    const ratio = limit / maxEdge;
+    return {
+      width: Math.max(1, Math.round(w * ratio)),
+      height: Math.max(1, Math.round(h * ratio)),
+      scaled: true,
+    };
+  }
+
+  function replaceFileExtension(filename, newExt) {
+    const ext = newExt.startsWith(".") ? newExt : `.${newExt}`;
+    const raw = String(filename || "").trim();
+    const base = raw.replace(/\.[^/.]+$/, "").trim() || "imagen";
+    return `${base}${ext}`;
+  }
+
+  function loadImageForOptimization(file, options) {
+    const opts = options || {};
+    if (typeof opts.loadImage === "function") {
+      return Promise.resolve(opts.loadImage(file));
+    }
+    const bitmapFn =
+      opts.createImageBitmap || (typeof createImageBitmap === "function" ? createImageBitmap : null);
+    if (bitmapFn) {
+      return Promise.resolve(bitmapFn(file)).then((bitmap) => ({
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        cleanup() {
+          if (bitmap && typeof bitmap.close === "function") {
+            try {
+              bitmap.close();
+            } catch (_) {}
+          }
+        },
+      }));
+    }
+    const ImageCtor =
+      opts.Image ||
+      (typeof Image !== "undefined" ? Image : null) ||
+      (typeof window !== "undefined" && window.Image ? window.Image : null);
+    const urlApi = opts.URL || (typeof URL !== "undefined" ? URL : null);
+    if (ImageCtor && urlApi && typeof urlApi.createObjectURL === "function") {
+      return new Promise((resolve, reject) => {
+        const objectUrl = urlApi.createObjectURL(file);
+        const img = new ImageCtor();
+        let cleaned = false;
+        const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
+          if (typeof urlApi.revokeObjectURL === "function") {
+            try {
+              urlApi.revokeObjectURL(objectUrl);
+            } catch (_) {}
+          }
+        };
+        img.onload = () => {
+          const width = Number(img.naturalWidth || img.width || 0);
+          const height = Number(img.naturalHeight || img.height || 0);
+          if (width <= 0 || height <= 0) {
+            cleanup();
+            reject(new Error("Invalid image dimensions"));
+            return;
+          }
+          resolve({ source: img, width, height, cleanup });
+        };
+        img.onerror = () => {
+          cleanup();
+          reject(new Error("Image load failed"));
+        };
+        img.src = objectUrl;
+      });
+    }
+    return Promise.reject(new Error("No image decoder available"));
+  }
+
+  function createOptimizationCanvas(width, height, options) {
+    const opts = options || {};
+    if (typeof opts.createCanvas === "function") {
+      return opts.createCanvas(width, height);
+    }
+    const doc = opts.document || (typeof document !== "undefined" ? document : null);
+    if (doc && typeof doc.createElement === "function") {
+      const canvas = doc.createElement("canvas");
+      if (canvas) {
+        canvas.width = width;
+        canvas.height = height;
+        if (typeof canvas.getContext === "function" && typeof canvas.toBlob === "function") {
+          return canvas;
+        }
+      }
+    }
+    const OffscreenCtor =
+      opts.OffscreenCanvas || (typeof OffscreenCanvas === "function" ? OffscreenCanvas : null);
+    if (OffscreenCtor) {
+      return new OffscreenCtor(width, height);
+    }
+    return null;
+  }
+
+  function exportCanvasBlob(canvas, mimeType, quality) {
+    if (!canvas) return Promise.resolve(null);
+    if (typeof canvas.toBlob === "function") {
+      return new Promise((resolve) => {
+        try {
+          canvas.toBlob((blob) => resolve(blob || null), mimeType, quality);
+        } catch (_) {
+          resolve(null);
+        }
+      });
+    }
+    if (typeof canvas.convertToBlob === "function") {
+      return Promise.resolve(canvas.convertToBlob({ type: mimeType, quality })).catch(() => null);
+    }
+    return Promise.resolve(null);
+  }
+
+  async function optimizeImageBeforeUpload(
+    file,
+    maxDimension = DEFAULT_IMAGE_MAX_DIMENSION,
+    quality = DEFAULT_IMAGE_WEBP_QUALITY,
+    options
+  ) {
+    if (!file || !file.size) return file;
+    const rawType = String(file.type || "").split(";")[0].trim().toLowerCase();
+    if (!rawType.startsWith("image/")) return file;
+
+    let loaded = null;
+    try {
+      loaded = await loadImageForOptimization(file, options);
+      if (!loaded || !loaded.source) return file;
+
+      const dims = calculateScaledDimensions(loaded.width, loaded.height, maxDimension);
+      const canvas = createOptimizationCanvas(dims.width, dims.height, options);
+      if (!canvas || typeof canvas.getContext !== "function") return file;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx || typeof ctx.drawImage !== "function") return file;
+      ctx.drawImage(loaded.source, 0, 0, dims.width, dims.height);
+
+      const safeQuality = Number.isFinite(Number(quality)) && Number(quality) > 0 && Number(quality) <= 1
+        ? Number(quality)
+        : DEFAULT_IMAGE_WEBP_QUALITY;
+
+      let targetMime = "image/webp";
+      let targetExt = ".webp";
+      let blob = await exportCanvasBlob(canvas, "image/webp", safeQuality);
+      const blobType = blob && blob.type ? String(blob.type).split(";")[0].trim().toLowerCase() : "";
+
+      if (!blob || !blob.size || (blobType && blobType !== "image/webp")) {
+        targetMime = "image/jpeg";
+        targetExt = ".jpg";
+        if (blob && blob.size && blobType === "image/jpeg") {
+          /* el navegador devolvio directamente JPEG como fallback */
+        } else {
+          blob = await exportCanvasBlob(canvas, "image/jpeg", safeQuality);
+        }
+      }
+
+      if (!blob || !blob.size) return file;
+
+      const finalMime =
+        blob.type && String(blob.type).toLowerCase().includes("jpeg") ? "image/jpeg" : targetMime;
+      const finalExt = finalMime === "image/jpeg" ? ".jpg" : targetExt;
+      const newName = replaceFileExtension(file.name, finalExt);
+      const FileCtor =
+        (options && options.File) ||
+        (typeof File === "function" ? File : null) ||
+        (typeof window !== "undefined" && typeof window.File === "function" ? window.File : null);
+      if (FileCtor) {
+        return new FileCtor([blob], newName, {
+          type: finalMime,
+          lastModified: file.lastModified || Date.now(),
+        });
+      }
+      return Object.assign(blob, {
+        name: newName,
+        lastModified: file.lastModified || Date.now(),
+      });
+    } catch (_) {
+      return file;
+    } finally {
+      if (loaded && typeof loaded.cleanup === "function") {
+        loaded.cleanup();
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1178,13 +1382,27 @@
       syncInstagram: () => request("POST", "/api/publications/sync-instagram", { timeoutMs: uploadTimeoutMs }),
 
       async uploadMedia(file, uploadOptions) {
-        const skip = uploadOptions && uploadOptions.skipClientValidation;
+        const opts = uploadOptions || {};
+        const skip = Boolean(opts.skipClientValidation);
+        const skipOptimization = Boolean(opts.skipOptimization);
+        const rawType = file && file.type ? String(file.type).split(";")[0].trim().toLowerCase() : "";
+        let targetFile = file;
+
+        if (!skipOptimization && file && rawType.startsWith("image/") && ALLOWED_UPLOAD_TYPES.includes(rawType)) {
+          targetFile = await optimizeImageBeforeUpload(
+            file,
+            opts.maxDimension || DEFAULT_IMAGE_MAX_DIMENSION,
+            opts.quality || DEFAULT_IMAGE_WEBP_QUALITY,
+            opts.optimizationOptions
+          );
+        }
+
         if (!skip) {
-          const check = validateUploadFile(file);
+          const check = validateUploadFile(targetFile);
           if (!check.ok) throw new ApiError(check.kind, check.message, 0);
         }
         const formData = new FormData();
-        formData.append("file", file, file.name || "upload");
+        formData.append("file", targetFile, targetFile.name || "upload");
         return request("POST", "/api/media/upload", { formData, timeoutMs: uploadTimeoutMs });
       },
     };
@@ -1193,6 +1411,8 @@
   return {
     MAX_UPLOAD_BYTES,
     DEFAULT_TIMEOUT_MS,
+    DEFAULT_IMAGE_MAX_DIMENSION,
+    DEFAULT_IMAGE_WEBP_QUALITY,
     ALLOWED_UPLOAD_TYPES,
     PERMISSION_KEYS,
     CATEGORIES,
@@ -1206,6 +1426,9 @@
     describeError,
     extractDetailMessage,
     validateUploadFile,
+    calculateScaledDimensions,
+    replaceFileExtension,
+    optimizeImageBeforeUpload,
     escapeHtml,
     normalizeUploadUrl,
     safeUrl,

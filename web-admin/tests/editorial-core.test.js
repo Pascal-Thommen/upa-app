@@ -53,6 +53,144 @@ test("validateUploadFile: acepta JPG, PNG, WEBP, MP4, WEBM y PDF (incluido param
   }
 });
 
+test("calculateScaledDimensions: escala proporcionalmente horizontal, vertical y cuadrado a max 1080px y conserva imagenes menores", () => {
+  // Horizontal (4000 x 3000 -> 1080 x 810)
+  assert.deepEqual(Core.calculateScaledDimensions(4000, 3000, 1080), {
+    width: 1080,
+    height: 810,
+    scaled: true,
+  });
+
+  // Vertical (2160 x 3840 -> 608 x 1080)
+  assert.deepEqual(Core.calculateScaledDimensions(2160, 3840, 1080), {
+    width: 608,
+    height: 1080,
+    scaled: true,
+  });
+
+  // Cuadrado mayor a 1080px (2048 x 2048 -> 1080 x 1080)
+  assert.deepEqual(Core.calculateScaledDimensions(2048, 2048, 1080), {
+    width: 1080,
+    height: 1080,
+    scaled: true,
+  });
+
+  // Imagen exactamente en el limite (1080 x 720 -> conserva 1080 x 720)
+  assert.deepEqual(Core.calculateScaledDimensions(1080, 720, 1080), {
+    width: 1080,
+    height: 720,
+    scaled: false,
+  });
+
+  // Imagen menor a 1080px (800 x 600 -> conserva 800 x 600)
+  assert.deepEqual(Core.calculateScaledDimensions(800, 600, 1080), {
+    width: 800,
+    height: 600,
+    scaled: false,
+  });
+});
+
+test("optimizeImageBeforeUpload: redimensiona foto de 10 MB a max 1080px WebP (<300 KB), aplica fallback JPEG y omite no-imagenes", async () => {
+  const bigRawFile = {
+    name: "foto_smartphone_4k.JPG",
+    type: "image/jpeg",
+    size: 10 * MB,
+    lastModified: 1700000000000,
+  };
+
+  let drawnArgs = null;
+  let requestedMime = null;
+  let requestedQuality = null;
+  let bitmapCleaned = false;
+
+  const optimizedWebp = await Core.optimizeImageBeforeUpload(bigRawFile, 1080, 0.82, {
+    loadImage: async () => ({
+      source: { tag: "bitmap-4k" },
+      width: 4032,
+      height: 3024,
+      cleanup() {
+        bitmapCleaned = true;
+      },
+    }),
+    createCanvas(w, h) {
+      return {
+        width: w,
+        height: h,
+        getContext() {
+          return {
+            drawImage(src, x, y, dw, dh) {
+              drawnArgs = { src, x, y, dw, dh };
+            },
+          };
+        },
+        toBlob(cb, mime, quality) {
+          requestedMime = mime;
+          requestedQuality = quality;
+          cb(new Blob([Buffer.alloc(180 * 1024, 0x57)], { type: "image/webp" }));
+        },
+      };
+    },
+  });
+
+  assert.equal(bitmapCleaned, true);
+  assert.deepEqual(drawnArgs, { src: { tag: "bitmap-4k" }, x: 0, y: 0, dw: 1080, dh: 810 });
+  assert.equal(requestedMime, "image/webp");
+  assert.equal(requestedQuality, 0.82);
+  assert.equal(optimizedWebp.name, "foto_smartphone_4k.webp");
+  assert.equal(optimizedWebp.type, "image/webp");
+  assert.ok(optimizedWebp.size < 300 * 1024, "El archivo WebP resultante debe pesar menos de 300 KB");
+
+  // Imagen menor a 1080px mantiene su resolucion original y se convierte a WebP
+  let smallDrawn = null;
+  const smallFile = new File([Buffer.alloc(500 * 1024, 0x11)], "logo-campus.png", { type: "image/png" });
+  const optimizedSmall = await Core.optimizeImageBeforeUpload(smallFile, 1080, 0.82, {
+    loadImage: async () => ({ source: { tag: "small" }, width: 640, height: 480 }),
+    createCanvas(w, h) {
+      return {
+        width: w,
+        height: h,
+        getContext: () => ({
+          drawImage(_s, _x, _y, dw, dh) {
+            smallDrawn = { dw, dh };
+          },
+        }),
+        toBlob(cb) {
+          cb(new Blob([Buffer.alloc(42 * 1024, 0x22)], { type: "image/webp" }));
+        },
+      };
+    },
+  });
+  assert.deepEqual(smallDrawn, { dw: 640, dh: 480 });
+  assert.equal(optimizedSmall.name, "logo-campus.webp");
+  assert.equal(optimizedSmall.type, "image/webp");
+
+  // Fallback automatico a image/jpeg cuando el navegador no soporta image/webp en canvas.toBlob
+  const fallbackJpeg = await Core.optimizeImageBeforeUpload(bigRawFile, 1080, 0.82, {
+    loadImage: async () => ({ source: { tag: "fallback" }, width: 1920, height: 1080 }),
+    createCanvas(w, h) {
+      return {
+        width: w,
+        height: h,
+        getContext: () => ({ drawImage() {} }),
+        toBlob(cb, mime) {
+          if (mime === "image/webp") {
+            cb(null);
+          } else {
+            cb(new Blob([Buffer.alloc(195 * 1024, 0xff)], { type: "image/jpeg" }));
+          }
+        },
+      };
+    },
+  });
+  assert.equal(fallbackJpeg.name, "foto_smartphone_4k.jpg");
+  assert.equal(fallbackJpeg.type, "image/jpeg");
+
+  // Archivos PDF o video no se modifican
+  const pdfFile = new File([Buffer.from("%PDF-1.4")], "programa.pdf", { type: "application/pdf" });
+  const untouchedPdf = await Core.optimizeImageBeforeUpload(pdfFile);
+  assert.equal(untouchedPdf, pdfFile);
+});
+
 test("uploadMedia: el cliente rechaza antes de enviar (sin llamada de red)", async () => {
   let calls = 0;
   const client = Core.createClient({
@@ -891,23 +1029,41 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   assert.equal(reminderRowsWed[0].querySelector("input[data-reminder-value]").value, "30");
   assert.equal(reminderRowsWed[0].querySelector("select[data-reminder-unit]").value, "minutes");
 
-  // 6. SRV-232: Dropzone usa URL.createObjectURL(file) para vista previa inmediata sin icono roto
-  let createdBlobUrl = "";
-  window.URL.createObjectURL = () => {
-    createdBlobUrl = "blob:http://127.0.0.1:8185/local-preview-123";
-    return createdBlobUrl;
+  // 6. SRV-232 / SRV-262: Dropzone optimiza fotos grandes (ej. 10 MB) a WebP (max 1080px) antes de POST /api/media/upload
+  let uploadedFormDataFile = null;
+  window.createImageBitmap = async () => ({
+    width: 3840,
+    height: 2160,
+    close() {},
+  });
+  window.HTMLCanvasElement.prototype.getContext = function () {
+    return {
+      drawImage() {},
+    };
   };
-  window.URL.revokeObjectURL = () => {};
+  window.HTMLCanvasElement.prototype.toBlob = function (cb, mime) {
+    if (mime === "image/webp") {
+      const riffWebp = new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, 0x16, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20,
+      ]);
+      cb(new window.Blob([riffWebp], { type: "image/webp" }));
+    } else {
+      cb(null);
+    }
+  };
   const origFetch = window.fetch;
   window.fetch = async (input, init) => {
     const url = String(input);
     if (url.includes("/api/media/upload")) {
+      if (init && init.body && typeof init.body.get === "function") {
+        uploadedFormDataFile = init.body.get("file");
+      }
       return new Response(
         JSON.stringify({
-          url: "/uploads/abcdef1234567890abcdef1234567890.png",
-          filename: "abcdef1234567890abcdef1234567890.png",
-          content_type: "image/png",
-          size_bytes: 128,
+          url: "/uploads/abcdef1234567890abcdef1234567890.webp",
+          filename: "abcdef1234567890abcdef1234567890.webp",
+          content_type: "image/webp",
+          size_bytes: 16,
         }),
         { status: 201, headers: { "Content-Type": "application/json" } }
       );
@@ -916,8 +1072,8 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   };
 
   const dzZone = document.querySelector('[data-dropzone="pub"]');
-  const testImgFile = new window.File([new Uint8Array([137, 80, 78, 71])], "afiche-evento.png", {
-    type: "image/png",
+  const testImgFile = new window.File([new Uint8Array(10 * MB)], "foto-smartphone-10mb.jpg", {
+    type: "image/jpeg",
   });
   const dropEvt = new window.Event("drop");
   Object.defineProperty(dropEvt, "dataTransfer", {
@@ -926,10 +1082,15 @@ test("DOM Publicaciones Editor: boton Autocompletar con IA muestra estado de car
   dzZone.dispatchEvent(dropEvt);
   await new Promise((r) => setTimeout(r, 50));
 
+  assert.ok(uploadedFormDataFile, "El archivo optimizado debe enviarse a POST /api/media/upload");
+  assert.equal(uploadedFormDataFile.name, "foto-smartphone-10mb.webp");
+  assert.equal(uploadedFormDataFile.type, "image/webp");
+  assert.ok(uploadedFormDataFile.size < 300 * 1024);
+
   const previewImg = dzZone.querySelector("[data-dz-preview] img");
   assert.ok(previewImg, "Debe renderizar la etiqueta <img> en la vista previa del dropzone");
-  assert.equal(previewImg.getAttribute("src"), "/uploads/abcdef1234567890abcdef1234567890.png");
-  assert.equal(document.getElementById("ed-pub-image-url").value, "/uploads/abcdef1234567890abcdef1234567890.png");
+  assert.equal(previewImg.getAttribute("src"), "/uploads/abcdef1234567890abcdef1234567890.webp");
+  assert.equal(document.getElementById("ed-pub-image-url").value, "/uploads/abcdef1234567890abcdef1234567890.webp");
 
   // 7. SRV-237: En la lista de publicaciones, si una imagen falla al cargar (onerror), se reemplaza por el marcador UPA
   const tbody = document.getElementById("ed-pub-rows");

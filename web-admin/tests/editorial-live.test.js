@@ -54,6 +54,13 @@ function makePng() {
 }
 
 const PNG_BYTES = makePng();
+const WEBP_BYTES = Buffer.concat([
+  Buffer.from("RIFF", "ascii"),
+  Buffer.from([0x16, 0x00, 0x00, 0x00]),
+  Buffer.from("WEBPVP8 ", "ascii"),
+  Buffer.from([0x0a, 0x00, 0x00, 0x00]),
+  Buffer.alloc(10, 0),
+]);
 const PDF_BYTES = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
 
 const sessions = {};
@@ -123,6 +130,34 @@ test("subida: un PNG real se guarda y se entrega con el mismo contenido", live, 
   assert.equal(served.headers.get("content-type"), "image/png");
   assert.deepEqual(Buffer.from(await served.arrayBuffer()), PNG_BYTES);
   ctx.posterUrl = result.url;
+});
+
+test("subida: un WebP real (y optimizacion de foto grande) se guarda con .webp y Content-Type image/webp", live, async () => {
+  const largePhoto = new File([Buffer.alloc(10 * 1024 * 1024, 0xaa)], "foto-smartphone-10mb.jpg", {
+    type: "image/jpeg",
+  });
+  const result = await ctx.admin.uploadMedia(largePhoto, {
+    optimizationOptions: {
+      loadImage: async () => ({ source: {}, width: 4000, height: 3000 }),
+      createCanvas: (w, h) => ({
+        width: w,
+        height: h,
+        getContext: () => ({ drawImage() {} }),
+        toBlob(cb) {
+          cb(new Blob([WEBP_BYTES], { type: "image/webp" }));
+        },
+      }),
+    },
+  });
+  assert.match(result.url, /\/uploads\/[0-9a-f]{32}\.webp$/);
+  assert.equal(result.content_type, "image/webp");
+  assert.equal(result.size_bytes, WEBP_BYTES.length);
+  assert.match(result.filename, /^[0-9a-f]{32}\.webp$/);
+
+  const served = await fetch(result.url.startsWith("http") ? result.url : `${BASE_URL}${result.url}`);
+  assert.equal(served.status, 200);
+  assert.equal((served.headers.get("content-type") || "").split(";")[0], "image/webp");
+  assert.deepEqual(Buffer.from(await served.arrayBuffer()), WEBP_BYTES);
 });
 
 test("subida: un PDF real es aceptado con tipo application/pdf", live, async () => {
