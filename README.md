@@ -1,6 +1,19 @@
-# UPA App: Campus Portal und Progressive Web App (PWA)
+# UPA App: Campus Portal und Progressive Web App (PWA) (v1.0.0)
 
-Zentrale Hochschulplattform fuer Studierende, Dozierende und das Redaktionsteam der Universidad Paraguayo Alemana (UPA). Das System kombiniert eine responsive Studenten PWA (Mobile First fuer Android und iOS, Trusted Web Activity Ready) inklusive Desktop QR Code Landingpage mit einem Web Admin Redaktionsportal und einem FastAPI REST Backend mit multimodaler Google Gemini KI Integration.
+Zentrale Hochschulplattform (Version `1.0.0` / `v1.0.0`) fuer Studierende, Dozierende und das Redaktionsteam der Universidad Paraguayo Alemana (UPA). Das System kombiniert eine responsive Studenten PWA (Mobile First fuer Android und iOS, Trusted Web Activity Ready) inklusive Desktop QR Code Landingpage mit einem Web Admin Redaktionsportal und einem FastAPI REST Backend mit multimodaler Google Gemini KI Integration.
+
+* **Live-Zugang (Produktion v1.0.0):** [https://upa.eu1.netbird.services/](https://upa.eu1.netbird.services/)
+* **Web-Admin Cockpit:** [https://upa.eu1.netbird.services/dashboard/](https://upa.eu1.netbird.services/dashboard/)
+* **OpenAPI / Swagger UI:** [https://upa.eu1.netbird.services/docs](https://upa.eu1.netbird.services/docs)
+
+## Dokumentation (Offizielle Projektdokumente v1.0.0)
+
+Die vier offiziellen Projektdokumente zur Version `v1.0.0` liegen als PDF-Dateien direkt im Ordner `docs/`:
+
+* **Projektbericht (Informe del Proyecto):** [docs/UPA_App_Informe_del_Proyecto.pdf](docs/UPA_App_Informe_del_Proyecto.pdf)
+* **Benutzerhandbuch (Manual de Usuario):** [docs/UPA_App_Manual_de_Usuario.pdf](docs/UPA_App_Manual_de_Usuario.pdf)
+* **Technische Systembeschreibung (Arquitectura v3):** [docs/UPA_App_v3.pdf](docs/UPA_App_v3.pdf)
+* **Abschlusspraesentation (Presentación Final):** [docs/UPA_App_Presentacion.pdf](docs/UPA_App_Presentacion.pdf)
 
 ## Systemarchitektur
 
@@ -52,7 +65,11 @@ upa-app/
 │   │   ├── schemas/            # Strikte Pydantic v2 Request und Response Schemas
 │   │   └── services/           # Geschaeftslogik (gemini, ai_extractor, instagram, google_groups, push, scheduler, audit)
 │   └── tests/                  # Pytest Testsuite (API, Auth, PWA E2E, KI Extraktion, Classroom, Push)
-├── docs/                       # Technische System, API und Projektspezifikation
+├── docs/                       # Technische System, API und Projektspezifikation (v1.0.0)
+│   ├── UPA_App_Informe_del_Proyecto.pdf        # Offizieller Projektbericht (PDF)
+│   ├── UPA_App_Manual_de_Usuario.pdf           # Offizielles Benutzerhandbuch (PDF)
+│   ├── UPA_App_v3.pdf                          # Technische Systembeschreibung v3 (PDF)
+│   ├── UPA_App_Presentacion.pdf                # Offizielle Abschlusspraesentation (PDF)
 │   ├── UPA_App_Documentacion_Arquitectura_v3.docx # Kompaktes Architektur-Hauptdokument Teil 1 (Word, Gelb-Markierung)
 │   ├── UPA_App_Documentacion_Arquitectura_v3.md   # Markdown-Quelle des Architektur-Hauptdokuments Teil 1
 │   ├── UPA_App_Documentacion_Arquitectura.docx # Offizielle Projektdokumentation (Word)
@@ -162,6 +179,10 @@ python3 scripts/audit_zero_mock.py
 
 ## Weiterfuehrende Dokumentation
 
+* [Projektbericht (Informe del Proyecto, PDF)](docs/UPA_App_Informe_del_Proyecto.pdf)
+* [Benutzerhandbuch (Manual de Usuario, PDF)](docs/UPA_App_Manual_de_Usuario.pdf)
+* [Technische Systembeschreibung (UPA App v3, PDF)](docs/UPA_App_v3.pdf)
+* [Abschlusspraesentation (Presentación, PDF)](docs/UPA_App_Presentacion.pdf)
 * [Kompaktes Architektur-Hauptdokument v3 (Teil 1, Markdown)](docs/UPA_App_Documentacion_Arquitectura_v3.md)
 * [Kompaktes Architektur-Hauptdokument v3 (Teil 1, MS Word .docx)](docs/UPA_App_Documentacion_Arquitectura_v3.docx)
 * [Offizielle Architektur- und Projektdokumentation (Spanisch, Markdown)](docs/UPA_App_Documentacion_Arquitectura.md)
