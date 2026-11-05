@@ -100,6 +100,10 @@ uploads/
 # BINARY DOCUMENTS (DOCS DIRECTORY)
 # ==========================================
 docs/*.pdf
+!docs/UPA_App_Informe_del_Proyecto.pdf
+!docs/UPA_App_Manual_de_Usuario.pdf
+!docs/UPA_App_v3.pdf
+!docs/UPA_App_Presentacion.pdf
 docs/*.docx
 !docs/UPA_App_Documentacion_Arquitectura.docx
 !docs/UPA_App_Documentacion_Arquitectura_v3.docx

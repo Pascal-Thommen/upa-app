@@ -608,7 +608,18 @@ def test_pwa_and_ai_documentation_integrity():
     ]
 
     assert not (repo_root / "docs" / "DATABASE_CLEANUP_AUDIT.md").exists()
-    assert list((repo_root / "docs").glob("*.pdf")) == []
+    expected_pdfs = {
+        "UPA_App_Informe_del_Proyecto.pdf",
+        "UPA_App_Manual_de_Usuario.pdf",
+        "UPA_App_v3.pdf",
+        "UPA_App_Presentacion.pdf",
+    }
+    pdf_files = {p.name for p in (repo_root / "docs").glob("*.pdf")}
+    assert pdf_files == expected_pdfs
+    for pdf_name in expected_pdfs:
+        pdf_path = repo_root / "docs" / pdf_name
+        assert pdf_path.is_file() and pdf_path.stat().st_size > 1000
+        assert pdf_path.read_bytes().startswith(b"%PDF-")
     allowed_docx = {
         "UPA_App_Documentacion_Arquitectura.docx",
         "UPA_App_Documentacion_Arquitectura_v3.docx",
@@ -787,6 +798,12 @@ def test_pwa_and_ai_documentation_integrity():
     assert "/api/v1/app-state" not in readme_text
     for snippet in (
         "PWA",
+        "v1.0.0",
+        "https://upa.eu1.netbird.services/",
+        "docs/UPA_App_Informe_del_Proyecto.pdf",
+        "docs/UPA_App_Manual_de_Usuario.pdf",
+        "docs/UPA_App_v3.pdf",
+        "docs/UPA_App_Presentacion.pdf",
         "web-app/",
         "TWA",
         "Autocompletar con IA",
