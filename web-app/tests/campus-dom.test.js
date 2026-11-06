@@ -346,12 +346,41 @@ test("Escritorio: muestra landing con telefono interactivo real en marco negro j
   }
 });
 
-test("Movil sin instalar: abre directamente la app; banner de instalacion en Android e iOS sin bloqueo", live, async () => {
-  const ios = await openCampus({ userAgent: IPHONE_UA });
+test("Movil sin instalar y Cascada de 1 Banner en view-inicio (Login > Instalacion > Push)", live, async () => {
+  const student = TEST_TOKENS["ana.gomez@upa.edu.py"];
+  const countVisibleBanners = (appInst) =>
+    ["login-prompt", "install-banner", "push-banner"].filter((id) => !appInst.$(id).hidden).length;
+
+  function DefaultNotification() {}
+  DefaultNotification.permission = "default";
+  DefaultNotification.requestPermission = async () => {
+    DefaultNotification.permission = "granted";
+    return "granted";
+  };
+
+  // Prioridad 1 (Invitado en iOS): solo se muestra #login-prompt; #install-banner y #push-banner estan ocultos
+  const guestIos = await openCampus({ userAgent: IPHONE_UA, Notification: DefaultNotification });
+  try {
+    assert.equal(guestIos.$("landing").hidden, true);
+    assert.equal(guestIos.$("app").hidden, false);
+    assert.equal(guestIos.$("login-prompt").hidden, false);
+    assert.equal(guestIos.$("install-banner").hidden, true);
+    assert.equal(guestIos.$("push-banner").hidden, true);
+    assert.equal(countVisibleBanners(guestIos), 1);
+  } finally {
+    guestIos.close();
+  }
+
+  // Prioridad 2 (Autenticado en iOS sin instalar): se muestra exclusivamente #install-banner; al cerrarlo pasa a Prioridad 3 (#push-banner)
+  DefaultNotification.permission = "default";
+  const ios = await openCampus({ userAgent: IPHONE_UA, token: student, Notification: DefaultNotification });
   try {
     assert.equal(ios.$("landing").hidden, true);
     assert.equal(ios.$("app").hidden, false);
+    assert.equal(ios.$("login-prompt").hidden, true);
     assert.equal(ios.$("install-banner").hidden, false);
+    assert.equal(ios.$("push-banner").hidden, true);
+    assert.equal(countVisibleBanners(ios), 1);
     assert.equal(ios.$("install-action").textContent, "Ver cómo");
     await ios.click(ios.$("install-action"));
     assert.equal(ios.$("ios-sheet").hidden, false);
@@ -360,13 +389,30 @@ test("Movil sin instalar: abre directamente la app; banner de instalacion en And
     assert.equal(ios.$("ios-sheet").hidden, true);
     await ios.click(ios.$("install-dismiss"));
     assert.equal(ios.$("install-banner").hidden, true);
+    assert.equal(ios.$("push-banner").hidden, false, "Tras cerrar #install-banner con permiso default debe mostrarse #push-banner");
+    assert.equal(countVisibleBanners(ios), 1);
+    assert.match(ios.$("push-banner").textContent, /Activar notificaciones/);
+    assert.match(ios.$("push-banner").textContent, /Recibe avisos de eventos importantes y fechas límite\./);
+    assert.equal(ios.$("push-action").textContent, "Activar");
+
+    // Clic en cerrar ("×") de #push-banner persiste dismiss_push_banner y oculta el banner
+    await ios.click(ios.$("push-dismiss"));
+    assert.equal(ios.$("push-banner").hidden, true);
+    assert.ok(ios.window.localStorage.getItem("dismiss_push_banner"));
+    assert.equal(countVisibleBanners(ios), 0);
   } finally {
     ios.close();
   }
 
-  const android = await openCampus({ userAgent: ANDROID_UA });
+  // Prioridad 2 y 3 en Android autenticado: #push-banner visible si no hay prompt de instalacion; beforeinstallprompt eleva a #install-banner; "Activar" en #push-banner activa push y oculta el banner
+  DefaultNotification.permission = "default";
+  const android = await openCampus({ userAgent: ANDROID_UA, token: student, Notification: DefaultNotification });
   try {
+    assert.equal(android.$("login-prompt").hidden, true);
     assert.equal(android.$("install-banner").hidden, true);
+    assert.equal(android.$("push-banner").hidden, false);
+    assert.equal(countVisibleBanners(android), 1);
+
     let prompted = 0;
     const fakePrompt = new android.window.Event("beforeinstallprompt", { cancelable: true });
     fakePrompt.prompt = async () => {
@@ -375,9 +421,19 @@ test("Movil sin instalar: abre directamente la app; banner de instalacion en And
     fakePrompt.userChoice = Promise.resolve({ outcome: "accepted" });
     android.window.dispatchEvent(fakePrompt);
     assert.equal(android.$("install-banner").hidden, false);
+    assert.equal(android.$("push-banner").hidden, true, "Cuando aparece #install-banner, #push-banner debe ocultarse");
+    assert.equal(countVisibleBanners(android), 1);
     assert.equal(android.$("install-action").textContent, "Instalar");
     await android.click(android.$("install-action"));
     assert.equal(prompted, 1);
+    assert.equal(android.$("install-banner").hidden, true);
+    assert.equal(android.$("push-banner").hidden, false);
+    assert.equal(countVisibleBanners(android), 1);
+
+    // Clic en "Activar" (#push-action) invoca enablePushNotifications() y oculta #push-banner
+    await android.click(android.$("push-action"));
+    assert.equal(android.$("push-banner").hidden, true);
+    assert.equal(countVisibleBanners(android), 0);
   } finally {
     android.close();
   }
@@ -869,6 +925,16 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(topbarDarkSignet.hidden, false);
     assert.equal(topbarLightLogo.hidden, true);
 
+    assert.equal(app.$("btn-push-optin"), null, "El boton redundante #btn-push-optin no debe existir en el perfil");
+    const pushInput = app.$("push-opt-in");
+    assert.equal(pushInput.closest("label").querySelector("span").textContent, "Permitir notificaciones");
+    assert.equal(pushInput.checked, false);
+    for (const key of ["events", "announcements", "deadlines"]) {
+      const sub = app.document.querySelector(`[data-notify="${key}"]`);
+      assert.equal(sub.disabled, true, `La subcategoria ${key} debe estar deshabilitada cuando el interruptor principal esta apagado`);
+      assert.equal(sub.closest("li").classList.contains("is-disabled"), true);
+    }
+
     const swEvents = app.document.querySelector('[data-notify="events"]');
     swEvents.checked = false;
     swEvents.dispatchEvent(new app.window.Event("change", { bubbles: true }));
@@ -1271,8 +1337,18 @@ test("Notificaciones Push Web (FCM): opt-in exitoso registra token en /api/users
   });
   try {
     await app.click(app.document.querySelector('[data-tab="perfil"]'));
+    assert.equal(app.$("btn-push-optin"), null, "No debe existir #btn-push-optin");
     const pushSwitch = app.$("push-opt-in");
-    assert.ok(pushSwitch, "Debe existir el interruptor Notificaciones Push en el perfil");
+    assert.ok(pushSwitch, "Debe existir el interruptor principal Permitir notificaciones en el perfil");
+    assert.equal(pushSwitch.closest("label").querySelector("span").textContent, "Permitir notificaciones");
+
+    // Antes de activar: subcategorias deshabilitadas y con clase .is-disabled
+    for (const key of ["events", "announcements", "deadlines"]) {
+      const sub = app.document.querySelector(`[data-notify="${key}"]`);
+      assert.equal(sub.disabled, true);
+      assert.equal(sub.closest("li").classList.contains("is-disabled"), true);
+    }
+
     pushSwitch.checked = true;
     pushSwitch.dispatchEvent(new app.window.Event("change", { bubbles: true }));
     await app.window.UpaCampus.idle();
@@ -1286,6 +1362,27 @@ test("Notificaciones Push Web (FCM): opt-in exitoso registra token en /api/users
     assert.equal(app.window.UpaCampus.state.pushToken, "fcm_web_ana_campus_pwa_token_2026");
     assert.equal(app.$("notify-hint").hidden, false);
     assert.match(app.$("notify-hint").textContent, /Notificaciones Push activadas/);
+
+    // Tras activar el interruptor principal: las 3 subcategorias quedan habilitadas e interactivas
+    for (const key of ["events", "announcements", "deadlines"]) {
+      const sub = app.document.querySelector(`[data-notify="${key}"]`);
+      assert.equal(sub.disabled, false);
+      assert.equal(sub.closest("li").classList.contains("is-disabled"), false);
+    }
+
+    // Al apagar el interruptor principal: da de baja el token en backend y vuelve a deshabilitar/atenuar las subcategorias
+    pushSwitch.checked = false;
+    pushSwitch.dispatchEvent(new app.window.Event("change", { bubbles: true }));
+    await app.window.UpaCampus.idle();
+
+    assert.equal(app.window.UpaCampus.state.hasDeviceToken, false);
+    assert.equal(app.window.UpaCampus.state.pushToken, null);
+    assert.equal(app.window.localStorage.getItem("upa_campus_fcm_token"), null);
+    for (const key of ["events", "announcements", "deadlines"]) {
+      const sub = app.document.querySelector(`[data-notify="${key}"]`);
+      assert.equal(sub.disabled, true);
+      assert.equal(sub.closest("li").classList.contains("is-disabled"), true);
+    }
   } finally {
     app.close();
   }

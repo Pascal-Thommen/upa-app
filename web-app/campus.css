@@ -720,7 +720,8 @@ p {
 }
 
 .login-prompt,
-.install-banner {
+.install-banner,
+.push-banner {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -730,13 +731,15 @@ p {
   border: 1px solid var(--border);
 }
 
-.install-banner {
+.install-banner,
+.push-banner {
   flex-direction: row;
   align-items: center;
   padding: 10px 6px 10px 14px;
 }
 
-.install-text {
+.install-text,
+.push-text {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1356,6 +1359,22 @@ video.card-media {
 
 .switch-list input[type="checkbox"]:checked::after {
   transform: translateX(20px);
+}
+
+.switch-list li.is-disabled {
+  opacity: 0.5;
+}
+
+.switch-list label.is-disabled {
+  cursor: default;
+}
+
+.switch-list li:not(.is-disabled) > label.is-disabled {
+  opacity: 0.5;
+}
+
+.switch-list input[type="checkbox"]:disabled {
+  cursor: default;
 }
 
 .version {

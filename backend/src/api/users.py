@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -77,14 +77,41 @@ class DeviceTokenResponse(BaseModel):
 )
 def register_device_token(
     payload: DeviceTokenRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DeviceTokenResponse:
     """
     Almacena de forma persistente e idempotente el token FCM / Android del dispositivo
     asociado al usuario autenticado para el envio de notificaciones push.
+    En `/api/users/me/device-token`, un `device_token` vacio elimina los tokens registrados
+    para la plataforma indicada (baja de notificaciones push).
     """
-    cleaned_token = (payload.device_token or "").strip()
+    cleaned_platform = (payload.platform or "android").strip().lower()
+    if cleaned_platform not in ALLOWED_PLATFORMS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plataforma de dispositivo invalida. Valores permitidos: android, ios, web.",
+        )
+
+    raw_token = payload.device_token or ""
+    cleaned_token = raw_token.strip()
+    now = datetime.now(UTC)
+
+    if raw_token == "" and request.url.path.endswith("/me/device-token"):
+        db.query(DeviceToken).filter(
+            DeviceToken.user_id == current_user.id,
+            DeviceToken.platform == cleaned_platform,
+        ).delete(synchronize_session=False)
+        db.commit()
+        return DeviceTokenResponse(
+            user_id=int(current_user.id),
+            device_token="",
+            platform=cleaned_platform,
+            has_device_token=False,
+            updated_at=now,
+        )
+
     if (
         not cleaned_token
         or len(cleaned_token) < 8
@@ -95,15 +122,6 @@ def register_device_token(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El token de dispositivo (device_token) es invalido o esta vacio.",
         )
-
-    cleaned_platform = (payload.platform or "android").strip().lower()
-    if cleaned_platform not in ALLOWED_PLATFORMS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Plataforma de dispositivo invalida. Valores permitidos: android, ios, web.",
-        )
-
-    now = datetime.now(UTC)
     existing = (
         db.query(DeviceToken)
         .filter(

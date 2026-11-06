@@ -13,6 +13,7 @@
   const TOKEN_KEY = "upa_campus_token";
   const THEME_KEY = "upa_campus_theme";
   const INSTALL_KEY = "upa_campus_install_dismissed";
+  const PUSH_DISMISS_KEY = "dismiss_push_banner";
   const NOTIFIED_KEY = "upa_campus_notified";
   const PUSH_TOKEN_KEY = "upa_campus_fcm_token";
   const FORCE_APP_KEY = "upa_campus_force_app";
@@ -759,7 +760,12 @@
     else if (empty && state.feed.loaded) statusBox($("feed-status"), "Todavía no hay publicaciones para mostrar.");
     else statusBox($("feed-status"), "");
     $("feed-more").hidden = !state.feed.hasMore;
-    $("login-prompt").hidden = Boolean(state.token);
+    renderHomeBanners();
+  }
+
+  function renderHome() {
+    renderFeed();
+    renderHomeBanners();
   }
 
   /* ------------------------------------------------------------------ detalle */
@@ -1401,22 +1407,25 @@
       if ($("profile-role")) $("profile-role").textContent = user ? Core.roleLabel(user) : "";
     }
     const pushGranted = notificationsSupported() && win.Notification.permission === "granted";
+    const pushActive = Boolean(state.prefs.push && (pushGranted || state.hasDeviceToken));
     doc.querySelectorAll("[data-notify]").forEach((input) => {
       const key = input.getAttribute("data-notify");
       if (key === "push") {
-        input.checked = Boolean(state.prefs.push || state.hasDeviceToken || (pushGranted && state.prefs.push !== false));
+        input.checked = pushActive;
+        input.disabled = false;
       } else {
         input.checked = Boolean(state.prefs[key]);
+        input.disabled = !pushActive;
+        const label = input.closest("label");
+        if (label) label.classList.toggle("is-disabled", !pushActive);
+        const li = input.closest("li");
+        if (li) li.classList.toggle("is-disabled", !pushActive);
       }
     });
-    const optinBtn = $("btn-push-optin");
-    if (optinBtn) {
-      optinBtn.hidden = Boolean(!state.token || (pushGranted && state.hasDeviceToken));
-    }
   }
 
   function notificationsSupported() {
-    return typeof win.Notification === "function";
+    return typeof win.Notification === "function" || (typeof win.Notification === "object" && win.Notification !== null);
   }
 
   async function resolveSwRegistration() {
@@ -1455,13 +1464,37 @@
         const response = await api.registerDeviceToken(fcmToken, "web");
         state.hasDeviceToken = Boolean(response && response.has_device_token);
         renderProfile();
+        renderHomeBanners();
         return { ok: true, token: fcmToken, response };
       }
       renderProfile();
+      renderHomeBanners();
       return { ok: true, token: fcmToken, response: null };
     } catch (_) {
       return { ok: false, reason: "registration_failed" };
     }
+  }
+
+  async function disablePushNotifications() {
+    const hint = $("notify-hint");
+    if (hint) hint.hidden = true;
+    const pushToggle = $("push-opt-in");
+    if (pushToggle) pushToggle.checked = false;
+    state.prefs.push = false;
+    state.pushToken = null;
+    state.hasDeviceToken = false;
+    local.removeItem(PUSH_TOKEN_KEY);
+    Core.saveNotificationPrefs(local, state.prefs);
+    renderProfile();
+    renderHomeBanners();
+    if (state.token && api && typeof api.registerDeviceToken === "function") {
+      try {
+        await api.registerDeviceToken("", "web");
+      } catch (_) {
+        /* el estado local ya quedo desactivado aunque no haya red */
+      }
+    }
+    return { ok: true, disabled: true };
   }
 
   async function enablePushNotifications() {
@@ -1472,6 +1505,8 @@
       if (pushToggle) pushToggle.checked = false;
       state.prefs.push = false;
       Core.saveNotificationPrefs(local, state.prefs);
+      renderProfile();
+      renderHomeBanners();
       if (hint) {
         hint.textContent = "Este navegador no admite notificaciones. En iPhone, instala la app en la pantalla de inicio.";
         hint.hidden = false;
@@ -1483,6 +1518,13 @@
       try {
         const requested = await win.Notification.requestPermission();
         permission = typeof requested === "string" ? requested : win.Notification.permission;
+        if (win.Notification.permission !== permission) {
+          try {
+            win.Notification.permission = permission;
+          } catch (_) {
+            /* propiedad de solo lectura en navegador nativo */
+          }
+        }
       } catch (_) {
         permission = win.Notification.permission || "denied";
       }
@@ -1491,6 +1533,8 @@
       if (pushToggle) pushToggle.checked = false;
       state.prefs.push = false;
       Core.saveNotificationPrefs(local, state.prefs);
+      renderProfile();
+      renderHomeBanners();
       if (hint) {
         hint.textContent = "Las notificaciones están bloqueadas en tu navegador. Habilítalas en los ajustes del sitio.";
         hint.hidden = false;
@@ -1500,6 +1544,8 @@
     state.prefs.push = true;
     Core.saveNotificationPrefs(local, state.prefs);
     if (pushToggle) pushToggle.checked = true;
+    renderProfile();
+    renderHomeBanners();
     const synced = await syncPushDeviceToken();
     if (hint && synced.ok) {
       hint.textContent = "Notificaciones Push activadas en este dispositivo.";
@@ -1512,16 +1558,20 @@
   async function onNotifyToggle(event) {
     const input = event.target;
     const key = input.getAttribute("data-notify");
-    state.prefs[key] = input.checked;
-    Core.saveNotificationPrefs(local, state.prefs);
     const hint = $("notify-hint");
-    hint.hidden = true;
-    if (!input.checked) {
-      renderProfile();
+    if (hint) hint.hidden = true;
+    if (key === "push") {
+      if (!input.checked) {
+        await disablePushNotifications();
+        return;
+      }
+      await enablePushNotifications();
       return;
     }
-    if (key === "push") {
-      await enablePushNotifications();
+    state.prefs[key] = input.checked;
+    Core.saveNotificationPrefs(local, state.prefs);
+    if (!input.checked) {
+      renderProfile();
       return;
     }
     if (!notificationsSupported()) {
@@ -1645,11 +1695,40 @@
     };
   }
 
-  function renderInstallBanner() {
+  function renderHomeBanners() {
+    const loginEl = $("login-prompt");
+    const installEl = $("install-banner");
+    const pushEl = $("push-banner");
     const info = installState();
-    const show = Core.shouldShowInstallBanner(info);
-    $("install-banner").hidden = !show;
-    $("install-action").textContent = info.platform === "ios" ? "Ver cómo" : "Instalar";
+    if ($("install-action")) {
+      $("install-action").textContent = info.platform === "ios" ? "Ver cómo" : "Instalar";
+    }
+    if (!state.token) {
+      if (loginEl) loginEl.hidden = false;
+      if (installEl) installEl.hidden = true;
+      if (pushEl) pushEl.hidden = true;
+      return;
+    }
+    if (loginEl) loginEl.hidden = true;
+    const showInstall = Core.shouldShowInstallBanner(info);
+    if (showInstall) {
+      if (installEl) installEl.hidden = false;
+      if (pushEl) pushEl.hidden = true;
+      return;
+    }
+    if (installEl) installEl.hidden = true;
+    const pushDismissed = Boolean(local.getItem(PUSH_DISMISS_KEY));
+    const showPush =
+      notificationsSupported() &&
+      win.Notification.permission === "default" &&
+      !pushDismissed &&
+      !state.prefs.push &&
+      !state.hasDeviceToken;
+    if (pushEl) pushEl.hidden = !showPush;
+  }
+
+  function renderInstallBanner() {
+    renderHomeBanners();
   }
 
   async function onInstallAction() {
@@ -1917,15 +1996,21 @@
     });
     doc.querySelectorAll("[data-theme-option]").forEach((btn) => btn.addEventListener("click", () => setTheme(btn.getAttribute("data-theme-option"))));
     doc.querySelectorAll("[data-notify]").forEach((input) => input.addEventListener("change", (ev) => track(onNotifyToggle(ev))));
-    if ($("btn-push-optin")) {
-      $("btn-push-optin").addEventListener("click", () => track(enablePushNotifications()));
-    }
     $("btn-logout").addEventListener("click", () => track(logout("Sesión cerrada.")));
     $("install-action").addEventListener("click", () => track(onInstallAction()));
     $("install-dismiss").addEventListener("click", () => {
       local.setItem(INSTALL_KEY, String(Date.now()));
       renderInstallBanner();
     });
+    if ($("push-action")) {
+      $("push-action").addEventListener("click", () => track(enablePushNotifications()));
+    }
+    if ($("push-dismiss")) {
+      $("push-dismiss").addEventListener("click", () => {
+        local.setItem(PUSH_DISMISS_KEY, "1");
+        renderHomeBanners();
+      });
+    }
 
     win.addEventListener("online", () => {
       checkForSwUpdate();
@@ -2037,7 +2122,10 @@
     refresh: () => track(refreshAll()),
     checkForSwUpdate: () => checkForSwUpdate(),
     enablePushNotifications: () => track(enablePushNotifications()),
+    disablePushNotifications: () => track(disablePushNotifications()),
     syncPushDeviceToken: () => track(syncPushDeviceToken()),
+    renderHome,
+    renderHomeBanners,
     renderAgendaTimeline,
     renderAgendaSingleDay,
     scrollToAgendaDay,
