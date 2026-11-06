@@ -148,7 +148,7 @@ test("preparacion: creacion de publicaciones reales (noticia, fijada, urgente y 
       title: "Convocatoria de intercambio en Heidelberg",
       caption: "Postulaciones abiertas hasta noviembre.",
       content: "Presenta tu carpeta académica en Secretaría. Requisitos: promedio mínimo 4.0 y nivel B2.",
-      media_url: "/campus/icons/icon-512.png",
+      media_url: "https://upa.edu.py/static/images/heidelberg-intercambio.jpg",
       media_type: "IMAGE",
       permalink: "https://upa.edu.py/intercambio",
       is_news: true,
@@ -639,8 +639,8 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.ok(fallbackVideo);
     assert.equal(
       fallbackVideo.getAttribute("poster"),
-      "/campus/icons/icon-512.png",
-      "Los videos sin thumbnail deben utilizar la imagen de respaldo estable en poster",
+      null,
+      "Los videos sin thumbnail no deben renderizar una imagen de fallback en poster",
     );
 
     // Reel de Instagram con imagen WebP (sin stream MP4 reproducible): muestra imagen + Play-Badge que abre Instagram con URL canonica
@@ -652,7 +652,14 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.equal(previewLink.getAttribute("href"), "https://www.instagram.com/reel/CwebpReel99/");
     assert.equal(previewLink.getAttribute("target"), "_blank");
     assert.ok(previewLink.querySelector(".video-play-badge svg.play-glyph"), "Debe incluir el Play-Badge discreto");
-    assert.equal(previewLink.querySelector("img.card-media").getAttribute("src"), "https://upa.edu.py/static/images/reel-preview.webp");
+    const reelPreviewImg = previewLink.querySelector("img.card-media");
+    assert.equal(reelPreviewImg.getAttribute("src"), "https://upa.edu.py/static/images/reel-preview.webp");
+
+    // Ante un error de carga de imagen, nunca se usa /campus/icons/icon-512.png sino que se oculta/elimina la imagen
+    reelPreviewImg.dispatchEvent(new app.window.Event("error"));
+    assert.equal(reelPreviewImg.style.display, "none");
+    assert.equal(webpVideoCardBtn.querySelector("img.card-media"), null);
+    assert.equal(webpVideoCardBtn.querySelector('img[src*="icon-512.png"]'), null);
 
     // Privacidad: el numero de inscritos (registered_count) no debe ser visible en ninguna parte del feed para estudiantes
     assert.equal(/inscritos|personas inscritas/i.test(app.$("feed-list").textContent), false);

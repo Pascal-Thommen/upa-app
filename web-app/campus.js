@@ -610,18 +610,46 @@
     return svg;
   }
 
-  function bindImageFallback(img, fallbackSrc) {
-    const fb = fallbackSrc || Core.DEFAULT_VIDEO_POSTER;
+  function bindImageFallback(img) {
     img.addEventListener("error", () => {
-      if (img.getAttribute("src") !== fb) {
-        img.setAttribute("src", fb);
+      img.style.display = "none";
+      const previewLink = img.closest(".video-preview-link");
+      const mediaWrap = img.closest(".card-media-wrap");
+      const detailBox = img.closest("#detail-media");
+      img.remove();
+      if (previewLink) previewLink.remove();
+      if (mediaWrap) {
+        const cardOpen = mediaWrap.closest(".card-open");
+        const floatingBadge = mediaWrap.querySelector(".badge-floating");
+        mediaWrap.remove();
+        if (cardOpen && floatingBadge) {
+          floatingBadge.classList.remove("badge-floating");
+          const cardEl = cardOpen.closest(".card");
+          const isEventCard = cardEl && cardEl.getAttribute("data-kind") === "event";
+          const evBadge = isEventCard ? kindBadge("event", "Evento", false) : null;
+          const cardBody = cardOpen.querySelector(".card-body");
+          if (cardBody && !cardBody.querySelector(".card-header")) {
+            const metaPin = cardBody.querySelector(".card-meta > .pin");
+            const headerRow = h(
+              "div",
+              { class: "card-header" },
+              h("div", { class: "card-badges" }, floatingBadge, evBadge),
+              metaPin || null,
+            );
+            cardBody.prepend(headerRow);
+          }
+        }
+      }
+      if (detailBox && !detailBox.querySelector("img, video")) {
+        detailBox.hidden = true;
       }
     });
     return img;
   }
 
   function mediaNode(post, className, controls) {
-    const url = Core.safeUrl(post.media_url || post.image_url);
+    const rawUrl = Core.safeUrl(post.media_url || post.image_url);
+    const url = /\/campus\/icons\/icon-\d+\.png(\?|#|$)/i.test(rawUrl) ? "" : rawUrl;
     if (!url && !Core.isVideoMedia(post)) return null;
     if (Core.isVideoMedia(post)) {
       const poster = Core.videoPosterUrl(post);
@@ -629,18 +657,18 @@
         return h("video", {
           class: className,
           src: Core.safeUrl(post.media_url) || null,
-          poster,
+          poster: poster || null,
           muted: true,
           playsinline: true,
           preload: "metadata",
           controls: controls ? true : null,
         });
       }
+      if (!poster) return null;
       const extUrl = Core.videoExternalUrl(post);
       const badge = h("span", { class: "video-play-badge", "aria-hidden": "true" }, playIcon(18));
       const img = bindImageFallback(
         h("img", { class: className, src: poster, alt: "", loading: "lazy", decoding: "async" }),
-        Core.DEFAULT_VIDEO_POSTER,
       );
       if (extUrl) {
         const link = h(
@@ -662,7 +690,6 @@
     }
     return bindImageFallback(
       h("img", { class: className, src: url, alt: "", loading: "lazy", decoding: "async" }),
-      Core.DEFAULT_VIDEO_POSTER,
     );
   }
 
