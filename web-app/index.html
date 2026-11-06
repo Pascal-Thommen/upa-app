@@ -103,6 +103,14 @@
           <button id="install-action" class="btn btn-primary btn-small" type="button">Instalar</button>
           <button id="install-dismiss" class="icon-btn" type="button" aria-label="Cerrar aviso">&times;</button>
         </div>
+        <div id="push-banner" class="install-banner push-banner" hidden>
+          <div class="install-text push-text">
+            <strong>Activar notificaciones</strong>
+            <span id="push-sub">Recibe avisos de eventos importantes y fechas límite.</span>
+          </div>
+          <button id="push-action" class="btn btn-primary btn-small" type="button">Activar</button>
+          <button id="push-dismiss" class="icon-btn" type="button" aria-label="Cerrar aviso">&times;</button>
+        </div>
         <div id="login-prompt" class="login-prompt" hidden>
           <p><strong>Inicia sesión con tu cuenta @upa.edu.py</strong> para ver noticias internas, eventos y tu agenda.</p>
           <a class="btn btn-primary" id="login-link-inicio" href="/api/auth/login-google?return_to=campus">Iniciar sesión con Google</a>
@@ -157,12 +165,11 @@
 
         <h3 class="section-title">Notificaciones</h3>
         <ul class="switch-list">
-          <li><label><span>Notificaciones Push</span><input type="checkbox" id="push-opt-in" data-notify="push" role="switch"></label></li>
-          <li><label><span>Eventos</span><input type="checkbox" data-notify="events" role="switch"></label></li>
-          <li><label><span>Avisos y comunicados</span><input type="checkbox" data-notify="announcements" role="switch"></label></li>
-          <li><label><span>Fechas límite</span><input type="checkbox" data-notify="deadlines" role="switch"></label></li>
+          <li><label><span>Permitir notificaciones</span><input type="checkbox" id="push-opt-in" data-notify="push" role="switch"></label></li>
+          <li><label><span>Eventos</span><input type="checkbox" data-notify="events" role="switch" disabled></label></li>
+          <li><label><span>Avisos y comunicados</span><input type="checkbox" data-notify="announcements" role="switch" disabled></label></li>
+          <li><label><span>Fechas límite</span><input type="checkbox" data-notify="deadlines" role="switch" disabled></label></li>
         </ul>
-        <button id="btn-push-optin" class="btn btn-secondary btn-small" type="button" hidden>Notificaciones Push</button>
         <p id="notify-hint" class="muted small" hidden></p>
 
         <button id="btn-logout" class="btn btn-danger btn-block" type="button" hidden>Cerrar sesión</button>
