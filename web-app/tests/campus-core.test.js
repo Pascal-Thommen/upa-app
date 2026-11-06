@@ -329,7 +329,7 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
       media_url: "https://cdn.instagram.com/reel.mp4",
       image_url: "",
     }),
-    Core.DEFAULT_VIDEO_POSTER,
+    "",
   );
   assert.equal(
     Core.videoPosterUrl({
@@ -337,7 +337,15 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
       media_url: "https://cdn.instagram.com/reel.mp4",
       image_url: "https://cdn.instagram.com/reel.mp4",
     }),
-    Core.DEFAULT_VIDEO_POSTER,
+    "",
+  );
+  assert.equal(
+    Core.videoPosterUrl({
+      media_type: "VIDEO",
+      media_url: "https://cdn.instagram.com/reel.mp4",
+      image_url: "/campus/icons/icon-512.png",
+    }),
+    "",
   );
 
   // Origen de publicacion (Instagram vs Campus) y resumen sin duplicar primera linea

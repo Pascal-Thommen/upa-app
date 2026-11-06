@@ -567,7 +567,11 @@
     return "";
   }
 
-  const DEFAULT_VIDEO_POSTER = "/campus/icons/icon-512.png";
+  const DEFAULT_VIDEO_POSTER = "";
+
+  function isFallbackPosterUrl(url) {
+    return /\/campus\/icons\/icon-\d+\.png(\?|#|$)/i.test(String(url || "").trim());
+  }
 
   function isVideoUrl(url) {
     return /\.(mp4|webm|mov)(\?|#|$)/i.test(String(url || "").trim());
@@ -586,8 +590,10 @@
 
   function videoPosterUrl(post) {
     if (!post) return DEFAULT_VIDEO_POSTER;
-    const imgCandidate = safeUrl(post.image_url || post.thumbnail_url);
-    const mediaCandidate = safeUrl(post.media_url);
+    const rawImg = safeUrl(post.image_url || post.thumbnail_url);
+    const imgCandidate = isFallbackPosterUrl(rawImg) ? "" : rawImg;
+    const rawMedia = safeUrl(post.media_url);
+    const mediaCandidate = isFallbackPosterUrl(rawMedia) ? "" : rawMedia;
     if (imgCandidate && !isVideoUrl(imgCandidate)) {
       if (
         /\.fbcdn\.net\//i.test(imgCandidate) &&
