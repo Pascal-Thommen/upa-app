@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -6,6 +7,7 @@ from typing import Any
 import httpx
 from sqlalchemy.orm import Session
 
+from ..api.media import get_upload_dir
 from ..config import settings
 from ..models import DEFAULT_VIDEO_POSTER_FALLBACK, Post, is_video_stream_url
 from ..schemas.post import ASUNCION_TZ, DEFAULT_INSTAGRAM_PROFILE_URL, normalize_instagram_url
@@ -24,6 +26,7 @@ class NormalizedSocialPost:
     permalink: str
     timestamp: datetime | None = None
     image_url: str = ""
+    _mirror_attempted: bool = False
 
     def __post_init__(self) -> None:
         self.permalink = normalize_instagram_url(
@@ -235,6 +238,175 @@ class InstagramSyncService:
             timestamp=timestamp,
         )
 
+    def _sanitize_instagram_id(self, instagram_id: str | None) -> str:
+        """Normaliza el ID de Instagram a un identificador de archivo seguro."""
+        return re.sub(r"[^A-Za-z0-9_-]", "_", str(instagram_id or "").strip())
+
+    def _detect_image_extension(self, content: bytes, content_type: str = "", url: str = "") -> str | None:
+        """Determina la extension local (.jpg, .webp, .png) y descarta respuestas JSON/HTML invalidas."""
+        if not content:
+            return None
+        if content.startswith(b"\xff\xd8\xff"):
+            return ".jpg"
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            return ".png"
+        if len(content) >= 12 and content[0:4] == b"RIFF" and content[8:12] == b"WEBP":
+            return ".webp"
+
+        content_type_clean = (content_type or "").split(";")[0].strip().lower()
+        if content_type_clean == "image/webp":
+            return ".webp"
+        if content_type_clean == "image/png":
+            return ".png"
+        if content_type_clean in ("image/jpeg", "image/jpg"):
+            return ".jpg"
+
+        if content_type_clean in ("application/json", "text/html", "text/plain", "application/xml"):
+            return None
+        stripped = content.lstrip()
+        if stripped.startswith((b"{", b"[", b"<!DOCTYPE", b"<html", b"<?xml")):
+            return None
+
+        lower_path = str(url or "").lower().split("?", 1)[0].split("#", 1)[0]
+        if lower_path.endswith(".webp"):
+            return ".webp"
+        if lower_path.endswith(".png"):
+            return ".png"
+        return ".jpg"
+
+    def _store_image_bytes(
+        self,
+        instagram_id: str,
+        content: bytes,
+        content_type: str = "",
+        source_url: str = "",
+    ) -> str | None:
+        """Persiste los bytes de la imagen en uploads/instagram/<instagram_id>.<ext> y retorna la ruta relativa."""
+        safe_id = self._sanitize_instagram_id(instagram_id)
+        if not safe_id or not content:
+            return None
+        ext = self._detect_image_extension(content, content_type=content_type, url=source_url)
+        if not ext:
+            return None
+        try:
+            instagram_dir = get_upload_dir() / "instagram"
+            instagram_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{safe_id}{ext}"
+            target_path = instagram_dir / filename
+            target_path.write_bytes(content)
+            return f"/uploads/instagram/{filename}"
+        except Exception as exc:
+            logger.warning("[Instagram Image Sync] Error guardando imagen local para %s: %s", safe_id, exc)
+            return None
+
+    def _candidate_image_url(self, media_url: str | None, image_url: str | None) -> str:
+        """Determina la URL remota de imagen o miniatura que debe descargarse localmente."""
+        for raw in (image_url, media_url):
+            candidate = str(raw or "").strip()
+            if not candidate or candidate == self.DEFAULT_VIDEO_THUMBNAIL_FALLBACK:
+                continue
+            if candidate.startswith("/uploads/"):
+                continue
+            if not candidate.startswith(("http://", "https://")):
+                continue
+            if is_video_stream_url(candidate):
+                continue
+            if candidate.lower().startswith(("https://upa.edu.py/static/", "http://upa.edu.py/static/")):
+                continue
+            return candidate
+        return ""
+
+    def _apply_local_image_url(self, item: NormalizedSocialPost, local_url: str) -> None:
+        """Actualiza image_url (y media_url en publicaciones que no son streams de video) con la ruta local."""
+        item.image_url = local_url
+        if not is_video_stream_url(item.media_url):
+            item.media_url = local_url
+
+    async def download_instagram_image_async(
+        self,
+        instagram_id: str,
+        image_url: str,
+        client: httpx.AsyncClient | None = None,
+    ) -> str | None:
+        """Descarga asincronamente una imagen de Instagram con timeout de 10 s y la guarda en /uploads/instagram/."""
+        clean_url = (image_url or "").strip()
+        safe_id = self._sanitize_instagram_id(instagram_id)
+        if not safe_id or not clean_url:
+            return None
+        if clean_url.startswith("/uploads/"):
+            return clean_url
+        if not clean_url.startswith(("http://", "https://")) or is_video_stream_url(clean_url):
+            return None
+
+        async def _fetch(http_client: httpx.AsyncClient) -> str | None:
+            response = await http_client.get(clean_url, timeout=10.0)
+            if response.status_code != 200 or not response.content:
+                logger.warning(
+                    "[Instagram Image Sync] HTTP %s al descargar imagen para %s (%s)",
+                    response.status_code,
+                    safe_id,
+                    clean_url,
+                )
+                return None
+            return self._store_image_bytes(
+                safe_id,
+                response.content,
+                content_type=response.headers.get("content-type", ""),
+                source_url=clean_url,
+            )
+
+        try:
+            if client is not None:
+                return await _fetch(client)
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as owned_client:
+                return await _fetch(owned_client)
+        except httpx.TimeoutException as exc:
+            logger.warning("[Instagram Image Sync] Timeout descargando imagen para %s (%s): %s", safe_id, clean_url, exc)
+            return None
+        except httpx.RequestError as exc:
+            logger.warning("[Instagram Image Sync] Error de red descargando imagen para %s (%s): %s", safe_id, clean_url, exc)
+            return None
+        except Exception as exc:
+            logger.warning("[Instagram Image Sync] Error inesperado descargando imagen para %s: %s", safe_id, exc)
+            return None
+
+    def download_instagram_image(self, instagram_id: str, image_url: str) -> str | None:
+        """Descarga sincronamente una imagen de Instagram con timeout de 10 s y la guarda en /uploads/instagram/."""
+        clean_url = (image_url or "").strip()
+        safe_id = self._sanitize_instagram_id(instagram_id)
+        if not safe_id or not clean_url:
+            return None
+        if clean_url.startswith("/uploads/"):
+            return clean_url
+        if not clean_url.startswith(("http://", "https://")) or is_video_stream_url(clean_url):
+            return None
+
+        try:
+            response = httpx.get(clean_url, timeout=10.0, follow_redirects=True)
+            if response.status_code != 200 or not response.content:
+                logger.warning(
+                    "[Instagram Image Sync] HTTP %s al descargar imagen para %s (%s)",
+                    response.status_code,
+                    safe_id,
+                    clean_url,
+                )
+                return None
+            return self._store_image_bytes(
+                safe_id,
+                response.content,
+                content_type=response.headers.get("content-type", ""),
+                source_url=clean_url,
+            )
+        except httpx.TimeoutException as exc:
+            logger.warning("[Instagram Image Sync] Timeout descargando imagen para %s (%s): %s", safe_id, clean_url, exc)
+            return None
+        except httpx.RequestError as exc:
+            logger.warning("[Instagram Image Sync] Error de red descargando imagen para %s (%s): %s", safe_id, clean_url, exc)
+            return None
+        except Exception as exc:
+            logger.warning("[Instagram Image Sync] Error inesperado descargando imagen para %s: %s", safe_id, exc)
+            return None
+
     async def fetch_from_graph_api(self, token: str, account_id: str = "") -> list[NormalizedSocialPost]:
         """Obtiene publicaciones recientes desde la Instagram Graph API v21.0 con timeout de 10 s."""
         clean_token = (token or "").strip()
@@ -274,7 +446,18 @@ class InstagramSyncService:
                 posts = []
                 for item in raw_items:
                     if item.get("id"):
-                        posts.append(self.parse_graph_api_item(item))
+                        parsed = self.parse_graph_api_item(item)
+                        candidate_url = self._candidate_image_url(parsed.media_url, parsed.image_url)
+                        if candidate_url:
+                            parsed._mirror_attempted = True
+                            local_url = await self.download_instagram_image_async(
+                                parsed.instagram_id,
+                                candidate_url,
+                                client=client,
+                            )
+                            if local_url:
+                                self._apply_local_image_url(parsed, local_url)
+                        posts.append(parsed)
                 return posts
         except httpx.RequestError as exc:
             logger.error("[Instagram API Error de Red] %s", exc)
@@ -302,6 +485,16 @@ class InstagramSyncService:
                             for item in raw_items:
                                 parsed = self.parse_sociablekit_item(item)
                                 if parsed.instagram_id:
+                                    candidate_url = self._candidate_image_url(parsed.media_url, parsed.image_url)
+                                    if candidate_url:
+                                        parsed._mirror_attempted = True
+                                        local_url = await self.download_instagram_image_async(
+                                            parsed.instagram_id,
+                                            candidate_url,
+                                            client=client,
+                                        )
+                                        if local_url:
+                                            self._apply_local_image_url(parsed, local_url)
                                     posts.append(parsed)
                             if posts:
                                 return posts
@@ -337,11 +530,22 @@ class InstagramSyncService:
         created_count = 0
         updated_count = 0
         ai_events_count = 0
+        processed_post_ids: set[int] = set()
 
         try:
             for item in posts_data:
                 if not item.instagram_id:
                     continue
+
+                if item.image_url.startswith("/uploads/") and not is_video_stream_url(item.media_url):
+                    item.media_url = item.image_url
+                else:
+                    candidate_url = self._candidate_image_url(item.media_url, item.image_url)
+                    if candidate_url and not item._mirror_attempted:
+                        item._mirror_attempted = True
+                        local_url = self.download_instagram_image(item.instagram_id, candidate_url)
+                        if local_url:
+                            self._apply_local_image_url(item, local_url)
 
                 existing_by_id = db.query(Post).filter(Post.instagram_id == item.instagram_id).first()
                 existing_by_perm = None
@@ -381,6 +585,16 @@ class InstagramSyncService:
 
                 teaser = extract_instagram_teaser(item.caption)
                 if existing:
+                    if not item.image_url.startswith("/uploads/"):
+                        existing_img = existing.image_url or ""
+                        existing_med = existing.media_url or ""
+                        if existing_img.startswith("/uploads/"):
+                            self._apply_local_image_url(item, existing_img)
+                        elif existing_med.startswith("/uploads/") and not is_video_stream_url(
+                            existing_med
+                        ):
+                            self._apply_local_image_url(item, existing_med)
+
                     existing.instagram_id = item.instagram_id
                     if not existing.is_edited:
                         existing.caption = teaser
@@ -400,6 +614,8 @@ class InstagramSyncService:
                     if existing.published_at is None:
                         existing.published_at = item.timestamp or existing.created_at or datetime.now(UTC)
                     existing.updated_at = datetime.now(UTC)
+                    if existing.id is not None:
+                        processed_post_ids.add(existing.id)
                     updated_count += 1
                 else:
                     pub_ts = item.timestamp or datetime.now(UTC)
@@ -482,6 +698,26 @@ class InstagramSyncService:
                         )
                     db.add(new_post)
                     created_count += 1
+
+            # Actualizar tambien publicaciones existentes en la base de datos con URLs efimeras de Meta CDN
+            existing_ig_posts = db.query(Post).filter(Post.post_type == "INSTAGRAM").all()
+            for stale_post in existing_ig_posts:
+                if stale_post.id in processed_post_ids:
+                    continue
+                stored_raw = (stale_post._stored_media_url or "").lower()
+                if "cdninstagram.com" not in stored_raw and "fbcdn.net" not in stored_raw:
+                    continue
+                stale_candidate = self._candidate_image_url(stale_post.media_url, stale_post.image_url)
+                if not stale_candidate:
+                    continue
+                stale_ig_id = stale_post.instagram_id or f"post_{stale_post.id}"
+                local_stale_url = self.download_instagram_image(stale_ig_id, stale_candidate)
+                if local_stale_url:
+                    if not is_video_stream_url(stale_post.media_url):
+                        stale_post.media_url = local_stale_url
+                    stale_post.image_url = local_stale_url
+                    stale_post.updated_at = datetime.now(UTC)
+                    updated_count += 1
 
             db.commit()
             return {

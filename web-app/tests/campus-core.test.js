@@ -433,7 +433,7 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
   assert.equal(fallbackProfile[0].href, "https://www.instagram.com/upalemana/");
   assert.equal(fallbackProfile[0].label, "Ver en Instagram");
 
-  // videoPosterUrl prefiere media_url de SociableKIT cuando image_url apunta a fbcdn.net bloqueado por CORP/403
+  // videoPosterUrl y postImageUrl prefieren rutas locales /uploads/instagram/ y evitan fbcdn.net / cdninstagram.com
   assert.equal(
     Core.videoPosterUrl({
       media_type: "video",
@@ -441,6 +441,15 @@ test("Sesion, JWT, roles, URLs seguras y avisos proximos", () => {
       image_url: "https://instagram.fmnl25-7.fna.fbcdn.net/v/t51.82787-15/expired.jpg",
     }),
     "https://data-image.sociablekit.com/sources/instagram-feed/upalemana/De92KpiM8x1-thumbnail.webp",
+  );
+  assert.equal(
+    Core.postImageUrl({
+      post_type: "INSTAGRAM",
+      media_type: "CAROUSEL_ALBUM",
+      media_url: "https://scontent.cdninstagram.com/v/t39.30808-6/885659832_n.jpg",
+      image_url: "/uploads/instagram/18114511375879455.jpg",
+    }),
+    "/uploads/instagram/18114511375879455.jpg",
   );
 
   const eventFromInsta = Core.resolveDetailLinks({

@@ -11,6 +11,7 @@ import httpx
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
+from ..api.media import get_upload_dir
 from ..config import settings
 from ..models import AppSetting, AudienceGroup
 from . import gemini
@@ -162,11 +163,24 @@ def fetch_image_bytes(media_url: str | None, media_type: str | None = None) -> t
     upper_type = (media_type or "").strip().upper()
     if upper_type == "VIDEO" and clean_url.lower().split("?")[0].endswith((".mp4", ".webm", ".mov")):
         return None
+    max_bytes = int(getattr(settings, "GEMINI_MAX_IMAGE_BYTES", 4 * 1024 * 1024) or 4 * 1024 * 1024)
+    if clean_url.startswith("/uploads/"):
+        try:
+            rel_part = clean_url.removeprefix("/uploads/").lstrip("/")
+            upload_root = get_upload_dir()
+            local_file = (upload_root / rel_part).resolve()
+            if local_file.is_file() and upload_root in local_file.parents:
+                data = local_file.read_bytes()
+                if data and len(data) <= max_bytes:
+                    mime_type = _detect_image_mime_type(data, "", clean_url)
+                    return data, mime_type
+        except Exception as exc:
+            logger.debug("[AI Extractor] No se pudo leer la imagen local %s: %s", clean_url, exc)
+        return None
     if not clean_url.startswith(("http://", "https://")):
         return None
 
     timeout = min(float(settings.GEMINI_TIMEOUT_SECONDS or 15.0), 10.0)
-    max_bytes = int(getattr(settings, "GEMINI_MAX_IMAGE_BYTES", 4 * 1024 * 1024) or 4 * 1024 * 1024)
     try:
         response = httpx.get(clean_url, timeout=timeout, follow_redirects=True)
         if response.status_code != 200 or not response.content:

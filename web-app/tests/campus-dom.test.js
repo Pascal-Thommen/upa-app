@@ -591,6 +591,13 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     // Publicacion de Instagram: insignia flotante arriba a la izquierda con icono oficial de camara y un unico boton "Ver en Instagram"
     const igCard = app.document.querySelector('.card[data-kind="instagram"]');
     assert.ok(igCard, "Debe existir la tarjeta de Instagram en el feed");
+    const igCardImg = igCard.querySelector("img.card-media");
+    assert.ok(igCardImg, "La tarjeta de Instagram debe renderizar la imagen del post");
+    assert.equal(
+      igCardImg.getAttribute("referrerpolicy"),
+      "no-referrer",
+      "Las imagenes del feed deben incluir referrerpolicy='no-referrer' contra bloqueos de Meta CDN",
+    );
     const igBadge = igCard.querySelector(".card-media-wrap > .badge.badge-instagram.badge-floating");
     assert.ok(igBadge, "La tarjeta de Instagram debe tener el badge-instagram flotando sobre la imagen");
     assert.ok(igBadge.querySelector("svg.ig-glyph"), "El badge de Instagram debe incluir el icono de camara");
@@ -599,6 +606,13 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
 
     await app.click(igCard.querySelector(".card-open"));
     assert.equal(app.$("detail").hidden, false);
+    const igDetailImg = app.$("detail-media").querySelector("img.detail-image");
+    assert.ok(igDetailImg, "El overlay de detalle debe renderizar la imagen de Instagram");
+    assert.equal(
+      igDetailImg.getAttribute("referrerpolicy"),
+      "no-referrer",
+      "La imagen en #detail-media debe incluir referrerpolicy='no-referrer'",
+    );
     assert.equal(app.$("detail-kind").classList.contains("badge-instagram"), true);
     assert.ok(app.$("detail-kind").querySelector("svg.ig-glyph"));
     const detailLinks = [...app.$("detail-actions").querySelectorAll("a.btn")];
@@ -654,6 +668,7 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.ok(previewLink.querySelector(".video-play-badge svg.play-glyph"), "Debe incluir el Play-Badge discreto");
     const reelPreviewImg = previewLink.querySelector("img.card-media");
     assert.equal(reelPreviewImg.getAttribute("src"), "https://upa.edu.py/static/images/reel-preview.webp");
+    assert.equal(reelPreviewImg.getAttribute("referrerpolicy"), "no-referrer");
 
     // Ante un error de carga de imagen, nunca se usa /campus/icons/icon-512.png sino que se oculta/elimina la imagen
     reelPreviewImg.dispatchEvent(new app.window.Event("error"));
