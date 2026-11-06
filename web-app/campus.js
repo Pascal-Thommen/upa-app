@@ -648,7 +648,7 @@
   }
 
   function mediaNode(post, className, controls) {
-    const rawUrl = Core.safeUrl(post.media_url || post.image_url);
+    const rawUrl = Core.postImageUrl ? Core.postImageUrl(post) : Core.safeUrl(post.media_url || post.image_url);
     const url = /\/campus\/icons\/icon-\d+\.png(\?|#|$)/i.test(rawUrl) ? "" : rawUrl;
     if (!url && !Core.isVideoMedia(post)) return null;
     if (Core.isVideoMedia(post)) {
@@ -668,7 +668,14 @@
       const extUrl = Core.videoExternalUrl(post);
       const badge = h("span", { class: "video-play-badge", "aria-hidden": "true" }, playIcon(18));
       const img = bindImageFallback(
-        h("img", { class: className, src: poster, alt: "", loading: "lazy", decoding: "async" }),
+        h("img", {
+          class: className,
+          src: poster,
+          alt: "",
+          loading: "lazy",
+          decoding: "async",
+          referrerpolicy: "no-referrer",
+        }),
       );
       if (extUrl) {
         const link = h(
@@ -689,7 +696,14 @@
       return h("div", { class: "video-preview-link" }, img, badge);
     }
     return bindImageFallback(
-      h("img", { class: className, src: url, alt: "", loading: "lazy", decoding: "async" }),
+      h("img", {
+        class: className,
+        src: url,
+        alt: "",
+        loading: "lazy",
+        decoding: "async",
+        referrerpolicy: "no-referrer",
+      }),
     );
   }
 

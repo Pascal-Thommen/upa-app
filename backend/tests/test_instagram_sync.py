@@ -234,7 +234,12 @@ def test_sync_instagram_skipped_without_credentials():
         db.close()
 
 
-def test_admin_news_sync_endpoint_auth():
+def test_admin_news_sync_endpoint_auth(monkeypatch):
+    import src.config
+
+    monkeypatch.setattr(src.config.settings, "INSTAGRAM_ACCESS_TOKEN", "")
+    monkeypatch.setattr(src.config.settings, "SOCIABLEKIT_EMBED_ID", "")
+
     # Unauthentifiziert
     res_unauth = client.post("/api/news/sync-instagram")
     assert res_unauth.status_code == 401
@@ -252,7 +257,21 @@ def test_admin_news_sync_endpoint_auth():
     assert "status" in data
 
 
-def test_video_thumbnail_persisted_in_image_url_and_exposed_in_feed_and_publications():
+def test_video_thumbnail_persisted_in_image_url_and_exposed_in_feed_and_publications(monkeypatch):
+    import httpx
+
+    sample_jpg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+
+    def _mock_sync_get(url, *args, **kwargs):
+        return httpx.Response(
+            200,
+            content=sample_jpg,
+            headers={"content-type": "image/jpeg"},
+            request=httpx.Request("GET", str(url)),
+        )
+
+    monkeypatch.setattr(httpx, "get", _mock_sync_get)
+
     service = InstagramSyncService()
     db = TestingSessionLocal()
 
@@ -283,13 +302,13 @@ def test_video_thumbnail_persisted_in_image_url_and_exposed_in_feed_and_publicat
     assert res["created_count"] == 2
     db.close()
 
-    # Verificar en nueva sesion que media_url e image_url persisten sin migracion adicional
+    # Verificar en nueva sesion que media_url conserva el stream MP4 e image_url apunta al archivo local en /uploads/instagram/
     db_check = TestingSessionLocal()
     saved_reel = db_check.query(Post).filter(Post.instagram_id == "ig_reel_niif18").first()
     assert saved_reel is not None
     assert saved_reel.media_type == "VIDEO"
     assert saved_reel.media_url == "https://cdn.instagram.com/videos/niif18.mp4"
-    assert saved_reel.image_url == "https://cdn.instagram.com/thumbs/niif18_poster.jpg"
+    assert saved_reel.image_url == "/uploads/instagram/ig_reel_niif18.jpg"
 
     saved_fallback = db_check.query(Post).filter(Post.instagram_id == "ig_reel_no_thumb").first()
     assert saved_fallback is not None
@@ -297,12 +316,17 @@ def test_video_thumbnail_persisted_in_image_url_and_exposed_in_feed_and_publicat
     assert saved_fallback.image_url == "/campus/icons/icon-512.png"
     db_check.close()
 
+    # El archivo descargado localmente se sirve bajo /uploads/instagram/
+    static_res = client.get("/uploads/instagram/ig_reel_niif18.jpg")
+    assert static_res.status_code == 200
+    assert static_res.content == sample_jpg
+
     # Verificar FeedItemResponse (/api/v1/feed)
     feed_res = client.get("/api/v1/feed")
     assert feed_res.status_code == 200
     feed_posts = {p["instagram_id"]: p for p in feed_res.json()["posts"]}
     assert feed_posts["ig_reel_niif18"]["media_url"] == "https://cdn.instagram.com/videos/niif18.mp4"
-    assert feed_posts["ig_reel_niif18"]["image_url"] == "https://cdn.instagram.com/thumbs/niif18_poster.jpg"
+    assert feed_posts["ig_reel_niif18"]["image_url"] == "/uploads/instagram/ig_reel_niif18.jpg"
     assert feed_posts["ig_reel_no_thumb"]["media_url"] == "https://cdn.instagram.com/videos/recorrido.mp4"
     assert feed_posts["ig_reel_no_thumb"]["image_url"] == "/campus/icons/icon-512.png"
 
@@ -312,7 +336,7 @@ def test_video_thumbnail_persisted_in_image_url_and_exposed_in_feed_and_publicat
     assert pub_res.status_code == 200
     pub_posts = {p["instagram_id"]: p for p in pub_res.json() if p.get("instagram_id")}
     assert pub_posts["ig_reel_niif18"]["media_url"] == "https://cdn.instagram.com/videos/niif18.mp4"
-    assert pub_posts["ig_reel_niif18"]["image_url"] == "https://cdn.instagram.com/thumbs/niif18_poster.jpg"
+    assert pub_posts["ig_reel_niif18"]["image_url"] == "/uploads/instagram/ig_reel_niif18.jpg"
     assert pub_posts["ig_reel_no_thumb"]["image_url"] == "/campus/icons/icon-512.png"
 
 
@@ -342,6 +366,7 @@ def test_graph_api_v21_endpoint_and_auto_discovery(monkeypatch):
 
     service = InstagramSyncService()
     called_urls: list[str] = []
+    sample_jpg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 
     real_payload = {
         "data": [
@@ -380,19 +405,31 @@ def test_graph_api_v21_endpoint_and_auto_discovery(monkeypatch):
                 },
                 request=request,
             )
+        if "scontent.cdninstagram.com" in str(url):
+            return httpx.Response(
+                200,
+                content=sample_jpg,
+                headers={"content-type": "image/jpeg"},
+                request=request,
+            )
         return httpx.Response(200, json=real_payload, request=request)
 
     monkeypatch.setattr(httpx.AsyncClient, "get", _graph_get)
     loop = asyncio.new_event_loop()
     db = TestingSessionLocal()
     try:
-        # 1. Auto-Discovery (account_id leer) löst 17841402165726045 über v21.0/me/accounts auf
+        # 1. Auto-Discovery (account_id leer) löst 17841402165726045 über v21.0/me/accounts auf und spiegelt Bilder lokal
         posts = loop.run_until_complete(service.fetch_from_graph_api(token="valid-token", account_id=""))
         assert len(posts) == 2
         assert any("https://graph.facebook.com/v21.0/me/accounts" in u for u in called_urls)
         assert any("https://graph.facebook.com/v21.0/17841402165726045/media" in u for u in called_urls)
+        assert any("https://scontent.cdninstagram.com/v/t39.30808-6/885659832_n.jpg" in u for u in called_urls)
         assert posts[0].instagram_id == "18114511375879455"
         assert posts[0].permalink == "https://www.instagram.com/p/DfSG3s8jsFy/"
+        assert posts[0].media_url == "/uploads/instagram/18114511375879455.jpg"
+        assert posts[0].image_url == "/uploads/instagram/18114511375879455.jpg"
+        assert posts[1].media_url == "/uploads/instagram/18105980801628640.jpg"
+        assert posts[1].image_url == "/uploads/instagram/18105980801628640.jpg"
 
         # 2. Persistenz in DB & Fallback bei HTTP 401
         sync_res = service.sync_posts(db, posts, author_id=1)
@@ -411,18 +448,44 @@ def test_graph_api_v21_endpoint_and_auto_discovery(monkeypatch):
         )
         assert posts_401 == []
 
-        # Bereits persistierte Beiträge bleiben über /api/v1/feed unversehrt abrufbar
+        # Bereits persistierte Beiträge bleiben mit lokalen Bildpfaden über /api/v1/feed abrufbar
         feed_res = client.get("/api/v1/feed")
         assert feed_res.status_code == 200
-        feed_ids = {p["instagram_id"] for p in feed_res.json()["posts"]}
-        assert "18114511375879455" in feed_ids
-        assert "18105980801628640" in feed_ids
+        feed_by_id = {p["instagram_id"]: p for p in feed_res.json()["posts"]}
+        assert "18114511375879455" in feed_by_id
+        assert "18105980801628640" in feed_by_id
+        assert feed_by_id["18114511375879455"]["media_url"] == "/uploads/instagram/18114511375879455.jpg"
+        assert feed_by_id["18114511375879455"]["image_url"] == "/uploads/instagram/18114511375879455.jpg"
+        assert client.get("/uploads/instagram/18114511375879455.jpg").status_code == 200
     finally:
         db.close()
         loop.close()
 
 
-def test_sync_posts_deduplicates_sociablekit_shortcode_and_graph_api_id():
+def test_sync_posts_deduplicates_sociablekit_shortcode_and_graph_api_id(monkeypatch):
+    import httpx
+
+    sample_webp = b"RIFF\x1a\x00\x00\x00WEBPVP8 \x0e\x00\x00\x000\x01\x00\x9d\x01*\x01\x00\x01\x00\x00"
+    sample_jpg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+
+    def _mock_get(url, *args, **kwargs):
+        url_str = str(url)
+        if url_str.endswith(".webp"):
+            return httpx.Response(
+                200,
+                content=sample_webp,
+                headers={"content-type": "image/webp"},
+                request=httpx.Request("GET", url_str),
+            )
+        return httpx.Response(
+            200,
+            content=sample_jpg,
+            headers={"content-type": "image/jpeg"},
+            request=httpx.Request("GET", url_str),
+        )
+
+    monkeypatch.setattr(httpx, "get", _mock_get)
+
     service = InstagramSyncService()
     db = TestingSessionLocal()
     try:
@@ -454,6 +517,92 @@ def test_sync_posts_deduplicates_sociablekit_shortcode_and_graph_api_id():
         all_posts = db.query(Post).filter(Post.permalink == "https://www.instagram.com/p/DfSG3s8jsFy/").all()
         assert len(all_posts) == 1
         assert all_posts[0].instagram_id == "18114511375879455"
-        assert all_posts[0].media_url == "https://scontent.cdninstagram.com/v/fresh.jpg"
+        assert all_posts[0].media_url == "/uploads/instagram/18114511375879455.jpg"
+        assert all_posts[0].image_url == "/uploads/instagram/18114511375879455.jpg"
+    finally:
+        db.close()
+
+
+def test_existing_scontent_posts_migrated_to_local_uploads_and_timeout_does_not_abort_sync(monkeypatch):
+    import httpx
+
+    sample_jpg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+    service = InstagramSyncService()
+    db = TestingSessionLocal()
+    try:
+        # 1. Bestehender Post in der DB mit flüchtiger scontent.cdninstagram.com URL
+        legacy_post = Post(
+            title="Jornada Académica UPA",
+            caption="Jornada Académica UPA",
+            content="Jornada Académica UPA en el campus.",
+            post_type="INSTAGRAM",
+            is_news=True,
+            is_event=False,
+            target_groups=["ALL"],
+            instagram_id="17999888777666",
+            media_type="IMAGE",
+            media_url="https://scontent.cdninstagram.com/v/t51.2885-15/legacy_cdn.jpg?oe=654321",
+            image_url="https://scontent.cdninstagram.com/v/t51.2885-15/legacy_cdn.jpg?oe=654321",
+            permalink="https://www.instagram.com/p/Clegacy123/",
+            link_url="https://www.instagram.com/p/Clegacy123/",
+            link_label="Ver en Instagram",
+            author_id=1,
+            created_at=datetime.now(UTC),
+            published_at=datetime.now(UTC),
+        )
+        db.add(legacy_post)
+        db.commit()
+
+        # 2. Beim Sync schlägt ein Bilddownload mit Timeout fehl, während andere (inkl. Bestands-Post) geladen werden
+        def _selective_get(url, *args, **kwargs):
+            url_str = str(url)
+            if "timeout_media.jpg" in url_str:
+                raise httpx.TimeoutException("Image download timed out after 10s")
+            return httpx.Response(
+                200,
+                content=sample_jpg,
+                headers={"content-type": "image/jpeg"},
+                request=httpx.Request("GET", url_str),
+            )
+
+        monkeypatch.setattr(httpx, "get", _selective_get)
+
+        timeout_item = NormalizedSocialPost(
+            instagram_id="18000111222333",
+            caption="Post con timeout en descarga de imagen",
+            media_type="IMAGE",
+            media_url="https://scontent.cdninstagram.com/v/t51.2885-15/timeout_media.jpg",
+            permalink="https://www.instagram.com/p/Ctimeout1/",
+            timestamp=datetime.now(UTC),
+        )
+        ok_item = NormalizedSocialPost(
+            instagram_id="18000444555666",
+            caption="Post con descarga local exitosa",
+            media_type="IMAGE",
+            media_url="https://scontent.cdninstagram.com/v/t51.2885-15/ok_media.jpg",
+            permalink="https://www.instagram.com/p/Cok1/",
+            timestamp=datetime.now(UTC),
+        )
+
+        sync_res = service.sync_posts(db, [timeout_item, ok_item], author_id=1)
+        assert sync_res["status"] == "success"
+        assert sync_res["created_count"] == 2
+        # Der bestehende scontent-Post in der DB wurde im selben Durchlauf auf /uploads/instagram/ aktualisiert
+        assert sync_res["updated_count"] == 1
+
+        saved_legacy = db.query(Post).filter(Post.instagram_id == "17999888777666").first()
+        assert saved_legacy is not None
+        assert saved_legacy.media_url == "/uploads/instagram/17999888777666.jpg"
+        assert saved_legacy.image_url == "/uploads/instagram/17999888777666.jpg"
+
+        saved_ok = db.query(Post).filter(Post.instagram_id == "18000444555666").first()
+        assert saved_ok is not None
+        assert saved_ok.media_url == "/uploads/instagram/18000444555666.jpg"
+        assert saved_ok.image_url == "/uploads/instagram/18000444555666.jpg"
+
+        # Der Post mit Timeout wurde trotzdem erfolgreich in der Transaktion gespeichert
+        saved_timeout = db.query(Post).filter(Post.instagram_id == "18000111222333").first()
+        assert saved_timeout is not None
+        assert saved_timeout.title == "Post con timeout en descarga de imagen"
     finally:
         db.close()

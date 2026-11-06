@@ -1,6 +1,7 @@
 """Pruebas del endpoint POST /api/media/upload y de la entrega estatica bajo /uploads."""
 
 import re
+import shutil
 import struct
 import zlib
 from pathlib import Path
@@ -100,10 +101,16 @@ def upload_dir_entries() -> list[Path]:
 @pytest.fixture
 def clean_upload_dir():
     for entry in upload_dir_entries():
-        entry.unlink()
+        if entry.is_dir():
+            shutil.rmtree(entry, ignore_errors=True)
+        else:
+            entry.unlink()
     yield
     for entry in upload_dir_entries():
-        entry.unlink()
+        if entry.is_dir():
+            shutil.rmtree(entry, ignore_errors=True)
+        else:
+            entry.unlink()
 
 
 # ---------------------------------------------------------------- Caso normal
