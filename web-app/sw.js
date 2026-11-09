@@ -21,8 +21,8 @@ const firebaseConfig = {
 };
 const VAPID_PUBLIC_KEY =
   "BNfsctw3qDvmsunaO45-JUwRouboQWtn4zXAyr5ejvVYt7ZipU_VLWozAsrlFPo2nXXMNFYLMH1k_RrSqSz-Lj8";
-const DEFAULT_NOTIFICATION_ICON = "/campus/icons/icon-192.png";
-const DEFAULT_NOTIFICATION_BADGE = "/campus/icons/favicon-32.png";
+const DEFAULT_NOTIFICATION_ICON = "";
+const DEFAULT_NOTIFICATION_BADGE = "/campus/icons/badge-monochrome.png";
 
 if (typeof importScripts === "function") {
   try {
@@ -44,6 +44,7 @@ const SHELL_FILES = [
   "/campus/icons/icon-192.png",
   "/campus/icons/icon-512.png",
   "/campus/icons/icon-maskable-512.png",
+  "/campus/icons/badge-monochrome.png",
 ];
 
 async function precacheShell(cache) {
@@ -183,6 +184,17 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
+function isFallbackNotificationIcon(url) {
+  return /\/campus\/icons\/(?:icon-\d+|icon-maskable-\d+|apple-touch-icon|favicon-32)\.png(\?|#|$)/i.test(
+    String(url || "").trim(),
+  );
+}
+
+function extractPostIdFromUrl(url) {
+  const m = /(?:^|[?&])post=([^&#]+)/.exec(String(url || ""));
+  return m ? decodeURIComponent(m[1]).trim() : "";
+}
+
 function parsePushPayload(event) {
   let raw = {};
   if (event && event.data) {
@@ -198,43 +210,65 @@ function parsePushPayload(event) {
       const text = typeof event.data.text === "function" ? String(event.data.text() || "").trim() : "";
       raw = text ? { notification: { title: "UPA Campus", body: text } } : {};
     }
-  } else if (event && typeof event === "object" && (event.notification || event.data || event.fcmOptions)) {
+  } else if (event && typeof event === "object" && (event.notification || event.data || event.fcmOptions || event.webpush)) {
     raw = event;
   }
   if (raw && typeof raw.FCM_MSG === "object" && raw.FCM_MSG) {
     raw = raw.FCM_MSG;
   }
+  const webpush = (raw && typeof raw.webpush === "object" && raw.webpush) || {};
+  const webpushNotif = (webpush && typeof webpush.notification === "object" && webpush.notification) || {};
+  const webpushFcmOptions = (webpush && typeof webpush.fcm_options === "object" && webpush.fcm_options) || {};
   const notification = (raw && typeof raw.notification === "object" && raw.notification) || {};
   const data = (raw && typeof raw.data === "object" && raw.data) || {};
   const fcmOptions = (raw && typeof raw.fcmOptions === "object" && raw.fcmOptions) || {};
-  const title = String(notification.title || data.title || raw.title || "UPA Campus").trim() || "UPA Campus";
-  const body = String(notification.body || data.body || raw.body || "").trim();
-  const icon = String(notification.icon || data.icon || raw.icon || DEFAULT_NOTIFICATION_ICON).trim();
-  const badge = String(notification.badge || data.badge || raw.badge || DEFAULT_NOTIFICATION_BADGE).trim();
-  const postId = data.post_id || raw.post_id || "";
-  const deepLink =
+  const title =
+    String(notification.title || webpushNotif.title || data.title || raw.title || "UPA Campus").trim() || "UPA Campus";
+  const rawBody = String(notification.body || webpushNotif.body || data.body || raw.body || "").trim();
+  const body = rawBody.toLowerCase() === title.toLowerCase() ? "" : rawBody;
+  const rawIcon = String(
+    notification.icon ||
+      notification.image ||
+      webpushNotif.icon ||
+      webpushNotif.image ||
+      data.icon ||
+      data.image ||
+      raw.icon ||
+      raw.image ||
+      DEFAULT_NOTIFICATION_ICON,
+  ).trim();
+  const icon = isFallbackNotificationIcon(rawIcon) ? "" : rawIcon;
+  const rawBadge = String(
+    notification.badge || webpushNotif.badge || data.badge || raw.badge || DEFAULT_NOTIFICATION_BADGE,
+  ).trim();
+  const badge = !rawBadge || isFallbackNotificationIcon(rawBadge) ? DEFAULT_NOTIFICATION_BADGE : rawBadge;
+  const rawLink =
     data.url ||
     fcmOptions.link ||
+    webpushFcmOptions.link ||
     notification.click_action ||
+    webpushNotif.click_action ||
     raw.url ||
-    (postId ? `/?post=${encodeURIComponent(String(postId))}` : "/");
+    "";
+  const postId = String(data.post_id || raw.post_id || extractPostIdFromUrl(rawLink) || "").trim();
+  const deepLink = rawLink || (postId ? `/?post=${encodeURIComponent(postId)}` : "/");
   const tag = String(notification.tag || data.tag || (postId ? `post:${postId}` : "upa-campus-push"));
-  return {
-    title,
-    options: {
-      body,
-      icon,
-      badge,
-      tag,
-      data: {
-        ...data,
-        projectId: firebaseConfig.projectId,
-        vapidKey: VAPID_PUBLIC_KEY,
-        url: deepLink,
-        post_id: postId ? String(postId) : undefined,
-      },
+  const options = {
+    body,
+    badge,
+    tag,
+    data: {
+      ...data,
+      projectId: firebaseConfig.projectId,
+      vapidKey: VAPID_PUBLIC_KEY,
+      url: deepLink,
+      post_id: postId ? String(postId) : undefined,
     },
   };
+  if (icon) {
+    options.icon = icon;
+  }
+  return { title, options };
 }
 
 function showCampusNotification(payloadOrEvent) {
@@ -242,6 +276,30 @@ function showCampusNotification(payloadOrEvent) {
   return self.registration && typeof self.registration.showNotification === "function"
     ? self.registration.showNotification(title, options)
     : Promise.resolve();
+}
+
+function resolveNotificationClickTarget(notification) {
+  const rawData = (notification && notification.data) || {};
+  const fcmMsg = (rawData && typeof rawData.FCM_MSG === "object" && rawData.FCM_MSG) || {};
+  const fcmData = (fcmMsg && typeof fcmMsg.data === "object" && fcmMsg.data) || {};
+  const fcmOptions = (fcmMsg && typeof fcmMsg.fcmOptions === "object" && fcmMsg.fcmOptions) || {};
+  const webpush = (fcmMsg && typeof fcmMsg.webpush === "object" && fcmMsg.webpush) || {};
+  const webpushFcmOptions = (webpush && typeof webpush.fcm_options === "object" && webpush.fcm_options) || {};
+  const tagPostId =
+    notification && typeof notification.tag === "string" && /^post:(\d+)$/.test(notification.tag)
+      ? notification.tag.slice(5)
+      : "";
+  const rawUrl =
+    rawData.url ||
+    fcmData.url ||
+    fcmOptions.link ||
+    webpushFcmOptions.link ||
+    (tagPostId ? `/?post=${tagPostId}` : "");
+  const postId = String(
+    rawData.post_id || fcmData.post_id || extractPostIdFromUrl(rawUrl) || tagPostId || "",
+  ).trim();
+  const targetUrl = rawUrl || (postId ? `/?post=${encodeURIComponent(postId)}` : "/");
+  return { targetUrl, postId: postId || null };
 }
 
 self.addEventListener("push", (event) => {
@@ -252,6 +310,62 @@ self.addEventListener("push", (event) => {
   if (event && typeof event.waitUntil === "function") {
     event.waitUntil(showPromise);
   }
+});
+
+self.addEventListener("notificationclick", (event) => {
+  if (event && typeof event.stopImmediatePropagation === "function") {
+    event.stopImmediatePropagation();
+  }
+  if (event.notification && typeof event.notification.close === "function") {
+    event.notification.close();
+  }
+  const { targetUrl, postId } = resolveNotificationClickTarget(event.notification);
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (list) => {
+      const appClients = (list || []).filter((c) => {
+        if (!c || !c.url) return true;
+        try {
+          const u = new URL(c.url, self.location.origin);
+          return u.origin === self.location.origin && !u.pathname.startsWith("/dashboard");
+        } catch (_) {
+          return true;
+        }
+      });
+      const client = appClients[0] || (list && list[0]) || null;
+      if (client) {
+        if (typeof client.postMessage === "function") {
+          try {
+            client.postMessage({
+              type: "NOTIFICATION_CLICK",
+              url: targetUrl || "/",
+              post_id: postId,
+            });
+          } catch (_) {
+            /* ignorar si el cliente no acepta postMessage */
+          }
+        }
+        if (targetUrl && targetUrl !== "/" && typeof client.navigate === "function") {
+          try {
+            await client.navigate(targetUrl);
+          } catch (_) {
+            /* Si navigate no esta permitido, postMessage abre el detalle en la ventana activa */
+          }
+        }
+        if (typeof client.focus === "function") {
+          try {
+            return await client.focus();
+          } catch (_) {
+            return client;
+          }
+        }
+        return client;
+      }
+      if (self.clients && typeof self.clients.openWindow === "function") {
+        return self.clients.openWindow(targetUrl || "/");
+      }
+      return undefined;
+    }),
+  );
 });
 
 if (typeof firebase !== "undefined" && firebase && typeof firebase.initializeApp === "function") {
@@ -269,28 +383,3 @@ if (typeof firebase !== "undefined" && firebase && typeof firebase.initializeApp
     /* Firebase Messaging se sincroniza cuando el entorno del navegador lo permite */
   }
 }
-
-self.addEventListener("notificationclick", (event) => {
-  if (event.notification && typeof event.notification.close === "function") {
-    event.notification.close();
-  }
-  const notifData = (event.notification && event.notification.data) || {};
-  const targetUrl =
-    notifData.url ||
-    (notifData.post_id ? `/?post=${encodeURIComponent(String(notifData.post_id))}` : "/");
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      if (list.length > 0 && "focus" in list[0]) {
-        const client = list[0];
-        if (targetUrl && targetUrl !== "/" && typeof client.navigate === "function") {
-          return client.navigate(targetUrl).then(() => client.focus());
-        }
-        if (targetUrl && targetUrl !== "/" && typeof client.postMessage === "function") {
-          client.postMessage({ type: "NOTIFICATION_CLICK", url: targetUrl, post_id: notifData.post_id || null });
-        }
-        return client.focus();
-      }
-      return self.clients.openWindow(targetUrl || "/");
-    }),
-  );
-});

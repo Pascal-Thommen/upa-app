@@ -98,6 +98,14 @@ async def test_sends_notification_with_exact_fcm_payload(dispatcher, fcm_server)
             },
             "data": {"type": "EMERGENCY_BANNER", "post_id": "7"},
             "android": {"priority": "HIGH"},
+            "webpush": {
+                "notification": {
+                    "badge": "/campus/icons/badge-monochrome.png",
+                },
+                "fcm_options": {
+                    "link": "/?post=7",
+                },
+            },
             "token": "tok-android-0001",
         }
     ]
@@ -312,6 +320,10 @@ def test_emergency_banner_triggers_push_to_targeted_devices_only(db_session, fcm
             "body": "Dirigirse al punto de encuentro del campus.",
         }
         assert message["data"] == {"type": "EMERGENCY_BANNER", "post_id": str(post_id)}
+        assert message["webpush"] == {
+            "notification": {"badge": "/campus/icons/badge-monochrome.png"},
+            "fcm_options": {"link": f"/?post={post_id}"},
+        }
 
     audit = db_session.query(AdminAuditLog).filter(AdminAuditLog.action == "CREATE_POST").one()
     assert audit.target_id == post_id
@@ -364,8 +376,14 @@ def test_build_emergency_message_falls_back_to_title_and_content(db_session):
     only_title = Post(id=11, title="Solo titulo", post_type="EMERGENCY_BANNER")
     assert build_emergency_message(only_title) == (
         "Solo titulo",
-        "Solo titulo",
+        "Nueva publicación disponible en UPA Campus",
         {"type": "EMERGENCY_BANNER", "post_id": "11"},
+    )
+    duplicate_text = Post(id=13, title="test", caption="test", post_type="MANUAL")
+    assert build_emergency_message(duplicate_text) == (
+        "test",
+        "Nueva publicación disponible en UPA Campus",
+        {"type": "MANUAL", "post_id": "13"},
     )
     with_content = Post(id=12, title="T", content="Detalle largo", post_type="EMERGENCY_BANNER")
     assert build_emergency_message(with_content)[1] == "Detalle largo"

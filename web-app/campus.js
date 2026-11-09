@@ -458,6 +458,7 @@
       if (!hasData) state.agenda.error = Core.friendlyError(error);
     }
     renderAgenda();
+    maybeOpenDeepLinkedPost();
     maybeNotify();
   }
 
@@ -1129,7 +1130,11 @@
     renderDetailEventCard();
     renderDetailActions();
     $("detail").querySelector(".overlay-body").scrollTop = 0;
-    overlays.open("detail");
+    if (overlays && overlays.top() !== "detail") {
+      overlays.open("detail");
+    } else if ($("detail")) {
+      $("detail").hidden = false;
+    }
   }
 
   function onOverlayChange(stack) {
@@ -1657,21 +1662,64 @@
   }
 
   let deepLinkConsumed = false;
-  function maybeOpenDeepLinkedPost() {
-    if (deepLinkConsumed || state.detail) return;
-    const search = String(win.location.search || "");
-    const m = /(?:^|[?&])post=(\d+)(?:&|$)/.exec(search);
-    if (!m) return;
-    const postId = Number(m[1]);
-    const target = [...(state.feed.banners || []), ...(state.feed.posts || [])].find((p) => Number(p.id) === postId);
-    if (target) {
-      deepLinkConsumed = true;
-      openDetail(detailFromPost(target));
+  let pendingDeepLinkPostId = null;
+
+  function extractPostId(postIdOrUrl) {
+    if (typeof postIdOrUrl === "number" && Number.isFinite(postIdOrUrl)) {
+      return String(postIdOrUrl);
     }
+    const raw = String(postIdOrUrl || "").trim();
+    if (!raw) return "";
+    if (/^\d+$/.test(raw)) return raw;
+    const m = /(?:^|[?&])post=(\d+)(?:&|#|$)/.exec(raw);
+    return m ? m[1] : "";
+  }
+
+  function findPostDetailById(postId) {
+    const idNum = Number(postId);
+    const idStr = String(postId);
+    const post = [...(state.feed.banners || []), ...(state.feed.posts || [])].find(
+      (p) => p && (Number(p.id) === idNum || String(p.id) === idStr),
+    );
+    if (post) return detailFromPost(post);
+    const entry = (state.agenda.entries || []).find(
+      (e) => e && e.kind === "event" && (Number(e.id) === idNum || String(e.id) === idStr),
+    );
+    if (entry) return detailFromEntry(entry);
+    return null;
+  }
+
+  function openPostModal(postIdOrUrl, options) {
+    const opts = options || {};
+    const postId = extractPostId(postIdOrUrl);
+    if (!postId) return false;
+    const detail = findPostDetailById(postId);
+    if (detail) {
+      deepLinkConsumed = true;
+      pendingDeepLinkPostId = null;
+      if (state.tab !== "inicio") showTab("inicio");
+      openDetail(detail);
+      return true;
+    }
+    pendingDeepLinkPostId = postId;
+    if (opts.fetchIfMissing !== false && api) {
+      const tasks = [loadFeed({ reset: true })];
+      if (state.token) tasks.push(loadAgenda());
+      Promise.all(tasks.map(track));
+    }
+    return false;
+  }
+
+  function maybeOpenDeepLinkedPost() {
+    const targetId =
+      pendingDeepLinkPostId || (!deepLinkConsumed && !state.detail ? extractPostId(win.location.search) : "");
+    if (!targetId) return false;
+    return openPostModal(targetId, { fetchIfMissing: false });
   }
 
   async function showNotification(item) {
-    const options = { body: item.body, tag: item.id, icon: "/campus/icons/icon-192.png", badge: "/campus/icons/favicon-32.png" };
+    const options = { body: item.body, tag: item.id, badge: "/campus/icons/badge-monochrome.png" };
+    if (item.icon) options.icon = item.icon;
     try {
       if ("serviceWorker" in win.navigator) {
         const registration = await win.navigator.serviceWorker.getRegistration();
@@ -2069,6 +2117,17 @@
       });
     }
 
+    const onSwNotificationMessage = (event) => {
+      const data = (event && event.data) || {};
+      if (data && data.type === "NOTIFICATION_CLICK") {
+        openPostModal(data.post_id || data.url);
+      }
+    };
+    if ("serviceWorker" in win.navigator && typeof win.navigator.serviceWorker.addEventListener === "function") {
+      win.navigator.serviceWorker.addEventListener("message", onSwNotificationMessage);
+    }
+    win.addEventListener("message", onSwNotificationMessage);
+
     win.addEventListener("online", () => {
       checkForSwUpdate();
       track(refreshAll());
@@ -2181,6 +2240,7 @@
       while (pending.size) await Promise.allSettled([...pending]);
     },
     openDetail: (detail) => openDetail(detail),
+    openPostModal: (postIdOrUrl) => openPostModal(postIdOrUrl),
     refresh: () => track(refreshAll()),
     checkForSwUpdate: () => checkForSwUpdate(),
     enablePushNotifications: () => track(enablePushNotifications()),

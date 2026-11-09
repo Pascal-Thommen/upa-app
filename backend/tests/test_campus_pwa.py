@@ -61,6 +61,17 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
 
     assert _png_dimensions(WEB_APP / "icons" / "apple-touch-icon.png") == (180, 180)
     assert _png_dimensions(WEB_APP / "icons" / "favicon-32.png") == (32, 32)
+    assert _png_dimensions(WEB_APP / "icons" / "badge-monochrome.png") == (96, 96)
+    from PIL import Image
+
+    with Image.open(WEB_APP / "icons" / "badge-monochrome.png") as badge_img:
+        assert badge_img.mode == "RGBA"
+        pixels = [badge_img.getpixel((x, y)) for y in range(badge_img.height) for x in range(badge_img.width)]
+        assert any(a == 0 for _, _, _, a in pixels), "badge-monochrome.png debe tener fondo transparente"
+        assert any(a > 0 for _, _, _, a in pixels), "badge-monochrome.png debe contener el signet blanco"
+        assert all((r, g, b) == (255, 255, 255) for r, g, b, a in pixels if a > 0), (
+            "Todos los pixeles visibles de badge-monochrome.png deben ser blancos monocromos"
+        )
     assert json.loads((WEB_APP / ".well-known" / "assetlinks.json").read_text(encoding="utf-8")) == []
 
     html = (WEB_APP / "index.html").read_text(encoding="utf-8")
