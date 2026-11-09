@@ -372,7 +372,7 @@ def test_graph_api_v21_endpoint_and_auto_discovery(monkeypatch):
         "data": [
             {
                 "id": "18114511375879455",
-                "caption": "🇩🇪✨ Pasantía internacional: una experiencia que trasciende fronteras.\n\nFlorencia Luzko, estudiante de Ingeniería Empresarial de la Universidad Paraguayo Alemana (UPA).",
+                "caption": "🇩🇪✨ Pasantía internacional: una experiencia que trasciende fronteras.\n\nEstudiante UPA, estudiante de Ingeniería Empresarial de la Universidad Paraguayo Alemana (UPA).",
                 "media_type": "CAROUSEL_ALBUM",
                 "media_url": "https://scontent.cdninstagram.com/v/t39.30808-6/885659832_n.jpg",
                 "permalink": "https://www.instagram.com/p/DfSG3s8jsFy/",

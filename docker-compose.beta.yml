@@ -31,7 +31,7 @@ services:
       upa-postgres-beta:
         condition: service_healthy
     env_file:
-      - path: /home/pasc/.config/upa-app/.env
+      - path: ${UPA_CONFIG_DIR:-~/.config/upa-app}/.env
         required: false
       - path: ./backend/.env
         required: false
@@ -53,7 +53,7 @@ services:
     ports:
       - "8100:8000"
     volumes:
-      - /home/pasc/.config/upa-app/secrets:/app/secrets:ro
+      - ${UPA_CONFIG_DIR:-~/.config/upa-app}/secrets:/app/secrets:ro
       - uploads_beta_data:/app/uploads
     networks:
       upa-beta-network:
