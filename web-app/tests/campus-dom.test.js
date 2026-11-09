@@ -1233,9 +1233,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await installPromise;
   assert.equal(skipWaitingCount, 1, "install debe invocar self.skipWaiting()");
-  assert.equal(cacheStore.has("upa-campus-shell-1.0.4"), true, "install debe crear el cache versionado 1.0.4");
+  assert.equal(cacheStore.has("upa-campus-shell-1.0.5"), true, "install debe crear el cache versionado 1.0.5");
 
-  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.4
+  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.5
   let activatePromise = null;
   swEvents.activate({
     waitUntil(p) {
@@ -1244,17 +1244,17 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await activatePromise;
   assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
-  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.4"], "activate debe limpiar todos los caches antiguos");
+  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.5"], "activate debe limpiar todos los caches antiguos");
 
   // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset
-  const activeCache = cacheStore.get("upa-campus-shell-1.0.4");
+  const activeCache = cacheStore.get("upa-campus-shell-1.0.5");
   await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
 
-  // Ejecutar fetch online para /campus/campus.js?v=1.0.4 (Network-First + invalidacion de ?v=1.0.2)
+  // Ejecutar fetch online para /campus/campus.js?v=1.0.5 (Network-First + invalidacion de ?v=1.0.2)
   assetRevision = "v-nueva-red";
   let fetchPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.4` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.5` },
     respondWith(p) {
       fetchPromise = p;
     },
@@ -1271,7 +1271,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   swOnline = false;
   let offlineAssetPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.4` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.5` },
     respondWith(p) {
       offlineAssetPromise = p;
     },
@@ -1593,5 +1593,56 @@ test("Notificaciones Push Web (FCM): opt-in exitoso registra token en /api/users
     assert.match(deniedApp.$("notify-hint").textContent, /bloqueadas en tu navegador/);
   } finally {
     deniedApp.close();
+  }
+});
+
+test("Layout movil Android PWA y escritorio: .tabbar permanece anclada sin desbordarse por 100vh/100dvh", live, async () => {
+  const cssText = fs.readFileSync(path.join(WEB_APP, "campus.css"), "utf8");
+  const appBlock = cssText.match(/^\.app\s*\{([^}]+)\}/m);
+  assert.ok(appBlock, "Debe existir la regla .app en campus.css");
+  assert.match(appBlock[1], /position:\s*fixed/);
+  assert.match(appBlock[1], /inset:\s*0/);
+  assert.match(appBlock[1], /height:\s*100%/);
+  assert.match(appBlock[1], /max-height:\s*100dvh/);
+  assert.match(appBlock[1], /overflow:\s*hidden/);
+  assert.doesNotMatch(
+    appBlock[1],
+    /(?:^|[\s;])height:\s*100d?vh/,
+    ".app no debe fijar height: 100vh/100dvh para no empujar .tabbar fuera de la pantalla en Android PWA",
+  );
+
+  const tabbarBlock = cssText.match(/^\.tabbar\s*\{([^}]+)\}/m);
+  assert.ok(tabbarBlock, "Debe existir la regla .tabbar en campus.css");
+  assert.match(tabbarBlock[1], /flex-shrink:\s*0/);
+  assert.match(tabbarBlock[1], /z-index:\s*10/);
+  assert.match(tabbarBlock[1], /min-height:\s*calc\(var\(--tabbar-h\)\s*\+\s*var\(--safe-bottom\)\)/);
+
+  const mobileApp = await openCampus({ userAgent: ANDROID_UA });
+  try {
+    const styleEl = mobileApp.document.createElement("style");
+    styleEl.textContent = cssText;
+    mobileApp.document.head.appendChild(styleEl);
+
+    const appEl = mobileApp.$("app");
+    const tabbarEl = mobileApp.document.querySelector(".tabbar");
+    assert.equal(appEl.hidden, false);
+    assert.equal(appEl.classList.contains("app-framed"), false);
+    assert.ok(tabbarEl, "Debe existir .tabbar en el DOM movil");
+    assert.equal(tabbarEl.hidden, false);
+
+    const tabs = [...tabbarEl.querySelectorAll(".tab")];
+    assert.deepEqual(
+      tabs.map((btn) => btn.getAttribute("data-tab")),
+      ["inicio", "agenda", "perfil"],
+    );
+    for (const btn of tabs) {
+      await mobileApp.click(btn);
+      const tabName = btn.getAttribute("data-tab");
+      assert.equal(btn.getAttribute("aria-current"), "page");
+      assert.equal(mobileApp.$(`view-${tabName}`).hidden, false);
+      assert.equal(tabbarEl.hidden, false);
+    }
+  } finally {
+    mobileApp.close();
   }
 });
