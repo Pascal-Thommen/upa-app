@@ -104,11 +104,11 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert "Probar la versión web aquí" not in html
 
     html_versions = set(re.findall(r"/campus/[\w./-]+\.(?:js|css)\?v=([\d.]+)", html))
-    assert html_versions == {"1.0.4"}
+    assert html_versions == {"1.0.5"}
     assert "upa-logo.png" not in html
 
     sw = (WEB_APP / "sw.js").read_text(encoding="utf-8")
-    assert 'const VERSION = "1.0.4";' in sw
+    assert 'const VERSION = "1.0.5";' in sw
     assert "upa-logo.png" not in sw
     shell_files = re.findall(r'"(/[^"]*)"', sw.split("SHELL_FILES")[1].split("];")[0])
     assert "/" in shell_files and "/manifest.webmanifest" in shell_files
@@ -139,6 +139,23 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert ".app.app-framed" in css
     assert "grid-auto-rows: 24px" in css
     assert ".phone-notch" not in css
+
+    app_block = re.search(r"^\.app\s*\{([^}]+)\}", css, re.MULTILINE)
+    assert app_block is not None, "Debe existir la regla .app en campus.css"
+    app_rules = app_block.group(1)
+    assert "position: fixed" in app_rules
+    assert "inset: 0" in app_rules
+    assert "height: 100%" in app_rules
+    assert "max-height: 100dvh" in app_rules
+    assert "overflow: hidden" in app_rules
+    assert re.search(r"(?<![-\w])height:\s*100d?vh", app_rules) is None
+
+    tabbar_block = re.search(r"^\.tabbar\s*\{([^}]+)\}", css, re.MULTILINE)
+    assert tabbar_block is not None, "Debe existir la regla .tabbar en campus.css"
+    tabbar_rules = tabbar_block.group(1)
+    assert "flex-shrink: 0" in tabbar_rules
+    assert "z-index: 10" in tabbar_rules
+    assert "min-height: calc(var(--tabbar-h) + var(--safe-bottom))" in tabbar_rules
 
     nginx = (REPO_ROOT / "web-admin" / "nginx.conf").read_text(encoding="utf-8")
     for snippet in (
