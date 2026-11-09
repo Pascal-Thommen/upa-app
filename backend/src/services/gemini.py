@@ -7,6 +7,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import timedelta, timezone
 from typing import Any
 
 import httpx
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models import AppSetting
 
+PY_TZ = timezone(timedelta(hours=-3))
 GEMINI_KEY_SETTING = "GEMINI_API_KEY"
 GEMINI_MODEL_SETTING = "GEMINI_ACTIVE_MODEL"
 GEMINI_SYSTEM_PROMPT_SETTING = "GEMINI_SYSTEM_PROMPT"
@@ -743,6 +745,7 @@ def _build_autocomplete_prompt(
         "Regla estricta para fin del evento: event_end es estrictamente opcional y debe corresponder a una "
         "hora en el mismo día del inicio (sistema 24h HH:mm). Si la hora de finalización no se menciona "
         "explícitamente en el texto o afiche, NO la inventes y omítela o devuélvela vacía.\n"
+        "Horarios y fechas en publicaciones de la UPA corresponden a la hora oficial de Paraguay (UTC-3).\n"
         "Si se detecta un evento (is_event: true), activa siempre has_registration: true por defecto.\n"
         "Devuelve exclusivamente un objeto JSON válido con las claves de los campos vacíos que puedas inferir "
         "(por ejemplo: title, caption, content, is_event, event_start en formato YYYY-MM-DDTHH:MM, "

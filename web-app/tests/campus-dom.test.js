@@ -528,14 +528,15 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.equal(evOptOut.is_registered, false);
     assert.equal(evOptOut.registration_status, "declined");
 
-    // 2. Cambiar directamente con 1 clic a Sí, asistiré (POST /register -> Sí, asistiré activo con btn-primary, No asistiré en btn-subtle)
+    // 2. Cambiar directamente con 1 clic a Sí, asistiré (POST /register -> Inscrito ✓ activo con btn-registered, No asistiré en btn-subtle)
     await app.click(regAfterDecline);
     const regAfterAttend = app.document.querySelector(`[data-register="${seeded.eventId}"]`);
     const decAfterAttend = app.document.querySelector(`[data-decline="${seeded.eventId}"]`);
-    assert.equal(regAfterAttend.textContent, "Sí, asistiré");
+    assert.equal(regAfterAttend.textContent, "Inscrito ✓");
     assert.equal(decAfterAttend.textContent, "No asistiré");
     assert.equal(regAfterAttend.getAttribute("aria-pressed"), "true");
     assert.equal(regAfterAttend.classList.contains("btn-primary"), true);
+    assert.equal(regAfterAttend.classList.contains("btn-registered"), true);
     assert.equal(regAfterAttend.classList.contains("is-active"), true);
     assert.equal(decAfterAttend.getAttribute("aria-pressed"), "false");
     assert.equal(decAfterAttend.classList.contains("btn-subtle"), true);
@@ -761,10 +762,11 @@ test("Agenda: lista cronologica arriba, calendario mensual abajo y filtrado al t
 
     // Inscripcion RSVP directamente desde el overlay de Agenda (1 clic en Sí, asistiré) y sincronizacion con el feed de Inicio
     await app.click(detailRegBtn);
-    assert.equal(app.$("detail-register").textContent, "Sí, asistiré");
+    assert.equal(app.$("detail-register").textContent, "Inscrito ✓");
     assert.equal(app.$("detail-decline").textContent, "No asistiré");
     assert.equal(app.$("detail-register").getAttribute("aria-pressed"), "true");
     assert.equal(app.$("detail-register").classList.contains("btn-primary"), true);
+    assert.equal(app.$("detail-register").classList.contains("btn-registered"), true);
     assert.equal(app.$("detail-register").classList.contains("is-active"), true);
     assert.equal(app.$("detail-decline").getAttribute("aria-pressed"), "false");
     assert.equal(app.$("detail-decline").classList.contains("btn-subtle"), true);

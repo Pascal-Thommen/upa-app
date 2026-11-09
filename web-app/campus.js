@@ -718,7 +718,7 @@
     const isDeclined = !isAttending && regStatus === "declined";
     const currentStatus = isAttending ? "attending" : isDeclined ? "declined" : null;
     const registerCls = isAttending
-      ? "btn btn-small btn-rsvp btn-primary is-active"
+      ? "btn btn-small btn-rsvp btn-primary btn-registered is-active"
       : isDeclined
         ? "btn btn-small btn-rsvp btn-subtle"
         : "btn btn-small btn-rsvp btn-secondary";
@@ -732,7 +732,7 @@
       type: "button",
       "data-register": String(post.id),
       "aria-pressed": isAttending ? "true" : "false",
-      text: "Sí, asistiré",
+      text: isAttending ? "Inscrito ✓" : "Sí, asistiré",
     });
     const declineBtn = h("button", {
       class: declineCls,
@@ -1031,7 +1031,7 @@
         const isDeclined = !isAttending && d.registrationStatus === "declined";
         const currentStatus = isAttending ? "attending" : isDeclined ? "declined" : null;
         const registerCls = isAttending
-          ? "btn btn-rsvp btn-primary is-active"
+          ? "btn btn-rsvp btn-primary btn-registered is-active"
           : isDeclined
             ? "btn btn-rsvp btn-subtle"
             : "btn btn-rsvp btn-secondary";
@@ -1045,7 +1045,7 @@
           type: "button",
           id: "detail-register",
           "aria-pressed": isAttending ? "true" : "false",
-          text: "Sí, asistiré",
+          text: isAttending ? "Inscrito ✓" : "Sí, asistiré",
         });
         const declineBtn = h("button", {
           class: declineCls,
