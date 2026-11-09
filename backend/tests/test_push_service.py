@@ -373,15 +373,16 @@ def test_build_emergency_message_falls_back_to_title_and_content(db_session):
 
 def test_users_me_device_token_registers_web_push_token(db_session):
     tie_headers = {"Authorization": f"Bearer {create_access_token({'sub': '2'})}"}
+    real_fcm_token = "e7b6a5c4d3f2:APA91bK_872606189485_student_tie_001"
     resp = client.post(
         "/api/users/me/device-token",
-        json={"device_token": "fcm_web_872606189485_student_tie_001", "platform": "web"},
+        json={"device_token": real_fcm_token, "platform": "web"},
         headers=tie_headers,
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["user_id"] == 2
-    assert body["device_token"] == "fcm_web_872606189485_student_tie_001"
+    assert body["device_token"] == real_fcm_token
     assert body["platform"] == "web"
     assert body["has_device_token"] is True
 
@@ -389,11 +390,139 @@ def test_users_me_device_token_registers_web_push_token(db_session):
         db_session.query(DeviceToken)
         .filter(
             DeviceToken.user_id == 2,
-            DeviceToken.device_token == "fcm_web_872606189485_student_tie_001",
+            DeviceToken.device_token == real_fcm_token,
         )
         .one()
     )
     assert stored.platform == "web"
+
+    # Tokens sinteticos con prefijo fcm_web_ deben rechazarse con HTTP 400
+    rejected = client.post(
+        "/api/users/me/device-token",
+        json={"device_token": "fcm_web_872606189485_fake_token", "platform": "web"},
+        headers=tie_headers,
+    )
+    assert rejected.status_code == 400
+
+
+def test_users_me_device_token_atomic_upsert_handles_parallel_requests(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    db_file = tmp_path / "parallel_upsert.db"
+    parallel_engine = create_engine(
+        f"sqlite:///{db_file}",
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
+    ParallelSession = sessionmaker(autocommit=False, autoflush=False, bind=parallel_engine)
+    Base.metadata.create_all(bind=parallel_engine)
+
+    def override_parallel_db():
+        s = ParallelSession()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    seed_db = ParallelSession()
+    seed_db.add(User(id=2, email="tie@upa.edu.py", full_name="Estudiante TIE", role="user", groups=["TIE"]))
+    seed_db.commit()
+    seed_db.close()
+
+    app.dependency_overrides[get_db] = override_parallel_db
+    try:
+        tie_headers = {"Authorization": f"Bearer {create_access_token({'sub': '2'})}"}
+        shared_token = "f1e2d3c4b5a6:APA91bM_concurrent_web_token_2026"
+
+        def send_registration(platform_name: str):
+            with TestClient(app) as local_client:
+                return local_client.post(
+                    "/api/users/me/device-token",
+                    json={"device_token": shared_token, "platform": platform_name},
+                    headers=tie_headers,
+                )
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = [pool.submit(send_registration, "web") for _ in range(12)]
+            responses = [f.result() for f in futures]
+
+        assert [r.status_code for r in responses] == [200] * 12
+        verify_db = ParallelSession()
+        try:
+            rows = (
+                verify_db.query(DeviceToken)
+                .filter(DeviceToken.user_id == 2, DeviceToken.device_token == shared_token)
+                .all()
+            )
+            assert len(rows) == 1
+            assert rows[0].platform == "web"
+        finally:
+            verify_db.close()
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        parallel_engine.dispose()
+
+
+def test_audience_group_test_resolves_recipients_and_dispatches_push_on_create_and_update(
+    db_session, fcm_settings
+):
+    from src.models import AudienceGroup
+
+    # Registrar token web para el usuario admin (id=1) y crear el grupo 'test' con su correo
+    db_session.add(
+        DeviceToken(
+            user_id=1,
+            device_token="a1b2c3d4e5f6:APA91bZ_admin_web_token_001",
+            platform="web",
+        )
+    )
+    db_session.add(
+        AudienceGroup(
+            id="test",
+            name="Grupo Test",
+            description="Grupo de prueba para notificaciones push",
+            google_groups=[],
+            emails=["admin@upa.edu.py"],
+        )
+    )
+    db_session.commit()
+
+    resolved = collect_recipient_tokens(db_session, ["test"])
+    assert resolved == ["a1b2c3d4e5f6:APA91bZ_admin_web_token_001"]
+
+    # 1. Crear publicacion con Notificar por push al grupo 'test'
+    create_resp = client.post(
+        "/api/publications",
+        json={
+            "title": "Prueba Push Grupo Test",
+            "caption": "Mensaje directo al grupo test.",
+            "post_type": "MANUAL",
+            "is_news": True,
+            "is_event": False,
+            "target_groups": ["test"],
+            "notify_groups": ["test"],
+        },
+        headers=admin_headers(),
+    )
+    assert create_resp.status_code == 201
+    post_id = create_resp.json()["id"]
+    assert [m["token"] for m in fcm_settings.messages] == ["a1b2c3d4e5f6:APA91bZ_admin_web_token_001"]
+    assert fcm_settings.messages[0]["notification"]["title"] == "Prueba Push Grupo Test"
+
+    # 2. Actualizar publicacion existente manteniendo notify_groups=['test'] vuelve a despachar push
+    fcm_settings.messages.clear()
+    update_resp = client.put(
+        f"/api/publications/{post_id}",
+        json={
+            "title": "Prueba Push Grupo Test Actualizada",
+            "caption": "Segundo envio al guardar edicion.",
+            "target_groups": ["test"],
+            "notify_groups": ["test"],
+        },
+        headers=admin_headers(),
+    )
+    assert update_resp.status_code == 200
+    assert [m["token"] for m in fcm_settings.messages] == ["a1b2c3d4e5f6:APA91bZ_admin_web_token_001"]
+    assert fcm_settings.messages[0]["notification"]["title"] == "Prueba Push Grupo Test Actualizada"
 
 
 def test_unregistered_tokens_are_removed_from_database_on_dispatch(db_session, fcm_settings):

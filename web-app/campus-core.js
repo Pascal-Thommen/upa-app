@@ -1022,82 +1022,12 @@
     return outputArray;
   }
 
-  async function resolvePushSubscriptionToken(options) {
-    const opts = options || {};
-    const vapidKey = opts.vapidKey || VAPID_PUBLIC_KEY;
-    const config = opts.firebaseConfig || firebaseConfig;
-    const swReg = opts.serviceWorkerRegistration || null;
-    const storage = opts.storage || null;
-
-    if (swReg && swReg.pushManager) {
-      let sub =
-        typeof swReg.pushManager.getSubscription === "function"
-          ? await swReg.pushManager.getSubscription()
-          : null;
-      if (!sub && typeof swReg.pushManager.subscribe === "function") {
-        sub = await swReg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
-        });
-      }
-      if (sub) {
-        if (typeof sub.token === "string" && sub.token.trim().length >= 8) return sub.token.trim();
-        if (typeof sub.endpoint === "string" && sub.endpoint.trim()) {
-          const parts = sub.endpoint.replace(/\/+$/, "").split("/");
-          const last = (parts[parts.length - 1] || "").replace(/[^A-Za-z0-9_:-]/g, "");
-          if (last.length >= 8) return `fcm_web_${last}`;
-        }
-      }
-    }
-
-    if (storage && typeof storage.getItem === "function") {
-      const existing = storage.getItem("upa_campus_fcm_token");
-      if (existing && existing.trim().length >= 8) return existing.trim();
-    }
-    const rand =
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID().replace(/-/g, "")
-        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`;
-    const generated = `fcm_web_${config.messagingSenderId}_${rand}`;
-    if (storage && typeof storage.setItem === "function") {
-      try {
-        storage.setItem("upa_campus_fcm_token", generated);
-      } catch (_) {
-        /* almacenamiento local no disponible */
-      }
-    }
-    return generated;
-  }
-
-  function createFirebaseBridge(options) {
-    const baseOpts = options || {};
-    const apps = [];
-    return {
-      apps,
-      firebaseConfig,
-      VAPID_PUBLIC_KEY,
-      initializeApp(cfg) {
-        const appObj = { name: "[DEFAULT]", options: cfg || firebaseConfig };
-        if (!apps.length) apps.push(appObj);
-        return appObj;
-      },
-      messaging() {
-        return {
-          getToken: async (tokenOpts) => {
-            const tOpts = tokenOpts || {};
-            const swReg =
-              tOpts.serviceWorkerRegistration ||
-              (typeof baseOpts.getSwRegistration === "function" ? await baseOpts.getSwRegistration() : null);
-            return resolvePushSubscriptionToken({
-              vapidKey: tOpts.vapidKey || VAPID_PUBLIC_KEY,
-              firebaseConfig,
-              serviceWorkerRegistration: swReg,
-              storage: baseOpts.storage || null,
-            });
-          },
-        };
-      },
-    };
+  function isValidFcmToken(value) {
+    if (typeof value !== "string") return false;
+    const trimmed = value.trim();
+    if (trimmed.length < 8) return false;
+    if (/^fcm_web_/i.test(trimmed)) return false;
+    return true;
   }
 
   async function requestFcmToken(options) {
@@ -1105,11 +1035,13 @@
     const vapidKey = opts.vapidKey || VAPID_PUBLIC_KEY;
     const config = opts.firebaseConfig || firebaseConfig;
     const swReg = opts.serviceWorkerRegistration || null;
-    const fb = opts.firebase || null;
+    const fb =
+      opts.firebase ||
+      (typeof globalThis !== "undefined" && globalThis.firebase ? globalThis.firebase : null);
 
     if (typeof opts.getToken === "function") {
       const tok = await opts.getToken({ vapidKey, serviceWorkerRegistration: swReg, firebaseConfig: config });
-      if (typeof tok === "string" && tok.trim().length >= 8) return tok.trim();
+      if (isValidFcmToken(tok)) return tok.trim();
     }
 
     if (fb) {
@@ -1127,17 +1059,12 @@
             vapidKey,
             serviceWorkerRegistration: swReg || undefined,
           });
-          if (typeof tok === "string" && tok.trim().length >= 8) return tok.trim();
+          if (isValidFcmToken(tok)) return tok.trim();
         }
       }
     }
 
-    return resolvePushSubscriptionToken({
-      vapidKey,
-      firebaseConfig: config,
-      serviceWorkerRegistration: swReg,
-      storage: opts.storage || null,
-    });
+    return null;
   }
 
   function pickDueNotifications(input) {
@@ -1313,8 +1240,7 @@
     FIREBASE_CONFIG: firebaseConfig,
     VAPID_PUBLIC_KEY,
     urlBase64ToUint8Array,
-    resolvePushSubscriptionToken,
-    createFirebaseBridge,
+    isValidFcmToken,
     requestFcmToken,
     pickDueNotifications,
     createOverlayManager,

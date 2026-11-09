@@ -2,6 +2,9 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
@@ -117,39 +120,48 @@ def register_device_token(
         or len(cleaned_token) < 8
         or len(cleaned_token) > 512
         or any(c.isspace() for c in cleaned_token)
+        or cleaned_token.lower().startswith("fcm_web_")
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El token de dispositivo (device_token) es invalido o esta vacio.",
         )
-    existing = (
-        db.query(DeviceToken)
-        .filter(
-            DeviceToken.user_id == current_user.id,
-            DeviceToken.device_token == cleaned_token,
-        )
-        .first()
-    )
-    if existing:
-        existing.platform = cleaned_platform
-        existing.updated_at = now
-        record = existing
-    else:
-        record = DeviceToken(
-            user_id=current_user.id,
-            device_token=cleaned_token,
-            platform=cleaned_platform,
-            updated_at=now,
-        )
-        db.add(record)
 
-    db.commit()
-    db.refresh(record)
+    values = {
+        "user_id": current_user.id,
+        "device_token": cleaned_token,
+        "platform": cleaned_platform,
+        "updated_at": now,
+    }
+    bind = db.get_bind() if hasattr(db, "get_bind") else getattr(db, "bind", None)
+    dialect = getattr(getattr(bind, "dialect", None), "name", "") if bind is not None else ""
+    insert_fn = sqlite_insert if dialect == "sqlite" else pg_insert
+    stmt = insert_fn(DeviceToken).values(**values).on_conflict_do_update(
+        index_elements=["user_id", "device_token"],
+        set_={"platform": cleaned_platform, "updated_at": now},
+    )
+    try:
+        db.execute(stmt)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = (
+            db.query(DeviceToken)
+            .filter(
+                DeviceToken.user_id == current_user.id,
+                DeviceToken.device_token == cleaned_token,
+            )
+            .first()
+        )
+        if existing is not None:
+            existing.platform = cleaned_platform
+            existing.updated_at = now
+            db.commit()
 
     return DeviceTokenResponse(
         user_id=int(current_user.id),
         device_token=cleaned_token,
         platform=cleaned_platform,
         has_device_token=True,
-        updated_at=ensure_utc_datetime(record.updated_at, fallback=now),
+        updated_at=ensure_utc_datetime(now, fallback=now),
     )

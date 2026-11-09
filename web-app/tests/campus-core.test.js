@@ -673,18 +673,42 @@ test("Firebase Web Push config, VAPID key y registro de device token en /api/use
   assert.equal(keyBytes[0], 0x04);
 
   let receivedVapidKey = null;
+  let receivedSwReg = null;
+  const fakeSwReg = { scope: "/" };
   const fcmTok = await Core.requestFcmToken({
+    serviceWorkerRegistration: fakeSwReg,
     firebase: {
+      apps: [],
+      initializeApp(cfg) {
+        this.apps.push(cfg);
+      },
       messaging: () => ({
         getToken: async (opts) => {
           receivedVapidKey = opts.vapidKey;
-          return "fcm_web_sdk_token_1234567890";
+          receivedSwReg = opts.serviceWorkerRegistration;
+          return "c8a9b7d6e5f4:APA91bF_real_fcm_sdk_token_1234567890";
         },
       }),
     },
   });
-  assert.equal(fcmTok, "fcm_web_sdk_token_1234567890");
+  assert.equal(fcmTok, "c8a9b7d6e5f4:APA91bF_real_fcm_sdk_token_1234567890");
   assert.equal(receivedVapidKey, Core.VAPID_PUBLIC_KEY);
+  assert.equal(receivedSwReg, fakeSwReg);
+
+  // Tokens sinteticos con prefijo fcm_web_ o ausencia de SDK se rechazan estrictamente
+  assert.equal(Core.isValidFcmToken("fcm_web_872606189485_fake"), false);
+  assert.equal(Core.isValidFcmToken("c8a9b7d6e5f4:APA91bF_real_fcm_sdk_token_1234567890"), true);
+  const rejectedSynthetic = await Core.requestFcmToken({
+    firebase: {
+      apps: [{}],
+      messaging: () => ({
+        getToken: async () => "fcm_web_872606189485_synthetic",
+      }),
+    },
+  });
+  assert.equal(rejectedSynthetic, null);
+  const noSdkToken = await Core.requestFcmToken({ firebase: null });
+  assert.equal(noSdkToken, null);
 
   let receivedReq = null;
   const srv = http.createServer((req, res) => {
@@ -724,7 +748,7 @@ test("Firebase Web Push config, VAPID key y registro de device token en /api/use
     assert.equal(receivedReq.url, "/api/users/me/device-token");
     assert.equal(receivedReq.auth, "Bearer jwt-student");
     assert.deepEqual(receivedReq.json, {
-      device_token: "fcm_web_sdk_token_1234567890",
+      device_token: "c8a9b7d6e5f4:APA91bF_real_fcm_sdk_token_1234567890",
       platform: "web",
     });
   } finally {
