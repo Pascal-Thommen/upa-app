@@ -30,6 +30,8 @@ JWT_BEARER_GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 MAX_PARALLEL_SENDS = 10
 TOKEN_REFRESH_MARGIN_SECONDS = 60
 MAX_BODY_LENGTH = 240
+DEFAULT_PUSH_BADGE = "/campus/icons/badge-monochrome.png"
+DEFAULT_PUSH_BODY = "Nueva publicación disponible en UPA Campus"
 
 EMERGENCY_BANNER = "EMERGENCY_BANNER"
 
@@ -238,10 +240,21 @@ class PushDispatcher:
             logger.error("[Push] FCM no configurado, %s notificaciones no enviadas: %s", len(unique_tokens), exc)
             return result
 
+        clean_data = {str(k): str(v) for k, v in (data or {}).items()}
+        post_id = clean_data.get("post_id", "").strip()
+        deep_link = f"/?post={post_id}" if post_id else "/"
         message: dict[str, Any] = {
             "notification": {"title": title[:120], "body": body[:MAX_BODY_LENGTH]},
-            "data": {str(k): str(v) for k, v in (data or {}).items()},
+            "data": clean_data,
             "android": {"priority": "HIGH"},
+            "webpush": {
+                "notification": {
+                    "badge": DEFAULT_PUSH_BADGE,
+                },
+                "fcm_options": {
+                    "link": deep_link,
+                },
+            },
         }
 
         semaphore = asyncio.Semaphore(MAX_PARALLEL_SENDS)
@@ -333,7 +346,12 @@ def collect_event_reminder_tokens(db: Session, post_id: int, target_groups: Any)
 def build_emergency_message(post: Post) -> tuple[str, str, dict[str, str]]:
     """Construye titulo, cuerpo y payload de datos para un aviso urgente o notificacion de publicacion."""
     title = (post.title or "").strip() or "Comunicado UPA"
-    body = (post.caption or post.content or "").strip() or title
+    raw_body = (post.caption or post.content or "").strip()
+    if raw_body and raw_body.lower() == title.lower():
+        raw_body = ""
+    elif raw_body and raw_body.lower().startswith(title.lower()) and "\n" in raw_body:
+        raw_body = raw_body[len(title) :].lstrip(" \t\r\n-–—:.")
+    body = raw_body or DEFAULT_PUSH_BODY
     data = {"type": post.post_type or EMERGENCY_BANNER, "post_id": str(post.id)}
     return title, body, data
 

@@ -95,6 +95,25 @@ def componer(tamano: int, proporcion: float) -> Image.Image:
     return lienzo.convert("RGB")
 
 
+def componer_monocromo(tamano: int = 96, proporcion: float = 0.88) -> Image.Image:
+    """Genera el badge monocromo para Android (blanco #FFFFFF sobre canal alfa transparente RGBA)."""
+    ancho = max(1, int(tamano * proporcion))
+    alto = max(1, int(round(ancho * 58 / 152)))
+    mask = _render_signet_mask(ancho, alto)
+    signet = Image.new("RGBA", (ancho, alto), (255, 255, 255, 0))
+    signet.putalpha(mask)
+
+    lienzo = Image.new("RGBA", (tamano, tamano), (0, 0, 0, 0))
+    ox = (tamano - ancho) // 2
+    oy = (tamano - alto) // 2
+    for y in range(alto):
+        for x in range(ancho):
+            a = mask.getpixel((x, y))
+            if a > 0:
+                lienzo.putpixel((ox + x, oy + y), (255, 255, 255, a))
+    return lienzo
+
+
 def main() -> None:
     DESTINO.mkdir(parents=True, exist_ok=True)
     componer(192, 0.78).save(DESTINO / "icon-192.png", optimize=True)
@@ -103,6 +122,7 @@ def main() -> None:
     componer(512, 0.58).save(DESTINO / "icon-maskable-512.png", optimize=True)
     componer(180, 0.78).save(DESTINO / "apple-touch-icon.png", optimize=True)
     componer(32, 0.92).save(DESTINO / "favicon-32.png", optimize=True)
+    componer_monocromo(96, 0.88).save(DESTINO / "badge-monochrome.png", optimize=True)
 
 
 if __name__ == "__main__":

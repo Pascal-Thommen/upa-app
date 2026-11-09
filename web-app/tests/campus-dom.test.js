@@ -1319,9 +1319,15 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   assert.equal(shownNotifications.length, 1);
   assert.equal(shownNotifications[0].title, "Alerta urgente UPA");
   assert.equal(shownNotifications[0].options.body, "Revisión de aulas en el campus.");
-  assert.equal(shownNotifications[0].options.icon, "/campus/icons/icon-192.png");
+  assert.equal(shownNotifications[0].options.badge, "/campus/icons/badge-monochrome.png");
+  assert.equal(
+    shownNotifications[0].options.icon,
+    undefined,
+    "Sin imagen de post no debe renderizar el fallback blanco /campus/icons/icon-192.png",
+  );
   assert.equal(shownNotifications[0].options.data.url, `/?post=${seeded.urgentId}`);
 
+  // 6a. notificationclick sin ventana abierta -> clients.openWindow('/?post=<id>')
   let openedUrl = null;
   let closedNotif = false;
   swContext.self.clients.openWindow = async (url) => {
@@ -1343,6 +1349,45 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   assert.equal(closedNotif, true);
   assert.equal(openedUrl, `/?post=${seeded.urgentId}`);
 
+  // 6b. notificationclick con ventana PWA existente -> enfoca la ventana y envia postMessage NOTIFICATION_CLICK
+  const postedToClient = [];
+  let focusedClient = 0;
+  let navigatedUrl = null;
+  swContext.self.clients.matchAll = async () => [
+    {
+      url: `${BASE_URL}/`,
+      postMessage(msg) {
+        postedToClient.push(msg);
+      },
+      async navigate(url) {
+        navigatedUrl = url;
+      },
+      async focus() {
+        focusedClient += 1;
+        return this;
+      },
+    },
+  ];
+  let clickExistingPromise = null;
+  swEvents.notificationclick({
+    notification: {
+      data: shownNotifications[0].options.data,
+      close() {},
+    },
+    waitUntil(p) {
+      clickExistingPromise = p;
+    },
+  });
+  await clickExistingPromise;
+  assert.equal(focusedClient, 1, "Debe enfocar la ventana existente de la PWA");
+  assert.equal(navigatedUrl, `/?post=${seeded.urgentId}`);
+  assert.equal(postedToClient.length, 1);
+  assert.deepEqual({ ...postedToClient[0] }, {
+    type: "NOTIFICATION_CLICK",
+    url: `/?post=${seeded.urgentId}`,
+    post_id: String(seeded.urgentId),
+  });
+
   // 7. Prueba de Firebase Messaging en sw.js (firebase.initializeApp + messaging.onBackgroundMessage)
   assert.ok(swFirebaseInitConfig, "sw.js debe inicializar Firebase con firebaseConfig");
   assert.equal(swFirebaseInitConfig.projectId, "upa-campus-app");
@@ -1351,6 +1396,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
     notification: {
       title: "Aviso Firebase Background",
       body: "Mensaje recibido por onBackgroundMessage.",
+      icon: "/campus/icons/icon-192.png",
     },
     data: {
       type: "MANUAL",
@@ -1360,8 +1406,41 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   assert.equal(shownNotifications.length, 2);
   assert.equal(shownNotifications[1].title, "Aviso Firebase Background");
   assert.equal(shownNotifications[1].options.body, "Mensaje recibido por onBackgroundMessage.");
-  assert.equal(shownNotifications[1].options.icon, "/campus/icons/icon-192.png");
+  assert.equal(shownNotifications[1].options.badge, "/campus/icons/badge-monochrome.png");
+  assert.equal(
+    shownNotifications[1].options.icon,
+    undefined,
+    "Incluso si el payload trae /campus/icons/icon-192.png debe limpiarse para no mostrar el recuadro blanco",
+  );
   assert.equal(shownNotifications[1].options.data.url, `/?post=${seeded.newsId}`);
+
+  // 8. En campus.js: carga con /?post=<id> y recepcion de postMessage NOTIFICATION_CLICK abren el modal de detalle a pantalla completa
+  const deepLinkApp = await openCampus({
+    url: `/?post=${seeded.newsId}`,
+    token: TEST_TOKENS["ana.gomez@upa.edu.py"],
+  });
+  try {
+    assert.equal(deepLinkApp.$("detail").hidden, false, "Al abrir /?post=<id> debe abrirse directamente la vista completa del post");
+    assert.equal(deepLinkApp.$("detail-title").textContent, "Convocatoria de intercambio en Heidelberg");
+    deepLinkApp.window.dispatchEvent(
+      new deepLinkApp.window.MessageEvent("message", {
+        data: {
+          type: "NOTIFICATION_CLICK",
+          url: `/?post=${seeded.eventId}`,
+          post_id: String(seeded.eventId),
+        },
+      }),
+    );
+    await deepLinkApp.window.UpaCampus.idle();
+    assert.equal(deepLinkApp.$("detail").hidden, false);
+    assert.equal(
+      deepLinkApp.$("detail-title").textContent,
+      "Foro de Ingeniería Empresarial 2026",
+      "Al recibir postMessage NOTIFICATION_CLICK debe abrir directamente el detalle de la publicacion indicada",
+    );
+  } finally {
+    deepLinkApp.close();
+  }
 });
 
 test("Notificaciones Push Web (FCM): opt-in exitoso registra token en /api/users/me/device-token y rechazo no bloquea la UI", live, async () => {
