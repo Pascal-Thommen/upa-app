@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const VERSION = "1.0.5";
+const VERSION = "1.0.6";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
 const FIREBASE_APP_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js";
 const FIREBASE_MESSAGING_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js";
@@ -34,10 +34,10 @@ if (typeof importScripts === "function") {
 const SHELL_FILES = [
   "/",
   "/manifest.webmanifest",
-  "/campus/campus.css?v=1.0.5",
-  "/campus/campus-core.js?v=1.0.5",
-  "/campus/vendor/qrcode.js?v=1.0.5",
-  "/campus/campus.js?v=1.0.5",
+  "/campus/campus.css?v=1.0.6",
+  "/campus/campus-core.js?v=1.0.6",
+  "/campus/vendor/qrcode.js?v=1.0.6",
+  "/campus/campus.js?v=1.0.6",
   "/campus/icons/favicon.svg",
   "/campus/icons/favicon-32.png",
   "/campus/icons/apple-touch-icon.png",
@@ -356,11 +356,14 @@ self.addEventListener("notificationclick", (event) => {
           return true;
         }
       });
-      const client = appClients[0] || (list && list[0]) || null;
-      if (client) {
-        if (typeof client.postMessage === "function") {
+      const visibleClient =
+        appClients.find((c) => c && c.visibilityState === "visible") ||
+        (list || []).find((c) => c && c.visibilityState === "visible") ||
+        null;
+      if (visibleClient) {
+        if (typeof visibleClient.postMessage === "function") {
           try {
-            client.postMessage({
+            visibleClient.postMessage({
               type: "NOTIFICATION_CLICK",
               url: targetUrl || "/",
               post_id: postId,
@@ -370,13 +373,13 @@ self.addEventListener("notificationclick", (event) => {
           }
         }
         let focused = false;
-        let activeClient = client;
-        if (typeof client.focus === "function") {
+        let activeClient = visibleClient;
+        if (typeof visibleClient.focus === "function") {
           try {
-            const candidate = await client.focus();
-            activeClient = candidate || client;
+            const candidate = await visibleClient.focus();
+            activeClient = candidate || visibleClient;
             focused = Boolean(
-              activeClient && activeClient.focused !== false && activeClient.visibilityState !== "hidden",
+              activeClient && activeClient.focused !== false && activeClient.visibilityState === "visible",
             );
           } catch (_) {
             focused = false;
@@ -397,7 +400,7 @@ self.addEventListener("notificationclick", (event) => {
       if (self.clients && typeof self.clients.openWindow === "function") {
         return self.clients.openWindow(absoluteUrl || targetUrl || "/");
       }
-      return client || undefined;
+      return visibleClient || appClients[0] || (list && list[0]) || undefined;
     }),
   );
 });

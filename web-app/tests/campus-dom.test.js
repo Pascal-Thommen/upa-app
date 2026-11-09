@@ -1233,9 +1233,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await installPromise;
   assert.equal(skipWaitingCount, 1, "install debe invocar self.skipWaiting()");
-  assert.equal(cacheStore.has("upa-campus-shell-1.0.5"), true, "install debe crear el cache versionado 1.0.5");
+  assert.equal(cacheStore.has("upa-campus-shell-1.0.6"), true, "install debe crear el cache versionado 1.0.6");
 
-  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.5
+  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.6
   let activatePromise = null;
   swEvents.activate({
     waitUntil(p) {
@@ -1244,17 +1244,17 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await activatePromise;
   assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
-  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.5"], "activate debe limpiar todos los caches antiguos");
+  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.6"], "activate debe limpiar todos los caches antiguos");
 
   // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset
-  const activeCache = cacheStore.get("upa-campus-shell-1.0.5");
+  const activeCache = cacheStore.get("upa-campus-shell-1.0.6");
   await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
 
-  // Ejecutar fetch online para /campus/campus.js?v=1.0.5 (Network-First + invalidacion de ?v=1.0.2)
+  // Ejecutar fetch online para /campus/campus.js?v=1.0.6 (Network-First + invalidacion de ?v=1.0.2)
   assetRevision = "v-nueva-red";
   let fetchPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.5` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.6` },
     respondWith(p) {
       fetchPromise = p;
     },
@@ -1271,7 +1271,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   swOnline = false;
   let offlineAssetPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.5` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.6` },
     respondWith(p) {
       offlineAssetPromise = p;
     },
@@ -1349,13 +1349,15 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   assert.equal(closedNotif, true);
   assert.equal(openedUrl, `${BASE_URL}/?post=${seeded.urgentId}`);
 
-  // 6b. notificationclick con ventana PWA existente -> enfoca la ventana y envia postMessage NOTIFICATION_CLICK
+  // 6b. notificationclick con ventana PWA existente y visible en primer plano -> enfoca la ventana y envia postMessage NOTIFICATION_CLICK
   const postedToClient = [];
   let focusedClient = 0;
   let navigatedUrl = null;
+  openedUrl = null;
   swContext.self.clients.matchAll = async () => [
     {
       url: `${BASE_URL}/`,
+      visibilityState: "visible",
       postMessage(msg) {
         postedToClient.push(msg);
       },
@@ -1379,8 +1381,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
     },
   });
   await clickExistingPromise;
-  assert.equal(focusedClient, 1, "Debe enfocar la ventana existente de la PWA");
+  assert.equal(focusedClient, 1, "Debe enfocar la ventana existente y visible de la PWA");
   assert.equal(navigatedUrl, `/?post=${seeded.urgentId}`);
+  assert.equal(openedUrl, null, "No debe llamar a clients.openWindow si el cliente ya es visible y recibe foco");
   assert.equal(postedToClient.length, 1);
   assert.deepEqual({ ...postedToClient[0] }, {
     type: "NOTIFICATION_CLICK",
@@ -1388,15 +1391,21 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
     post_id: String(seeded.urgentId),
   });
 
-  // 6c. notificationclick en Android cuando client.focus() falla por estar en segundo plano -> fallback a clients.openWindow(absoluteUrl)
+  // 6c. notificationclick en Android cuando existe un cliente en segundo plano (visibilityState !== "visible") -> llama directamente a clients.openWindow(absoluteUrl) sin intentar focus()
   openedUrl = null;
+  let bgFocusAttempted = 0;
+  let bgPostMessageAttempted = 0;
   swContext.self.clients.matchAll = async () => [
     {
       url: `${BASE_URL}/`,
-      postMessage() {},
+      visibilityState: "hidden",
+      postMessage() {
+        bgPostMessageAttempted += 1;
+      },
       async navigate() {},
       async focus() {
-        throw new Error("Android background focus restriction");
+        bgFocusAttempted += 1;
+        return this;
       },
     },
   ];
@@ -1411,6 +1420,38 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
     },
   });
   await clickAndroidBgPromise;
+  assert.equal(bgFocusAttempted, 0, "En segundo plano (visibilityState !== 'visible') no debe intentar client.focus()");
+  assert.equal(bgPostMessageAttempted, 0, "En segundo plano debe abrir directamente la ventana sin postMessage intermedio");
+  assert.equal(
+    openedUrl,
+    `${BASE_URL}/?post=${seeded.urgentId}`,
+    "Si el cliente esta en segundo plano (visibilityState !== 'visible'), debe ejecutar directamente clients.openWindow con URL absoluta",
+  );
+
+  // 6d. notificationclick cuando el cliente es visible pero client.focus() lanza error -> fallback a clients.openWindow(absoluteUrl)
+  openedUrl = null;
+  swContext.self.clients.matchAll = async () => [
+    {
+      url: `${BASE_URL}/`,
+      visibilityState: "visible",
+      postMessage() {},
+      async navigate() {},
+      async focus() {
+        throw new Error("Android background focus restriction");
+      },
+    },
+  ];
+  let clickAndroidFocusErrPromise = null;
+  swEvents.notificationclick({
+    notification: {
+      data: shownNotifications[0].options.data,
+      close() {},
+    },
+    waitUntil(p) {
+      clickAndroidFocusErrPromise = p;
+    },
+  });
+  await clickAndroidFocusErrPromise;
   assert.equal(
     openedUrl,
     `${BASE_URL}/?post=${seeded.urgentId}`,
