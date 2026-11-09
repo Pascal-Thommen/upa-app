@@ -1,5 +1,6 @@
 """Tests for backend configuration and settings."""
 
+import re
 from pathlib import Path
 
 from src.config import (
@@ -112,9 +113,10 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     assert 'AI_EVENT_EXTRACTION_ENABLED: "true"' in compose_text
     assert '"127.0.0.1:5432:5432"' in compose_text
     assert "upa-beta" not in compose_text
-    assert "/home/pasc/.config/upa-app/.env" in compose_text
+    assert "${UPA_CONFIG_DIR:-~/.config/upa-app}/.env" in compose_text
     assert "./backend/.env" in compose_text
-    assert "/home/pasc/.config/upa-app/secrets:/app/secrets:ro" in compose_text
+    assert "${UPA_CONFIG_DIR:-~/.config/upa-app}/secrets:/app/secrets:ro" in compose_text
+    assert not re.search(r"/home/[a-z0-9_-]+/", compose_text)
     assert '"127.0.0.1:5432:5432"' in compose_text
     assert '"5432:5432"' not in compose_text
 
@@ -123,8 +125,10 @@ def test_docker_compose_anchors_google_client_id_and_nginx_caches_static_assets(
     assert '"5433:5432"' not in beta_compose_text
     assert "FEED_SYNC_INTERVAL_MINUTES: 5" in beta_compose_text
     assert 'FEED_SYNC_ENABLED: "true"' in beta_compose_text
-    assert "/home/pasc/.config/upa-app/.env" in beta_compose_text
-    assert "EAAaYgtCKbe0" not in beta_compose_text
+    assert "${UPA_CONFIG_DIR:-~/.config/upa-app}/.env" in beta_compose_text
+    assert "${UPA_CONFIG_DIR:-~/.config/upa-app}/secrets:/app/secrets:ro" in beta_compose_text
+    assert not re.search(r"/home/[a-z0-9_-]+/", beta_compose_text)
+    assert not re.search(r"EAA[0-9A-Za-z]{20,}", beta_compose_text)
     assert "INSTAGRAM_ACCESS_TOKEN:" not in beta_compose_text
 
     nginx_text = (repo_root / "web-admin" / "nginx.conf").read_text(encoding="utf-8")
