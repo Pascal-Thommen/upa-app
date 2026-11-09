@@ -14,11 +14,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
 from ..database import get_db
 from ..models import AudienceGroup, EventRegistration, Post, PostView, User
-from ..permissions import require_permission
+from ..permissions import effective_permissions, require_permission
 from ..schemas.event import EventRegistrationEntry
 from ..schemas.post import (
     ASUNCION_TZ,
@@ -677,7 +677,7 @@ async def autocomplete_publication_ai(
 def get_publication(
     publication_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    editor: User = Depends(require_permission("publicaciones")),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> PublicationResponse:
     post = (
         db.query(Post)
@@ -692,7 +692,31 @@ def get_publication(
     )
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Publicación no encontrada.")
-    return PublicationResponse.from_orm_post(post)
+
+    is_editor = current_user is not None and "publicaciones" in effective_permissions(db, current_user)
+    if not is_editor:
+        audience_groups = db.query(AudienceGroup).all()
+        if current_user is None:
+            if post.post_type != "INSTAGRAM" or not user_can_access_post(
+                None, post.target_groups, audience_groups=audience_groups
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Autenticación requerida para ver esta publicación.",
+                )
+        elif not user_can_access_post(
+            current_user,
+            post.target_groups,
+            audience_groups=audience_groups,
+            allow_admin_bypass=False,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado: no pertenece al grupo destinatario de esta publicación.",
+            )
+
+    current_user_id = current_user.id if current_user is not None else None
+    return PublicationResponse.from_orm_post(post, current_user_id=current_user_id)
 
 
 @router.post(

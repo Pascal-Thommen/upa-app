@@ -41,6 +41,7 @@ services:
       PORT: 8000
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://upa_user:upa_password@upa-postgres-beta:5432/upa_app
+      APP_BASE_URL: https://upa-beta.eu1.netbird.services
       GOOGLE_REDIRECT_URI: https://upa-beta.eu1.netbird.services/api/auth/google
       ALLOWED_EMAIL_DOMAIN: upa.edu.py
       GOOGLE_SERVICE_ACCOUNT_FILE: /app/secrets/service-account.json

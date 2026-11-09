@@ -114,6 +114,11 @@ def componer_monocromo(tamano: int = 96, proporcion: float = 0.88) -> Image.Imag
     return lienzo
 
 
+def componer_transparente(tamano: int = 1) -> Image.Image:
+    """Genera un icono PNG 1x1 100% transparente (RGBA 0,0,0,0) para suprimir el avatar gris en Android."""
+    return Image.new("RGBA", (tamano, tamano), (0, 0, 0, 0))
+
+
 def main() -> None:
     DESTINO.mkdir(parents=True, exist_ok=True)
     componer(192, 0.78).save(DESTINO / "icon-192.png", optimize=True)
@@ -123,6 +128,7 @@ def main() -> None:
     componer(180, 0.78).save(DESTINO / "apple-touch-icon.png", optimize=True)
     componer(32, 0.92).save(DESTINO / "favicon-32.png", optimize=True)
     componer_monocromo(96, 0.88).save(DESTINO / "badge-monochrome.png", optimize=True)
+    componer_transparente(1).save(DESTINO / "transparent-pixel.png", optimize=True)
 
 
 if __name__ == "__main__":

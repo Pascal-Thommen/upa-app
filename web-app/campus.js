@@ -1663,6 +1663,8 @@
 
   let deepLinkConsumed = false;
   let pendingDeepLinkPostId = null;
+  const deepLinkFetchAttempted = new Set();
+  const deepLinkFetchInFlight = new Set();
 
   function extractPostId(postIdOrUrl) {
     if (typeof postIdOrUrl === "number" && Number.isFinite(postIdOrUrl)) {
@@ -1689,6 +1691,58 @@
     return null;
   }
 
+  function upsertFetchedPost(post) {
+    if (!post || post.id === undefined || post.id === null) return;
+    if (post.post_type === "EMERGENCY_BANNER") {
+      const exists = (state.feed.banners || []).some((b) => String(b.id) === String(post.id));
+      if (!exists) state.feed.banners = [post, ...(state.feed.banners || [])];
+    } else {
+      state.feed.posts = Core.mergePosts([post], state.feed.posts || []);
+    }
+    renderFeed();
+  }
+
+  async function fetchAndOpenDeepLinkedPost(postId) {
+    const idStr = String(postId);
+    if (!idStr || deepLinkFetchInFlight.has(idStr)) return false;
+    deepLinkFetchInFlight.add(idStr);
+    deepLinkFetchAttempted.add(idStr);
+    try {
+      if (api && typeof api.publication === "function") {
+        try {
+          const fetched = await api.publication(idStr);
+          if (fetched && fetched.id !== undefined) {
+            upsertFetchedPost(fetched);
+            const detail = detailFromPost(fetched);
+            deepLinkConsumed = true;
+            pendingDeepLinkPostId = null;
+            if (state.tab !== "inicio") showTab("inicio");
+            openDetail(detail);
+            return true;
+          }
+        } catch (_) {
+          /* Si /api/publications/{id} falla, sincronizamos feed y agenda como respaldo */
+        }
+      }
+      if (api) {
+        const tasks = [loadFeed({ reset: true })];
+        if (state.token) tasks.push(loadAgenda());
+        await Promise.all(tasks);
+        const detailAfterSync = findPostDetailById(idStr);
+        if (detailAfterSync) {
+          deepLinkConsumed = true;
+          pendingDeepLinkPostId = null;
+          if (state.tab !== "inicio") showTab("inicio");
+          openDetail(detailAfterSync);
+          return true;
+        }
+      }
+      return false;
+    } finally {
+      deepLinkFetchInFlight.delete(idStr);
+    }
+  }
+
   function openPostModal(postIdOrUrl, options) {
     const opts = options || {};
     const postId = extractPostId(postIdOrUrl);
@@ -1702,10 +1756,8 @@
       return true;
     }
     pendingDeepLinkPostId = postId;
-    if (opts.fetchIfMissing !== false && api) {
-      const tasks = [loadFeed({ reset: true })];
-      if (state.token) tasks.push(loadAgenda());
-      Promise.all(tasks.map(track));
+    if (opts.fetchIfMissing !== false && api && !deepLinkFetchAttempted.has(postId)) {
+      track(fetchAndOpenDeepLinkedPost(postId));
     }
     return false;
   }
@@ -1714,12 +1766,16 @@
     const targetId =
       pendingDeepLinkPostId || (!deepLinkConsumed && !state.detail ? extractPostId(win.location.search) : "");
     if (!targetId) return false;
-    return openPostModal(targetId, { fetchIfMissing: false });
+    return openPostModal(targetId);
   }
 
   async function showNotification(item) {
-    const options = { body: item.body, tag: item.id, badge: "/campus/icons/badge-monochrome.png" };
-    if (item.icon) options.icon = item.icon;
+    const options = {
+      body: item.body,
+      tag: item.id,
+      badge: "/campus/icons/badge-monochrome.png",
+      icon: item.icon || "/campus/icons/transparent-pixel.png",
+    };
     try {
       if ("serviceWorker" in win.navigator) {
         const registration = await win.navigator.serviceWorker.getRegistration();
@@ -2120,7 +2176,13 @@
     const onSwNotificationMessage = (event) => {
       const data = (event && event.data) || {};
       if (data && data.type === "NOTIFICATION_CLICK") {
-        openPostModal(data.post_id || data.url);
+        const target = data.post_id || data.url;
+        const postId = extractPostId(target);
+        if (postId) {
+          deepLinkConsumed = false;
+          deepLinkFetchAttempted.delete(postId);
+        }
+        openPostModal(target);
       }
     };
     if ("serviceWorker" in win.navigator && typeof win.navigator.serviceWorker.addEventListener === "function") {
@@ -2240,7 +2302,14 @@
       while (pending.size) await Promise.allSettled([...pending]);
     },
     openDetail: (detail) => openDetail(detail),
-    openPostModal: (postIdOrUrl) => openPostModal(postIdOrUrl),
+    openPostModal: (postIdOrUrl, options) => {
+      const postId = extractPostId(postIdOrUrl);
+      if (postId) {
+        deepLinkConsumed = false;
+        deepLinkFetchAttempted.delete(postId);
+      }
+      return openPostModal(postIdOrUrl, options);
+    },
     refresh: () => track(refreshAll()),
     checkForSwUpdate: () => checkForSwUpdate(),
     enablePushNotifications: () => track(enablePushNotifications()),

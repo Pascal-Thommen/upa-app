@@ -1233,9 +1233,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await installPromise;
   assert.equal(skipWaitingCount, 1, "install debe invocar self.skipWaiting()");
-  assert.equal(cacheStore.has("upa-campus-shell-1.0.3"), true, "install debe crear el cache versionado 1.0.3");
+  assert.equal(cacheStore.has("upa-campus-shell-1.0.4"), true, "install debe crear el cache versionado 1.0.4");
 
-  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.3
+  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.4
   let activatePromise = null;
   swEvents.activate({
     waitUntil(p) {
@@ -1244,17 +1244,17 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await activatePromise;
   assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
-  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.3"], "activate debe limpiar todos los caches antiguos");
+  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.4"], "activate debe limpiar todos los caches antiguos");
 
   // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset
-  const activeCache = cacheStore.get("upa-campus-shell-1.0.3");
+  const activeCache = cacheStore.get("upa-campus-shell-1.0.4");
   await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
 
-  // Ejecutar fetch online para /campus/campus.js?v=1.0.3 (Network-First + invalidacion de ?v=1.0.2)
+  // Ejecutar fetch online para /campus/campus.js?v=1.0.4 (Network-First + invalidacion de ?v=1.0.2)
   assetRevision = "v-nueva-red";
   let fetchPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.3` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.4` },
     respondWith(p) {
       fetchPromise = p;
     },
@@ -1271,7 +1271,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   swOnline = false;
   let offlineAssetPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.3` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.4` },
     respondWith(p) {
       offlineAssetPromise = p;
     },
@@ -1322,12 +1322,12 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   assert.equal(shownNotifications[0].options.badge, "/campus/icons/badge-monochrome.png");
   assert.equal(
     shownNotifications[0].options.icon,
-    undefined,
-    "Sin imagen de post no debe renderizar el fallback blanco /campus/icons/icon-192.png",
+    "/campus/icons/transparent-pixel.png",
+    "Sin imagen de post debe usar transparent-pixel.png para evitar el circulo gris con 'U' en Android",
   );
   assert.equal(shownNotifications[0].options.data.url, `/?post=${seeded.urgentId}`);
 
-  // 6a. notificationclick sin ventana abierta -> clients.openWindow('/?post=<id>')
+  // 6a. notificationclick sin ventana abierta -> clients.openWindow('<origin>/?post=<id>')
   let openedUrl = null;
   let closedNotif = false;
   swContext.self.clients.openWindow = async (url) => {
@@ -1347,7 +1347,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await clickWaitPromise;
   assert.equal(closedNotif, true);
-  assert.equal(openedUrl, `/?post=${seeded.urgentId}`);
+  assert.equal(openedUrl, `${BASE_URL}/?post=${seeded.urgentId}`);
 
   // 6b. notificationclick con ventana PWA existente -> enfoca la ventana y envia postMessage NOTIFICATION_CLICK
   const postedToClient = [];
@@ -1388,6 +1388,35 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
     post_id: String(seeded.urgentId),
   });
 
+  // 6c. notificationclick en Android cuando client.focus() falla por estar en segundo plano -> fallback a clients.openWindow(absoluteUrl)
+  openedUrl = null;
+  swContext.self.clients.matchAll = async () => [
+    {
+      url: `${BASE_URL}/`,
+      postMessage() {},
+      async navigate() {},
+      async focus() {
+        throw new Error("Android background focus restriction");
+      },
+    },
+  ];
+  let clickAndroidBgPromise = null;
+  swEvents.notificationclick({
+    notification: {
+      data: shownNotifications[0].options.data,
+      close() {},
+    },
+    waitUntil(p) {
+      clickAndroidBgPromise = p;
+    },
+  });
+  await clickAndroidBgPromise;
+  assert.equal(
+    openedUrl,
+    `${BASE_URL}/?post=${seeded.urgentId}`,
+    "Si client.focus() falla en Android, debe ejecutar clients.openWindow con URL absoluta",
+  );
+
   // 7. Prueba de Firebase Messaging en sw.js (firebase.initializeApp + messaging.onBackgroundMessage)
   assert.ok(swFirebaseInitConfig, "sw.js debe inicializar Firebase con firebaseConfig");
   assert.equal(swFirebaseInitConfig.projectId, "upa-campus-app");
@@ -1409,12 +1438,12 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   assert.equal(shownNotifications[1].options.badge, "/campus/icons/badge-monochrome.png");
   assert.equal(
     shownNotifications[1].options.icon,
-    undefined,
-    "Incluso si el payload trae /campus/icons/icon-192.png debe limpiarse para no mostrar el recuadro blanco",
+    "/campus/icons/transparent-pixel.png",
+    "Incluso si el payload trae /campus/icons/icon-192.png debe reemplazarse por transparent-pixel.png",
   );
   assert.equal(shownNotifications[1].options.data.url, `/?post=${seeded.newsId}`);
 
-  // 8. En campus.js: carga con /?post=<id> y recepcion de postMessage NOTIFICATION_CLICK abren el modal de detalle a pantalla completa
+  // 8. En campus.js: carga con /?post=<id>, recepcion de NOTIFICATION_CLICK y fetch directo cuando no esta en memoria abren el modal a pantalla completa
   const deepLinkApp = await openCampus({
     url: `/?post=${seeded.newsId}`,
     token: TEST_TOKENS["ana.gomez@upa.edu.py"],
@@ -1438,6 +1467,20 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
       "Foro de Ingeniería Empresarial 2026",
       "Al recibir postMessage NOTIFICATION_CLICK debe abrir directamente el detalle de la publicacion indicada",
     );
+
+    // Simular que el post aun no esta en state.feed.posts ni en state.feed.banners: debe cargarlo del servidor y abrir el modal
+    await deepLinkApp.click(deepLinkApp.$("detail-close"));
+    assert.equal(deepLinkApp.$("detail").hidden, true);
+    deepLinkApp.window.UpaCampus.state.feed.posts = [];
+    deepLinkApp.window.UpaCampus.state.feed.banners = [];
+    deepLinkApp.window.UpaCampus.openPostModal(`/?post=${seeded.newsId}`);
+    await deepLinkApp.window.UpaCampus.idle();
+    assert.equal(
+      deepLinkApp.$("detail").hidden,
+      false,
+      "Si el post del deep-link no esta en memoria, debe descargarlo del servidor y abrir el modal inmediatamente",
+    );
+    assert.equal(deepLinkApp.$("detail-title").textContent, "Convocatoria de intercambio en Heidelberg");
   } finally {
     deepLinkApp.close();
   }
