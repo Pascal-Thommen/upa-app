@@ -831,9 +831,9 @@ def update_publication(
         details={"title": post.title, "changes": changes},
     )
 
-    # Para publicaciones de Instagram o nuevos grupos de notificacion, despachar aviso al guardar
+    # Para publicaciones de Instagram o cuando se indica notificar por push al guardar, despachar aviso
     newly_notified = [g for g in (post.notify_groups or []) if g not in prev_notify_groups]
-    if post.post_type == "INSTAGRAM" and post.notify_groups:
+    if (post.post_type == "INSTAGRAM" or "notify_groups" in payload.model_fields_set) and post.notify_groups:
         newly_notified = list(post.notify_groups)
 
     push_tokens: list[str] = []

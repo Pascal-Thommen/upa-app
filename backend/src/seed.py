@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal, engine, run_alembic_migrations
-from .models import AdminAuditLog, AudienceGroup, Post, User, UserRole
+from .models import AdminAuditLog, AudienceGroup, DeviceToken, Post, User, UserRole
 from .schemas.post import normalize_instagram_url
 from .schemas.user import REDUNDANT_GROUP_TAGS, sanitize_user_groups
 
@@ -107,6 +107,11 @@ def seed_database():
             db.commit()
             db.refresh(admin)
             print(f"[Seed] Administrador inicial creado: {admin.email}")
+
+        # Eliminar tokens sinteticos heredados (fcm_web_*) que no son tokens reales de Firebase
+        db.query(DeviceToken).filter(DeviceToken.device_token.ilike("fcm_web_%")).delete(
+            synchronize_session=False
+        )
 
         # Limpiar pseudo-grupos redundantes (ALL, TIE aislado) en usuarios existentes
         for existing_user in db.query(User).all():

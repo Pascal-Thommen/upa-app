@@ -9,6 +9,8 @@
 
 const VERSION = "1.0.3";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
+const FIREBASE_APP_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js";
+const FIREBASE_MESSAGING_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js";
 const firebaseConfig = {
   apiKey: "AIzaSyCvDxaM-b3uIS1s-yStQuX9yVONSwD1RCo",
   authDomain: "upa-campus-app.firebaseapp.com",
@@ -21,6 +23,14 @@ const VAPID_PUBLIC_KEY =
   "BNfsctw3qDvmsunaO45-JUwRouboQWtn4zXAyr5ejvVYt7ZipU_VLWozAsrlFPo2nXXMNFYLMH1k_RrSqSz-Lj8";
 const DEFAULT_NOTIFICATION_ICON = "/campus/icons/icon-192.png";
 const DEFAULT_NOTIFICATION_BADGE = "/campus/icons/favicon-32.png";
+
+if (typeof importScripts === "function") {
+  try {
+    importScripts(FIREBASE_APP_COMPAT_URL, FIREBASE_MESSAGING_COMPAT_URL);
+  } catch (_) {
+    /* En modo sin conexion el Service Worker mantiene el soporte push nativo */
+  }
+}
 const SHELL_FILES = [
   "/",
   "/manifest.webmanifest",
@@ -188,9 +198,15 @@ function parsePushPayload(event) {
       const text = typeof event.data.text === "function" ? String(event.data.text() || "").trim() : "";
       raw = text ? { notification: { title: "UPA Campus", body: text } } : {};
     }
+  } else if (event && typeof event === "object" && (event.notification || event.data || event.fcmOptions)) {
+    raw = event;
+  }
+  if (raw && typeof raw.FCM_MSG === "object" && raw.FCM_MSG) {
+    raw = raw.FCM_MSG;
   }
   const notification = (raw && typeof raw.notification === "object" && raw.notification) || {};
   const data = (raw && typeof raw.data === "object" && raw.data) || {};
+  const fcmOptions = (raw && typeof raw.fcmOptions === "object" && raw.fcmOptions) || {};
   const title = String(notification.title || data.title || raw.title || "UPA Campus").trim() || "UPA Campus";
   const body = String(notification.body || data.body || raw.body || "").trim();
   const icon = String(notification.icon || data.icon || raw.icon || DEFAULT_NOTIFICATION_ICON).trim();
@@ -198,6 +214,7 @@ function parsePushPayload(event) {
   const postId = data.post_id || raw.post_id || "";
   const deepLink =
     data.url ||
+    fcmOptions.link ||
     notification.click_action ||
     raw.url ||
     (postId ? `/?post=${encodeURIComponent(String(postId))}` : "/");
@@ -220,16 +237,38 @@ function parsePushPayload(event) {
   };
 }
 
+function showCampusNotification(payloadOrEvent) {
+  const { title, options } = parsePushPayload(payloadOrEvent);
+  return self.registration && typeof self.registration.showNotification === "function"
+    ? self.registration.showNotification(title, options)
+    : Promise.resolve();
+}
+
 self.addEventListener("push", (event) => {
-  const { title, options } = parsePushPayload(event);
-  const showPromise =
-    self.registration && typeof self.registration.showNotification === "function"
-      ? self.registration.showNotification(title, options)
-      : Promise.resolve();
+  if (event && typeof event.stopImmediatePropagation === "function") {
+    event.stopImmediatePropagation();
+  }
+  const showPromise = showCampusNotification(event);
   if (event && typeof event.waitUntil === "function") {
     event.waitUntil(showPromise);
   }
 });
+
+if (typeof firebase !== "undefined" && firebase && typeof firebase.initializeApp === "function") {
+  try {
+    if (!firebase.apps || !firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    if (typeof firebase.messaging === "function") {
+      const messaging = firebase.messaging();
+      if (messaging && typeof messaging.onBackgroundMessage === "function") {
+        messaging.onBackgroundMessage((payload) => showCampusNotification({ data: payload }));
+      }
+    }
+  } catch (_) {
+    /* Firebase Messaging se sincroniza cuando el entorno del navegador lo permite */
+  }
+}
 
 self.addEventListener("notificationclick", (event) => {
   if (event.notification && typeof event.notification.close === "function") {

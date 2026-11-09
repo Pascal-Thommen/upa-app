@@ -80,6 +80,7 @@
   let toastTimer = null;
   let highlightTimer = null;
   let swRegistration = null;
+  let swRegisterPromise = null;
   let swControllerBound = false;
   let swHadController = false;
   let swRefreshing = false;
@@ -1471,6 +1472,17 @@
 
   async function resolveSwRegistration() {
     if (swRegistration) return swRegistration;
+    if (swRegisterPromise) {
+      try {
+        const reg = await swRegisterPromise;
+        if (reg) {
+          swRegistration = reg;
+          return reg;
+        }
+      } catch (_) {
+        /* sin registro activo de Service Worker */
+      }
+    }
     if ("serviceWorker" in win.navigator && typeof win.navigator.serviceWorker.getRegistration === "function") {
       try {
         const reg = await win.navigator.serviceWorker.getRegistration();
@@ -1490,13 +1502,16 @@
       return { ok: false, reason: "permission_not_granted" };
     }
     try {
+      const existingStored = local.getItem(PUSH_TOKEN_KEY);
+      if (existingStored && !Core.isValidFcmToken(existingStored)) {
+        local.removeItem(PUSH_TOKEN_KEY);
+      }
       const reg = await resolveSwRegistration();
       const fcmToken = await Core.requestFcmToken({
         firebase: win.firebase,
         vapidKey: VAPID_PUBLIC_KEY,
         firebaseConfig,
         serviceWorkerRegistration: reg,
-        storage: local,
       });
       if (!fcmToken) return { ok: false, reason: "empty_token" };
       state.pushToken = fcmToken;
@@ -1986,18 +2001,19 @@
         }
       });
     }
-    track(
-      Promise.resolve()
-        .then(() => sw.register("/sw.js", { scope: "/", updateViaCache: "none" }))
-        .then((reg) => {
-          if (!reg) return;
-          bindSwRegistration(reg, sw);
-          return checkForSwUpdate();
-        })
-        .catch(() => {
-          /* sin service worker la app sigue funcionando en linea */
-        }),
-    );
+    swRegisterPromise = Promise.resolve()
+      .then(() => sw.register("/sw.js", { scope: "/", updateViaCache: "none" }))
+      .then((reg) => {
+        if (!reg) return null;
+        bindSwRegistration(reg, sw);
+        checkForSwUpdate();
+        return reg;
+      })
+      .catch(() => {
+        /* sin service worker la app sigue funcionando en linea */
+        return null;
+      });
+    track(swRegisterPromise);
   }
 
   let eventsBound = false;
@@ -2124,11 +2140,16 @@
   }
 
   async function start() {
-    if (!win.firebase) {
-      win.firebase = Core.createFirebaseBridge({
-        storage: local,
-        getSwRegistration: () => resolveSwRegistration(),
-      });
+    const storedPushToken = local.getItem(PUSH_TOKEN_KEY);
+    if (storedPushToken && !Core.isValidFcmToken(storedPushToken)) {
+      local.removeItem(PUSH_TOKEN_KEY);
+    }
+    if (win.firebase && typeof win.firebase.initializeApp === "function" && (!win.firebase.apps || !win.firebase.apps.length)) {
+      try {
+        win.firebase.initializeApp(firebaseConfig);
+      } catch (_) {
+        /* Firebase ya inicializado */
+      }
     }
     applyTheme(local.getItem(THEME_KEY));
     updateBetaIndicator();

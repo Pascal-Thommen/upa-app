@@ -20,7 +20,7 @@ import jwt
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import DeviceToken, EventRegistration, Post, User
+from ..models import AudienceGroup, DeviceToken, EventRegistration, Post, User
 from ..schemas.post import user_can_access_post
 
 logger = logging.getLogger(__name__)
@@ -266,16 +266,30 @@ class PushDispatcher:
 
 def collect_recipient_tokens(db: Session, target_groups: Any) -> list[str]:
     """
-    Reune los device tokens de todos los usuarios autorizados para ver una publicacion con los
-    grupos destino indicados.
+    Reune los device tokens de todos los usuarios autorizados para recibir una notificacion con los
+    grupos destino indicados (incluyendo grupos personalizados en AudienceGroup).
     """
+    audience_groups = db.query(AudienceGroup).all()
     allowed_ids = {
-        int(user.id) for user in db.query(User).all() if user_can_access_post(user, target_groups)
+        int(user.id)
+        for user in db.query(User).all()
+        if user_can_access_post(
+            user,
+            target_groups,
+            audience_groups=audience_groups,
+            allow_admin_bypass=False,
+        )
     }
     if not allowed_ids:
         return []
     rows = db.query(DeviceToken).filter(DeviceToken.user_id.in_(allowed_ids)).all()
-    return list(dict.fromkeys(row.device_token for row in rows if row.device_token))
+    return list(
+        dict.fromkeys(
+            row.device_token
+            for row in rows
+            if row.device_token and not row.device_token.strip().lower().startswith("fcm_web_")
+        )
+    )
 
 
 def collect_event_reminder_tokens(db: Session, post_id: int, target_groups: Any) -> list[str]:
@@ -292,15 +306,28 @@ def collect_event_reminder_tokens(db: Session, post_id: int, target_groups: Any)
         .filter(EventRegistration.post_id == post_id, EventRegistration.status == "declined")
         .all()
     }
+    audience_groups = db.query(AudienceGroup).all()
     allowed_ids = {
         int(user.id)
         for user in db.query(User).all()
-        if int(user.id) not in declined_user_ids and user_can_access_post(user, target_groups)
+        if int(user.id) not in declined_user_ids
+        and user_can_access_post(
+            user,
+            target_groups,
+            audience_groups=audience_groups,
+            allow_admin_bypass=False,
+        )
     }
     if not allowed_ids:
         return []
     rows = db.query(DeviceToken).filter(DeviceToken.user_id.in_(allowed_ids)).all()
-    return list(dict.fromkeys(row.device_token for row in rows if row.device_token))
+    return list(
+        dict.fromkeys(
+            row.device_token
+            for row in rows
+            if row.device_token and not row.device_token.strip().lower().startswith("fcm_web_")
+        )
+    )
 
 
 def build_emergency_message(post: Post) -> tuple[str, str, dict[str, str]]:

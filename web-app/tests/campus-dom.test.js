@@ -1155,9 +1155,25 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   cacheStore.set("upa-campus-shell-1.0.0", createMemoryCache());
   cacheStore.set("upa-campus-shell-1.0.2", createMemoryCache());
 
+  let swFirebaseInitConfig = null;
+  let swBackgroundMessageHandler = null;
   const swContext = vm.createContext({
     URL,
     Promise,
+    firebase: {
+      apps: [],
+      initializeApp(cfg) {
+        swFirebaseInitConfig = cfg;
+        this.apps.push(cfg);
+      },
+      messaging() {
+        return {
+          onBackgroundMessage(fn) {
+            swBackgroundMessageHandler = fn;
+          },
+        };
+      },
+    },
     self: {
       location: new URL(BASE_URL),
       addEventListener(type, handler) {
@@ -1324,6 +1340,26 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   await clickWaitPromise;
   assert.equal(closedNotif, true);
   assert.equal(openedUrl, `/?post=${seeded.urgentId}`);
+
+  // 7. Prueba de Firebase Messaging en sw.js (firebase.initializeApp + messaging.onBackgroundMessage)
+  assert.ok(swFirebaseInitConfig, "sw.js debe inicializar Firebase con firebaseConfig");
+  assert.equal(swFirebaseInitConfig.projectId, "upa-campus-app");
+  assert.equal(typeof swBackgroundMessageHandler, "function", "sw.js debe registrar messaging.onBackgroundMessage");
+  await swBackgroundMessageHandler({
+    notification: {
+      title: "Aviso Firebase Background",
+      body: "Mensaje recibido por onBackgroundMessage.",
+    },
+    data: {
+      type: "MANUAL",
+      post_id: String(seeded.newsId),
+    },
+  });
+  assert.equal(shownNotifications.length, 2);
+  assert.equal(shownNotifications[1].title, "Aviso Firebase Background");
+  assert.equal(shownNotifications[1].options.body, "Mensaje recibido por onBackgroundMessage.");
+  assert.equal(shownNotifications[1].options.icon, "/campus/icons/icon-192.png");
+  assert.equal(shownNotifications[1].options.data.url, `/?post=${seeded.newsId}`);
 });
 
 test("Notificaciones Push Web (FCM): opt-in exitoso registra token en /api/users/me/device-token y rechazo no bloquea la UI", live, async () => {
@@ -1347,7 +1383,7 @@ test("Notificaciones Push Web (FCM): opt-in exitoso registra token en /api/users
     messaging: () => ({
       getToken: async (opts) => {
         usedVapidKey = opts.vapidKey;
-        return "fcm_web_ana_campus_pwa_token_2026";
+        return "d9f8e7c6b5a4:APA91bH_ana_campus_pwa_token_2026";
       },
     }),
   };
@@ -1381,7 +1417,7 @@ test("Notificaciones Push Web (FCM): opt-in exitoso registra token en /api/users
       "BNfsctw3qDvmsunaO45-JUwRouboQWtn4zXAyr5ejvVYt7ZipU_VLWozAsrlFPo2nXXMNFYLMH1k_RrSqSz-Lj8",
     );
     assert.equal(app.window.UpaCampus.state.hasDeviceToken, true);
-    assert.equal(app.window.UpaCampus.state.pushToken, "fcm_web_ana_campus_pwa_token_2026");
+    assert.equal(app.window.UpaCampus.state.pushToken, "d9f8e7c6b5a4:APA91bH_ana_campus_pwa_token_2026");
     assert.equal(app.$("notify-hint").hidden, false);
     assert.match(app.$("notify-hint").textContent, /Notificaciones Push activadas/);
 

@@ -294,20 +294,42 @@ def extra_detail_fields(post: Any) -> dict[str, str]:
     }
 
 
-def user_can_access_post(user: Any, raw_groups: Any) -> bool:
+def _resolve_custom_audience_groups(user: Any, audience_groups: list[Any] | None = None) -> list[Any]:
+    if audience_groups is not None:
+        return list(audience_groups)
+    try:
+        from sqlalchemy.orm import object_session
+
+        from ..models import AudienceGroup
+
+        session = object_session(user)
+        if session is not None:
+            return list(session.query(AudienceGroup).all())
+    except Exception:
+        pass
+    return []
+
+
+def user_can_access_post(
+    user: Any,
+    raw_groups: Any,
+    *,
+    audience_groups: list[Any] | None = None,
+    allow_admin_bypass: bool = True,
+) -> bool:
     """
     Aplica el filtrado estricto basado en roles y grupos del servidor:
     - Sin usuario autenticado: solo publicaciones dirigidas a ALL o a todas las audiencias base.
-    - Rol admin/editor: acceso completo a todas las publicaciones.
-    - Rol user (estudiante/docente): acceso solo si la publicacion incluye ALL
-      o intersecta con los grupos asignados al usuario.
+    - Rol admin/editor: acceso completo a todas las publicaciones (salvo cuando allow_admin_bypass=False).
+    - Rol user (estudiante/docente): acceso solo si la publicacion incluye ALL,
+      intersecta con los grupos asignados al usuario o incluye al usuario en un AudienceGroup.
     """
     post_groups = {g.upper() for g in normalize_target_groups(raw_groups)}
     if "ALL" in post_groups or {"DOCENTES", "EGRESADOS", "ESTUDIANTES", "STAFF"}.issubset(post_groups):
         return True
     if user is None:
         return False
-    if getattr(user, "role", "user") in ("admin", "editor"):
+    if allow_admin_bypass and getattr(user, "role", "user") in ("admin", "editor"):
         return True
     raw_user_groups = getattr(user, "groups", None) or []
     user_groups = {"ALL", "ESTUDIANTES"}
@@ -342,6 +364,28 @@ def user_can_access_post(user: Any, raw_groups: Any) -> bool:
             user_groups.add(upper_val)
             if "@" in upper_val:
                 user_groups.add(upper_val.split("@", 1)[0])
+
+    user_email = str(getattr(user, "email", "") or "").strip().lower()
+    for ag in _resolve_custom_audience_groups(user, audience_groups):
+        ag_id = str(getattr(ag, "id", "") or "").strip().upper()
+        ag_name = str(getattr(ag, "name", "") or "").strip().upper()
+        ag_emails = {
+            str(e).strip().lower()
+            for e in (getattr(ag, "emails", None) or [])
+            if e is not None and str(e).strip()
+        }
+        ag_gg_tokens: set[str] = set()
+        for gg_entry in getattr(ag, "google_groups", None) or []:
+            clean_gg = str(gg_entry or "").strip().upper()
+            if clean_gg:
+                ag_gg_tokens.add(clean_gg)
+                if "@" in clean_gg:
+                    ag_gg_tokens.add(clean_gg.split("@", 1)[0])
+        if (user_email and user_email in ag_emails) or bool(user_groups & ag_gg_tokens):
+            if ag_id:
+                user_groups.add(ag_id)
+            if ag_name:
+                user_groups.add(ag_name)
 
     return bool(post_groups & user_groups)
 
