@@ -1,13 +1,13 @@
 import re
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import settings
 
-ASUNCION_TZ = ZoneInfo("America/Asuncion")
+PY_TZ = timezone(timedelta(hours=-3))
+ASUNCION_TZ = PY_TZ
 _SCHEMA_UPLOAD_URL_RE = re.compile(r"^https?://[^/\s]+(/uploads/\S*)$", re.IGNORECASE)
 
 
@@ -36,7 +36,7 @@ def parse_paraguay_datetime(raw: Any) -> datetime | None:
     """
     Convierte una cadena o datetime a UTC con soporte nativo para el formato paraguayo
     (DD/MM/YYYY y reloj de 24h HH:mm) ademas de ISO-8601.
-    Las fechas sin zona horaria explicita se interpretan en America/Asuncion.
+    Las fechas sin zona horaria explicita se interpretan en la hora oficial de Paraguay (UTC-3).
     """
     if raw is None:
         return None
@@ -62,7 +62,7 @@ def parse_paraguay_datetime(raw: Any) -> datetime | None:
         minute = int(py_match.group(5)) if py_match.group(5) is not None else 0
         second = int(py_match.group(6)) if py_match.group(6) is not None else 0
         try:
-            local_dt = datetime(year, month, day, hour, minute, second, tzinfo=ASUNCION_TZ)
+            local_dt = datetime(year, month, day, hour, minute, second, tzinfo=PY_TZ)
             return local_dt.astimezone(UTC)
         except ValueError as exc:
             raise ValueError(f"Fecha o hora invalida: {clean}") from exc
@@ -75,9 +75,7 @@ def parse_paraguay_datetime(raw: Any) -> datetime | None:
         raise ValueError(f"Formato de fecha no valido (use DD/MM/YYYY HH:mm o ISO-8601): {clean}") from exc
 
     if parsed.tzinfo is None:
-        # Si viene en formato local sin zona horaria (ej. YYYY-MM-DDTHH:mm), se interpreta en UTC para compatibilidad ISO,
-        # salvo cuando se indique explicitamente.
-        return parsed.replace(tzinfo=UTC)
+        return parsed.replace(tzinfo=PY_TZ).astimezone(UTC)
     return parsed.astimezone(UTC)
 
 
@@ -88,7 +86,7 @@ def parse_24h_time(raw: Any) -> time | None:
     if isinstance(raw, time):
         return raw.replace(tzinfo=None)
     if isinstance(raw, datetime):
-        local_dt = raw.astimezone(ASUNCION_TZ) if raw.tzinfo else raw
+        local_dt = raw.astimezone(PY_TZ) if raw.tzinfo else raw
         return time(local_dt.hour, local_dt.minute, local_dt.second)
     clean = str(raw).strip()
     if not clean:
@@ -105,26 +103,26 @@ def parse_24h_time(raw: Any) -> time | None:
 
 
 def format_paraguay_date(dt: datetime | None) -> str:
-    """Formatea un datetime en DD/MM/YYYY en la zona horaria de Asuncion."""
+    """Formatea un datetime en DD/MM/YYYY en la zona horaria de Asuncion (UTC-3)."""
     if dt is None:
         return ""
-    local_dt = ensure_utc_datetime(dt).astimezone(ASUNCION_TZ)
+    local_dt = ensure_utc_datetime(dt).astimezone(PY_TZ)
     return local_dt.strftime("%d/%m/%Y")
 
 
 def format_paraguay_time(dt: datetime | None) -> str:
-    """Formatea un datetime en HH:mm (24h) en la zona horaria de Asuncion."""
+    """Formatea un datetime en HH:mm (24h) en la zona horaria de Asuncion (UTC-3)."""
     if dt is None:
         return ""
-    local_dt = ensure_utc_datetime(dt).astimezone(ASUNCION_TZ)
+    local_dt = ensure_utc_datetime(dt).astimezone(PY_TZ)
     return local_dt.strftime("%H:%M")
 
 
 def format_paraguay_datetime(dt: datetime | None) -> str:
-    """Formatea un datetime en DD/MM/YYYY HH:mm (24h) en la zona horaria de Asuncion."""
+    """Formatea un datetime en DD/MM/YYYY HH:mm (24h) en la zona horaria de Asuncion (UTC-3)."""
     if dt is None:
         return ""
-    local_dt = ensure_utc_datetime(dt).astimezone(ASUNCION_TZ)
+    local_dt = ensure_utc_datetime(dt).astimezone(PY_TZ)
     return local_dt.strftime("%d/%m/%Y %H:%M")
 
 

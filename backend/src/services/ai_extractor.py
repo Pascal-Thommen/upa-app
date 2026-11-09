@@ -4,7 +4,7 @@ import base64
 import json
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -18,6 +18,7 @@ from . import gemini
 
 logger = logging.getLogger(__name__)
 
+PY_TZ = timezone(timedelta(hours=-3))
 AI_EXTRACTION_ENABLED_SETTING = "AI_EVENT_EXTRACTION_ENABLED"
 
 
@@ -44,7 +45,7 @@ def to_utc_datetime(raw: str | datetime | None) -> datetime | None:
     if parsed is None:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
+        return parsed.replace(tzinfo=PY_TZ).astimezone(UTC)
     return parsed.astimezone(UTC)
 
 
@@ -244,13 +245,14 @@ def _build_extraction_prompt(
         f"{active_system_prompt}\n"
         "Analiza esta publicación de Instagram de la Universidad Paraguayo Alemana (UPA) "
         "combinando el texto del pie de foto y la imagen adjunta (afiche/flyer).\n"
+        "Horarios y fechas en publicaciones de la UPA corresponden a la hora oficial de Paraguay (UTC-3).\n"
         f"Fecha de referencia de la publicación: {ref_iso}\n"
         f"Grupos institucionales disponibles: [{groups_str}]\n\n"
         "Instrucciones estrictas (CERO ALUCINACIONES / GROUNDING):\n"
         "1. Utiliza ÚNICAMENTE hechos explícitos que aparezcan en la imagen adjunta (afiche/flyer) o en el texto del pie de foto. Está terminantemente prohibido inventar fechas, horas o ubicaciones.\n"
         "2. El texto original de Instagram permanece inalterado en la publicación; tu función se limita a extraer metadatos de calendario y configurar destinatarios.\n"
         "3. Determina si la publicación anuncia un evento, charla, taller, conferencia o actividad con fecha/hora concreta explícita (is_event). Si falta fecha u hora en el material fuente, devuelve is_event: false y start_time: null.\n"
-        "4. Si es un evento confirmado, extrae event_title, start_time (ISO-8601), end_time (ISO-8601 o null), location (null si no se menciona explícitamente) y allow_registration.\n"
+        "4. Si es un evento confirmado, extrae event_title, start_time (ISO-8601 en hora oficial de Paraguay UTC-3, p. ej. YYYY-MM-DDTHH:MM:00-03:00), end_time (ISO-8601 o null), location (null si no se menciona explícitamente) y allow_registration.\n"
         "5. REGLA DE PLAUSIBILIDAD: start_time y end_time DEBEN estar en el mismo día calendario. "
         "Si la hora de finalización cae en otro día o no se menciona claramente, devuelve end_time como null (NO inventes horas de fin).\n"
         "6. SELECCIÓN CONSERVADORA DE GRUPOS (target_groups): Elige etiquetas de grupo de forma extremadamente conservadora. "

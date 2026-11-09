@@ -1,8 +1,7 @@
 import asyncio
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, Response
@@ -22,7 +21,8 @@ from ..schemas.feed import ErrorResponse
 
 router = APIRouter(prefix="/api/classroom", tags=["Classroom"])
 
-ASUNCION_TZ = ZoneInfo("America/Asuncion")
+PY_TZ = timezone(timedelta(hours=-3))
+ASUNCION_TZ = PY_TZ
 
 # Cache en memoria con TTL de 5 minutos
 _DEADLINES_CACHE: dict[str, tuple[float, list[ClassroomDeadlineResponse]]] = {}

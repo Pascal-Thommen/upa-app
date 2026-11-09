@@ -902,15 +902,39 @@ video.card-media {
   flex: 1 1 0;
 }
 
+.btn-rsvp.btn-registered,
+.btn-rsvp.btn-primary.is-active {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border: 1.5px solid var(--brand);
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] .btn-rsvp.btn-registered,
+:root[data-theme="dark"] .btn-rsvp.btn-primary.is-active {
+  color: var(--brand);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-rsvp.btn-registered,
+  :root:not([data-theme="light"]) .btn-rsvp.btn-primary.is-active {
+    color: var(--brand);
+  }
+}
+
 .btn-rsvp.btn-secondary.is-active {
   background: var(--surface-2);
-  border-color: var(--muted);
+  border: 1.5px solid var(--muted);
   color: var(--text);
   font-weight: 700;
 }
 
 .btn-rsvp.btn-subtle {
-  opacity: 0.78;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--card-border);
+  font-weight: 600;
+  opacity: 0.92;
 }
 
 .pin {

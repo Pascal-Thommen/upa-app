@@ -17,10 +17,12 @@ from src.config import settings
 from src.database import Base, get_db
 from src.main import app
 from src.models import AppSetting, AudienceGroup, Post, User, UserRole
+from src.schemas.post import PY_TZ, parse_paraguay_datetime
 from src.services.ai_extractor import (
     AIEventExtractionResult,
     enforce_same_day_rule,
     extract_event_from_instagram_post,
+    to_utc_datetime,
 )
 from src.services.instagram import InstagramSyncService, NormalizedSocialPost
 
@@ -147,6 +149,13 @@ def test_plausibility_rule_same_calendar_day():
     assert reversed_hours.end_time is None
     assert enforce_same_day_rule("2026-11-15T10:00:00Z", "2026-11-16T10:00:00Z") is None
 
+    # Zona horaria fija de Paraguay (UTC-3): las cadenas ISO sin offset se interpretan en PY_TZ (UTC-3)
+    assert PY_TZ.utcoffset(None).total_seconds() == -3 * 3600
+    assert to_utc_datetime("2026-11-19T18:30:00") == datetime(2026, 11, 19, 21, 30, tzinfo=UTC)
+    assert parse_paraguay_datetime("2026-11-19T18:30:00") == datetime(2026, 11, 19, 21, 30, tzinfo=UTC)
+    assert to_utc_datetime("2026-11-19T18:30:00-03:00") == datetime(2026, 11, 19, 21, 30, tzinfo=UTC)
+    assert to_utc_datetime("2026-11-19T21:30:00Z") == datetime(2026, 11, 19, 21, 30, tzinfo=UTC)
+
 
 def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch):
     captured_gemini_calls: list[dict] = []
@@ -234,7 +243,7 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
             )
         )
 
-        # Caso 2: Evento con end_time en el dia siguiente (debe filtrarse end_time a None) y sin push
+        # Caso 2: Evento con start_time sin zona horaria (naive en hora de Paraguay UTC-3 -> 21:30 UTC) y end_time en el dia siguiente (filtrado a None)
         gemini_json_queue.append(
             (
                 200,
@@ -248,8 +257,8 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
                                             {
                                                 "is_event": True,
                                                 "event_title": "Hackathon UPA",
-                                                "start_time": "2026-11-25T14:00:00Z",
-                                                "end_time": "2026-11-26T18:00:00Z",
+                                                "start_time": "2026-11-19T18:30:00",
+                                                "end_time": "2026-11-20T18:00:00",
                                                 "location": "Campus UPA",
                                                 "allow_registration": False,
                                                 "target_groups": [],
@@ -363,13 +372,13 @@ def test_multimodal_event_extraction_and_direct_publication_on_sync(monkeypatch)
         assert ev1.event_start.replace(tzinfo=UTC) == datetime(2026, 11, 20, 18, 0, tzinfo=UTC)
         assert ev1.event_end.replace(tzinfo=UTC) == datetime(2026, 11, 20, 20, 0, tzinfo=UTC)
 
-        # Verificar Post 2: End date en dia distinto fue filtrado a None y RSVP queda activo por defecto en eventos
+        # Verificar Post 2: Start_time naive 18:30 se convierte a 21:30 UTC (hora Paraguay UTC-3) y End date en dia distinto fue filtrado a None
         ev2 = db.query(Post).filter(Post.instagram_id == "ig_ai_event_2").first()
         assert ev2 is not None
         assert ev2.is_event is True
         assert ev2.is_ai_generated is True
         assert ev2.has_registration is True
-        assert ev2.event_start.replace(tzinfo=UTC) == datetime(2026, 11, 25, 14, 0, tzinfo=UTC)
+        assert ev2.event_start.replace(tzinfo=UTC) == datetime(2026, 11, 19, 21, 30, tzinfo=UTC)
         assert ev2.event_end is None
         assert ev2.target_groups == ["ALL"]
         assert ev2.send_push_notification is False
