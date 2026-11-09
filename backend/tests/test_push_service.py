@@ -103,12 +103,31 @@ async def test_sends_notification_with_exact_fcm_payload(dispatcher, fcm_server)
                     "badge": "/campus/icons/badge-monochrome.png",
                 },
                 "fcm_options": {
-                    "link": "/?post=7",
+                    "link": "https://upa-beta.eu1.netbird.services/?post=7",
                 },
             },
             "token": "tok-android-0001",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_sends_notification_with_configured_app_base_url(fcm_server, keypair, tmp_path):
+    account = write_service_account(tmp_path, keypair[0], f"{fcm_server.base_url}/token")
+    custom_dispatcher = PushDispatcher(
+        service_account_file=account,
+        api_base_url=fcm_server.base_url,
+        timeout_seconds=5.0,
+        app_base_url="https://campus.upa.edu.py/",
+    )
+    result = await custom_dispatcher.send_to_tokens(
+        ["tok-android-0002"],
+        title="Foro UPA",
+        body="Inicio en Aula Magna.",
+        data={"type": "MANUAL", "post_id": 42},
+    )
+    assert (result.attempted, result.sent, result.failed) == (1, 1, 0)
+    assert fcm_server.messages[-1]["webpush"]["fcm_options"]["link"] == "https://campus.upa.edu.py/?post=42"
 
 
 @pytest.mark.asyncio
@@ -322,7 +341,7 @@ def test_emergency_banner_triggers_push_to_targeted_devices_only(db_session, fcm
         assert message["data"] == {"type": "EMERGENCY_BANNER", "post_id": str(post_id)}
         assert message["webpush"] == {
             "notification": {"badge": "/campus/icons/badge-monochrome.png"},
-            "fcm_options": {"link": f"/?post={post_id}"},
+            "fcm_options": {"link": f"https://upa-beta.eu1.netbird.services/?post={post_id}"},
         }
 
     audit = db_session.query(AdminAuditLog).filter(AdminAuditLog.action == "CREATE_POST").one()

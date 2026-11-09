@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"  # Im Container: /app/uploads (WORKDIR /app), persistent per Volume
     MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
     PUBLIC_BASE_URL: str = ""  # Optional, z. B. https://api.upa.edu.py (sonst Basis-URL des Requests)
+    APP_BASE_URL: str = ""  # Optional, z. B. https://upa-beta.eu1.netbird.services (Basis-URL fuer Webpush Deep-Links)
 
     # Push-Benachrichtigungen (Firebase Cloud Messaging HTTP v1)
     FCM_SERVICE_ACCOUNT_FILE: str = "./secrets/firebase-service-account.json"

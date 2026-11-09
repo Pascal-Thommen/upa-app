@@ -382,6 +382,8 @@ class PublicationResponse(BaseModel):
     permalink: str = ""
     link_url: str = ""
     link_label: str = ""
+    is_registered: bool = False
+    registration_status: str | None = None
     views_count: int = 0
     attending_count: int = 0
     declined_count: int = 0
@@ -389,7 +391,7 @@ class PublicationResponse(BaseModel):
     updated_at: datetime | None = None
 
     @classmethod
-    def from_orm_post(cls, post: Any) -> "PublicationResponse":
+    def from_orm_post(cls, post: Any, current_user_id: int | None = None) -> "PublicationResponse":
         raw_title = (getattr(post, "title", None) or "").strip() or "Publicación UPA"
         raw_caption = (getattr(post, "caption", None) or "").strip()
         raw_content = (getattr(post, "content", None) or "").strip()
@@ -425,6 +427,15 @@ class PublicationResponse(BaseModel):
             1 for r in raw_regs if (getattr(r, "status", "attending") or "attending") == "attending"
         )
         declined_count = sum(1 for r in raw_regs if (getattr(r, "status", "") or "") == "declined")
+        reg_status: str | None = None
+        if current_user_id is not None:
+            for r in raw_regs:
+                if int(getattr(r, "user_id", 0) or 0) == int(current_user_id):
+                    st = (getattr(r, "status", None) or "attending").strip()
+                    if st in ("attending", "declined"):
+                        reg_status = st
+                    break
+        is_registered = reg_status == "attending"
 
         raw_is_edited = getattr(post, "is_edited", None)
         is_edited = bool(raw_is_edited) if raw_is_edited is not None else (post_type != "INSTAGRAM")
@@ -485,6 +496,8 @@ class PublicationResponse(BaseModel):
             image_url=img,
             permalink=effective_permalink(post),
             **extra_detail_fields(post),
+            is_registered=is_registered,
+            registration_status=reg_status,
             views_count=views_count,
             attending_count=attending_count,
             declined_count=declined_count,

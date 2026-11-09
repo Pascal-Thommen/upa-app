@@ -21,7 +21,7 @@
   const INSTALL_DISMISS_MS = 14 * 24 * 60 * 60 * 1000;
   const NOTIFY_WINDOW_MS = 24 * 60 * 60 * 1000;
   const DEFAULT_TIMEOUT_MS = 12000;
-  const APP_VERSION = "1.0.3";
+  const APP_VERSION = "1.0.4";
   const SW_UPDATE_COOLDOWN_MS = 5000;
   const DEFAULT_NOTIFICATIONS = { push: false, events: true, announcements: true, deadlines: true };
 
@@ -147,6 +147,7 @@
         const query = new URLSearchParams({ limit: String(p.limit || 20), offset: String(p.offset || 0) });
         return request(`/api/v1/feed?${query.toString()}`);
       },
+      publication: (postId) => request(`/api/publications/${encodeURIComponent(postId)}`),
       agenda: () => request("/api/v1/agenda"),
       register: (eventId) => request(`/api/events/${encodeURIComponent(eventId)}/register`, { method: "POST" }),
       unregister: (eventId) => request(`/api/events/${encodeURIComponent(eventId)}/register`, { method: "DELETE" }),

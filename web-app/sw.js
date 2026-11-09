@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const VERSION = "1.0.3";
+const VERSION = "1.0.4";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
 const FIREBASE_APP_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js";
 const FIREBASE_MESSAGING_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js";
@@ -21,7 +21,7 @@ const firebaseConfig = {
 };
 const VAPID_PUBLIC_KEY =
   "BNfsctw3qDvmsunaO45-JUwRouboQWtn4zXAyr5ejvVYt7ZipU_VLWozAsrlFPo2nXXMNFYLMH1k_RrSqSz-Lj8";
-const DEFAULT_NOTIFICATION_ICON = "";
+const DEFAULT_NOTIFICATION_ICON = "/campus/icons/transparent-pixel.png";
 const DEFAULT_NOTIFICATION_BADGE = "/campus/icons/badge-monochrome.png";
 
 if (typeof importScripts === "function") {
@@ -34,10 +34,10 @@ if (typeof importScripts === "function") {
 const SHELL_FILES = [
   "/",
   "/manifest.webmanifest",
-  "/campus/campus.css?v=1.0.3",
-  "/campus/campus-core.js?v=1.0.3",
-  "/campus/vendor/qrcode.js?v=1.0.3",
-  "/campus/campus.js?v=1.0.3",
+  "/campus/campus.css?v=1.0.4",
+  "/campus/campus-core.js?v=1.0.4",
+  "/campus/vendor/qrcode.js?v=1.0.4",
+  "/campus/campus.js?v=1.0.4",
   "/campus/icons/favicon.svg",
   "/campus/icons/favicon-32.png",
   "/campus/icons/apple-touch-icon.png",
@@ -45,6 +45,7 @@ const SHELL_FILES = [
   "/campus/icons/icon-512.png",
   "/campus/icons/icon-maskable-512.png",
   "/campus/icons/badge-monochrome.png",
+  "/campus/icons/transparent-pixel.png",
 ];
 
 async function precacheShell(cache) {
@@ -195,6 +196,31 @@ function extractPostIdFromUrl(url) {
   return m ? decodeURIComponent(m[1]).trim() : "";
 }
 
+function toRelativeAppUrl(pathOrUrl, postId) {
+  const raw = String(pathOrUrl || "").trim();
+  if (raw) {
+    try {
+      const parsed = new URL(raw, self.location.origin);
+      if (parsed.origin === self.location.origin) {
+        return `${parsed.pathname || "/"}${parsed.search || ""}${parsed.hash || ""}`;
+      }
+      return parsed.href;
+    } catch (_) {
+      return raw.startsWith("/") ? raw : `/${raw}`;
+    }
+  }
+  return postId ? `/?post=${encodeURIComponent(postId)}` : "/";
+}
+
+function toAbsoluteAppUrl(pathOrUrl, postId) {
+  const relative = toRelativeAppUrl(pathOrUrl, postId);
+  try {
+    return new URL(relative, self.location.origin).href;
+  } catch (_) {
+    return relative;
+  }
+}
+
 function parsePushPayload(event) {
   let raw = {};
   if (event && event.data) {
@@ -235,9 +261,9 @@ function parsePushPayload(event) {
       data.image ||
       raw.icon ||
       raw.image ||
-      DEFAULT_NOTIFICATION_ICON,
+      "",
   ).trim();
-  const icon = isFallbackNotificationIcon(rawIcon) ? "" : rawIcon;
+  const icon = !rawIcon || isFallbackNotificationIcon(rawIcon) ? DEFAULT_NOTIFICATION_ICON : rawIcon;
   const rawBadge = String(
     notification.badge || webpushNotif.badge || data.badge || raw.badge || DEFAULT_NOTIFICATION_BADGE,
   ).trim();
@@ -251,10 +277,11 @@ function parsePushPayload(event) {
     raw.url ||
     "";
   const postId = String(data.post_id || raw.post_id || extractPostIdFromUrl(rawLink) || "").trim();
-  const deepLink = rawLink || (postId ? `/?post=${encodeURIComponent(postId)}` : "/");
+  const deepLink = toRelativeAppUrl(rawLink, postId);
   const tag = String(notification.tag || data.tag || (postId ? `post:${postId}` : "upa-campus-push"));
   const options = {
     body,
+    icon,
     badge,
     tag,
     data: {
@@ -265,9 +292,6 @@ function parsePushPayload(event) {
       post_id: postId ? String(postId) : undefined,
     },
   };
-  if (icon) {
-    options.icon = icon;
-  }
   return { title, options };
 }
 
@@ -298,8 +322,9 @@ function resolveNotificationClickTarget(notification) {
   const postId = String(
     rawData.post_id || fcmData.post_id || extractPostIdFromUrl(rawUrl) || tagPostId || "",
   ).trim();
-  const targetUrl = rawUrl || (postId ? `/?post=${encodeURIComponent(postId)}` : "/");
-  return { targetUrl, postId: postId || null };
+  const targetUrl = toRelativeAppUrl(rawUrl, postId);
+  const absoluteUrl = toAbsoluteAppUrl(targetUrl, postId);
+  return { targetUrl, absoluteUrl, postId: postId || null };
 }
 
 self.addEventListener("push", (event) => {
@@ -319,7 +344,7 @@ self.addEventListener("notificationclick", (event) => {
   if (event.notification && typeof event.notification.close === "function") {
     event.notification.close();
   }
-  const { targetUrl, postId } = resolveNotificationClickTarget(event.notification);
+  const { targetUrl, absoluteUrl, postId } = resolveNotificationClickTarget(event.notification);
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (list) => {
       const appClients = (list || []).filter((c) => {
@@ -344,26 +369,35 @@ self.addEventListener("notificationclick", (event) => {
             /* ignorar si el cliente no acepta postMessage */
           }
         }
-        if (targetUrl && targetUrl !== "/" && typeof client.navigate === "function") {
-          try {
-            await client.navigate(targetUrl);
-          } catch (_) {
-            /* Si navigate no esta permitido, postMessage abre el detalle en la ventana activa */
-          }
-        }
+        let focused = false;
+        let activeClient = client;
         if (typeof client.focus === "function") {
           try {
-            return await client.focus();
+            const candidate = await client.focus();
+            activeClient = candidate || client;
+            focused = Boolean(
+              activeClient && activeClient.focused !== false && activeClient.visibilityState !== "hidden",
+            );
           } catch (_) {
-            return client;
+            focused = false;
           }
         }
-        return client;
+        if (targetUrl && targetUrl !== "/" && typeof activeClient.navigate === "function") {
+          try {
+            const navClient = await activeClient.navigate(targetUrl);
+            if (navClient) activeClient = navClient;
+          } catch (_) {
+            /* Si navigate no esta permitido, postMessage o openWindow abre el detalle */
+          }
+        }
+        if (focused) {
+          return activeClient;
+        }
       }
       if (self.clients && typeof self.clients.openWindow === "function") {
-        return self.clients.openWindow(targetUrl || "/");
+        return self.clients.openWindow(absoluteUrl || targetUrl || "/");
       }
-      return undefined;
+      return client || undefined;
     }),
   );
 });

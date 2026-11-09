@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import jwt
@@ -32,8 +33,31 @@ TOKEN_REFRESH_MARGIN_SECONDS = 60
 MAX_BODY_LENGTH = 240
 DEFAULT_PUSH_BADGE = "/campus/icons/badge-monochrome.png"
 DEFAULT_PUSH_BODY = "Nueva publicación disponible en UPA Campus"
+DEFAULT_APP_BASE_URL = "https://upa-beta.eu1.netbird.services"
 
 EMERGENCY_BANNER = "EMERGENCY_BANNER"
+
+
+def resolve_push_base_url(base_url_override: str = "") -> str:
+    """Resuelve el origen HTTPS absoluto para webpush.fcm_options.link."""
+    for candidate in (
+        base_url_override,
+        getattr(settings, "APP_BASE_URL", ""),
+        getattr(settings, "PUBLIC_BASE_URL", ""),
+        getattr(settings, "GOOGLE_REDIRECT_URI", ""),
+    ):
+        raw = (candidate or "").strip()
+        if not raw:
+            continue
+        if raw.startswith("http://"):
+            raw = "https://" + raw[len("http://") :]
+        elif not raw.startswith("https://"):
+            raw = f"https://{raw.lstrip('/')}"
+        parts = urlsplit(raw)
+        host = (parts.hostname or "").lower()
+        if parts.scheme == "https" and parts.netloc and not host.startswith("127.") and host != "localhost":
+            return f"https://{parts.netloc}"
+    return DEFAULT_APP_BASE_URL
 
 
 class PushConfigurationError(Exception):
@@ -123,11 +147,13 @@ class PushDispatcher:
         project_id: str = "",
         api_base_url: str = "https://fcm.googleapis.com",
         timeout_seconds: float = 10.0,
+        app_base_url: str = "",
     ) -> None:
         self._service_account_file = service_account_file
         self._project_id = project_id
         self._api_base_url = api_base_url.rstrip("/")
         self._timeout = timeout_seconds
+        self._app_base_url = app_base_url
         self._access_token: str | None = None
         self._access_token_expires_at: float = 0.0
 
@@ -138,6 +164,7 @@ class PushDispatcher:
             project_id=settings.FCM_PROJECT_ID,
             api_base_url=settings.FCM_API_BASE_URL,
             timeout_seconds=settings.FCM_TIMEOUT_SECONDS,
+            app_base_url=settings.APP_BASE_URL,
         )
 
     async def _fetch_access_token(self, client: httpx.AsyncClient, account: _ServiceAccount) -> str:
@@ -242,7 +269,8 @@ class PushDispatcher:
 
         clean_data = {str(k): str(v) for k, v in (data or {}).items()}
         post_id = clean_data.get("post_id", "").strip()
-        deep_link = f"/?post={post_id}" if post_id else "/"
+        base_url = resolve_push_base_url(self._app_base_url)
+        deep_link = f"{base_url}/?post={post_id}" if post_id else f"{base_url}/"
         message: dict[str, Any] = {
             "notification": {"title": title[:120], "body": body[:MAX_BODY_LENGTH]},
             "data": clean_data,
