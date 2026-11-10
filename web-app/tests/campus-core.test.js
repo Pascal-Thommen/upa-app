@@ -584,7 +584,7 @@ test("createApi: clasifica timeout, puerto cerrado (offline), HTTP 500 y HTTP 40
 });
 
 test("SW Auto-Update helpers: canAutoReload, shouldReloadOnControllerChange y requestSkipWaiting", () => {
-  assert.equal(Core.APP_VERSION, "1.0.6");
+  assert.equal(Core.APP_VERSION, "1.0.7");
   assert.equal(Core.canAutoReload(null), true);
   assert.equal(Core.canAutoReload({ activeElement: { tagName: "BUTTON" }, querySelectorAll: () => [] }), true);
   assert.equal(
