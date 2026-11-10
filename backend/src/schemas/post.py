@@ -335,8 +335,8 @@ def user_can_access_post(
     """
     Aplica el filtrado estricto basado en permisos (PBAC) y grupos del servidor:
     - Sin usuario autenticado: solo publicaciones dirigidas a ALL o a todas las audiencias base.
-    - Con permiso 'publicaciones' o 'roles': acceso completo a todas las publicaciones (salvo cuando allow_admin_bypass=False).
-    - Resto de usuarios (estudiante/docente): acceso solo si la publicacion incluye ALL,
+    - Con permiso concreto 'publicaciones': acceso completo a todas las publicaciones para el control editorial de contenidos (salvo cuando allow_admin_bypass=False).
+    - Usuarios que solo poseen 'roles' y el resto de usuarios (estudiante/docente): se filtran como usuarios regulares y tienen acceso solo si la publicacion incluye ALL,
       intersecta con los grupos asignados al usuario o incluye al usuario en un AudienceGroup.
     """
     post_groups = {g.upper() for g in normalize_target_groups(raw_groups)}
@@ -346,7 +346,7 @@ def user_can_access_post(
         return False
     if allow_admin_bypass:
         perms = _resolve_user_permissions(user, user_permissions)
-        if bool(perms & {"publicaciones", "roles"}):
+        if "publicaciones" in perms:
             return True
     raw_user_groups = getattr(user, "groups", None) or []
     user_groups = {"ALL", "ESTUDIANTES"}
