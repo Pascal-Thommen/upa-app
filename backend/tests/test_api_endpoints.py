@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from src.auth import create_access_token
 from src.database import Base, get_db
 from src.main import app
-from src.models import DeviceToken, Post, User
+from src.models import DeviceToken, Post, User, UserRole
 
 # SQLite In-Memory Engine mit StaticPool für gemeinsamen Speicher aller Connections
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -37,6 +37,14 @@ def setup_database():
     # User anlegen
     user = User(email="test@upa.edu.py", full_name="Test User", role="admin", groups=["TIE"])
     db.add(user)
+    db.add(
+        UserRole(
+            email="test@upa.edu.py",
+            name="Test User",
+            permissions=["publicaciones", "grupos", "roles", "apis", "ia", "historial"],
+            is_primary=True,
+        )
+    )
     db.commit()
     db.refresh(user)
 

@@ -119,12 +119,9 @@ def test_list_groups():
     student_res = client.get("/api/groups", headers=auth(STUDENT_ID, STUDENT_EMAIL, "user"))
     assert student_res.status_code == 403
 
-    # Redactor solo de publicaciones (sin permiso 'grupos') -> 200 pero con emails vacíos (sin filtración)
+    # Redactor solo de publicaciones (sin permiso 'grupos') -> 403 en el endpoint de grupos
     editor_res = client.get("/api/groups", headers=auth(EDITOR_ID, EDITOR_EMAIL, "editor"))
-    assert editor_res.status_code == 200
-    editor_data = editor_res.json()
-    assert len(editor_data) >= 2
-    assert all(g["emails"] == [] for g in editor_data)
+    assert editor_res.status_code == 403
 
     # Gestor con permiso 'grupos' -> 200 con lista completa de emails
     res = client.get("/api/groups", headers=auth(GROUPS_MGR_ID, GROUPS_MGR_EMAIL, "editor"))

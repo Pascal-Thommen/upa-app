@@ -461,3 +461,97 @@ def test_redirect_uri_setting_takes_precedence(monkeypatch):
     monkeypatch.setattr(auth_settings, "GOOGLE_REDIRECT_URI", "https://configured.example/api/auth/google")
     uri = _login_redirect_uri({"x-forwarded-proto": "https", "x-forwarded-host": "other.example"})
     assert uri == "https://configured.example/api/auth/google"
+
+
+def test_pure_pbac_ignores_user_role_middleman_for_feed_and_publications():
+    from src.models import Post, UserRole
+
+    db = TestingSessionLocal()
+    # Usuario con role='admin' en tabla users pero con UserRole sin 'publicaciones' ni 'roles'
+    limited_user = User(
+        id=91,
+        email="solo.grupos@upa.edu.py",
+        full_name="Solo Grupos",
+        role="admin",
+        groups=["TIE"],
+    )
+    # Usuario con role='user' en tabla users pero con permiso 'publicaciones' en UserRole
+    pbac_editor = User(
+        id=92,
+        email="redactor.pbac@upa.edu.py",
+        full_name="Redactor PBAC",
+        role="user",
+        groups=["TIE"],
+    )
+    restricted_post = Post(
+        id=901,
+        title="Comunicado Exclusivo Staff",
+        content="Contenido restringido a STAFF",
+        post_type="MANUAL",
+        is_news=True,
+        is_event=False,
+        target_groups=["STAFF"],
+    )
+    db.add_all(
+        [
+            limited_user,
+            pbac_editor,
+            restricted_post,
+            UserRole(
+                id=91,
+                email="solo.grupos@upa.edu.py",
+                name="Solo Grupos",
+                permissions=["grupos"],
+                is_primary=False,
+            ),
+            UserRole(
+                id=92,
+                email="redactor.pbac@upa.edu.py",
+                name="Redactor PBAC",
+                permissions=["publicaciones"],
+                is_primary=False,
+            ),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    limited_headers = {
+        "Authorization": f"Bearer {create_access_token({'sub': '91', 'email': 'solo.grupos@upa.edu.py', 'role': 'admin'})}"
+    }
+    editor_headers = {
+        "Authorization": f"Bearer {create_access_token({'sub': '92', 'email': 'redactor.pbac@upa.edu.py', 'role': 'user'})}"
+    }
+
+    # Sin 'publicaciones' recibe 403 al crear publicaciones o subir archivos (incluso si user.role == 'admin')
+    create_denied = client.post(
+        "/api/publications",
+        json={"title": "No permitido", "content": "Bloqueado", "is_news": True},
+        headers=limited_headers,
+    )
+    assert create_denied.status_code == 403
+
+    upload_denied = client.post(
+        "/api/media/upload",
+        files={"file": ("doc.pdf", b"%PDF-1.4\n%%EOF\n", "application/pdf")},
+        headers=limited_headers,
+    )
+    assert upload_denied.status_code == 403
+
+    # Sin 'publicaciones' ni 'roles' no tiene bypass en el feed para grupos ajenos
+    feed_limited = client.get("/api/v1/feed", headers=limited_headers)
+    assert feed_limited.status_code == 200
+    assert "Comunicado Exclusivo Staff" not in [p["title"] for p in feed_limited.json()["posts"]]
+
+    # Con 'publicaciones' en user_roles (aunque user.role == 'user') ve todos los posts en el feed y puede publicar
+    feed_editor = client.get("/api/v1/feed", headers=editor_headers)
+    assert feed_editor.status_code == 200
+    assert "Comunicado Exclusivo Staff" in [p["title"] for p in feed_editor.json()["posts"]]
+
+    create_allowed = client.post(
+        "/api/publications",
+        json={"title": "Publicacion PBAC", "content": "Autorizado por permiso publicaciones", "is_news": True},
+        headers=editor_headers,
+    )
+    assert create_allowed.status_code == 201
+

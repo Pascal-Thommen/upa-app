@@ -18,7 +18,7 @@ from sqlalchemy.pool import StaticPool
 from src.auth import create_access_token
 from src.database import Base, get_db
 from src.main import app
-from src.models import User
+from src.models import User, UserRole
 
 from tests.conftest import (
     BACKEND_DIR,
@@ -326,6 +326,13 @@ def live_backend(tmp_path_factory: pytest.TempPathFactory, request: pytest.Fixtu
             User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL", "TIE"]),
             User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion Marketing", role="editor", groups=["ALL"]),
             User(id=3, email="ana.gomez@upa.edu.py", full_name="Ana Gomez", role="user", groups=["ALL", "TIE"]),
+            UserRole(
+                id=1,
+                email="redaccion@upa.edu.py",
+                name="Redaccion Marketing",
+                permissions=["publicaciones"],
+                is_primary=False,
+            ),
         ],
     )
     env = {
