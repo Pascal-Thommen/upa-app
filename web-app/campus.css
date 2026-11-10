@@ -26,6 +26,27 @@
   color-scheme: light;
 }
 
+:root[data-theme="light"],
+:root[data-resolved-theme="light"] {
+  --bg: #e6edf5;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --text: #0f172a;
+  --muted: #475569;
+  --border: #dce4ee;
+  --card-border: #cbd5e1;
+  --brand: #5f7d08;
+  --brand-soft: #eef5d6;
+  --upa-u-color: #658509;
+  --accent: #1e40af;
+  --danger: #b91c1c;
+  --urgent-bg: #fef2f2;
+  --urgent-border: #fca5a5;
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  --card-shadow: 0 8px 20px -4px rgba(15, 23, 42, 0.12), 0 2px 6px -1px rgba(15, 23, 42, 0.07);
+  color-scheme: light;
+}
+
 :root[data-theme="dark"],
 :root[data-resolved-theme="dark"] {
   --bg: #080e1a;
@@ -48,7 +69,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) {
     --bg: #080e1a;
     --surface: #131c2e;
     --surface-2: #1a2540;
@@ -110,6 +131,9 @@ body::after {
   position: fixed;
   inset: 0;
   z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--bg);
   color: var(--text);
   pointer-events: none;

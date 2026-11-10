@@ -69,6 +69,11 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
         assert tp_img.mode == "RGBA"
         assert tp_img.getpixel((0, 0)) == (0, 0, 0, 0)
 
+    for icon_name in ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "favicon-32.png"):
+        with Image.open(WEB_APP / "icons" / icon_name) as pwa_img:
+            assert pwa_img.mode == "RGBA", f"{icon_name} debe tener canal alfa RGBA"
+            assert pwa_img.getpixel((0, 0))[3] == 0, f"{icon_name} debe tener fondo transparente sin recuadro blanco"
+
     with Image.open(WEB_APP / "icons" / "badge-monochrome.png") as badge_img:
         assert badge_img.mode == "RGBA"
         pixels = [badge_img.getpixel((x, y)) for y in range(badge_img.height) for x in range(badge_img.width)]
@@ -104,13 +109,13 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert "Probar la versión web aquí" not in html
 
     html_versions = set(re.findall(r"/campus/[\w./-]+\.(?:js|css)\?v=([\d.]+)", html))
-    assert html_versions == {"1.0.8"}
+    assert html_versions == {"1.0.9"}
     assert "upa-logo.png" not in html
     assert '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#e6edf5">' in html
     assert '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#080e1a">' in html
 
     sw = (WEB_APP / "sw.js").read_text(encoding="utf-8")
-    assert 'const VERSION = "1.0.8";' in sw
+    assert 'const VERSION = "1.0.9";' in sw
     assert "upa-logo.png" not in sw
     shell_files = re.findall(r'"(/[^"]*)"', sw.split("SHELL_FILES")[1].split("];")[0])
     assert "/" in shell_files and "/manifest.webmanifest" in shell_files

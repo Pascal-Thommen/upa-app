@@ -30,11 +30,36 @@
       position: fixed;
       inset: 0;
       z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       pointer-events: none;
+    }
+    #splash .logo-light {
+      color: #6c9339;
+      background: transparent;
+    }
+    #splash .logo-dark {
+      color: #ffffff;
+      background: transparent;
     }
     body:has(#app:not([hidden])) #splash,
     body:has(#landing:not([hidden])) #splash {
       display: none !important;
+    }
+    html[data-theme="light"],
+    html[data-resolved-theme="light"],
+    html[data-theme="light"] body,
+    html[data-resolved-theme="light"] body,
+    html[data-theme="light"] #splash,
+    html[data-resolved-theme="light"] #splash {
+      background-color: #e6edf5;
+      color: #0f172a;
+      color-scheme: light;
+    }
+    html[data-theme="light"] .tabbar,
+    html[data-resolved-theme="light"] .tabbar {
+      background-color: #ffffff;
     }
     html[data-theme="dark"],
     html[data-resolved-theme="dark"],
@@ -50,16 +75,30 @@
     html[data-resolved-theme="dark"] .tabbar {
       background-color: #131c2e;
     }
+    html[data-theme="dark"] .logo-light,
+    html[data-resolved-theme="dark"] .logo-light {
+      display: none !important;
+    }
+    html[data-theme="dark"] .logo-dark,
+    html[data-resolved-theme="dark"] .logo-dark {
+      display: inline-block !important;
+    }
     @media (prefers-color-scheme: dark) {
-      html:not([data-theme="light"]),
-      html:not([data-theme="light"]) body,
-      html:not([data-theme="light"]) #splash {
+      html:not([data-theme="light"]):not([data-resolved-theme="light"]),
+      html:not([data-theme="light"]):not([data-resolved-theme="light"]) body,
+      html:not([data-theme="light"]):not([data-resolved-theme="light"]) #splash {
         background-color: #080e1a;
         color: #e2e8f0;
         color-scheme: dark;
       }
-      html:not([data-theme="light"]) .tabbar {
+      html:not([data-theme="light"]):not([data-resolved-theme="light"]) .tabbar {
         background-color: #131c2e;
+      }
+      html:not([data-theme="light"]):not([data-resolved-theme="light"]) .logo-light {
+        display: none !important;
+      }
+      html:not([data-theme="light"]):not([data-resolved-theme="light"]) .logo-dark {
+        display: inline-block !important;
       }
     }
   </style>
@@ -73,17 +112,36 @@
           var attr = root.getAttribute("data-theme");
           var sysDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
           var dark = attr === "dark" || (attr !== "light" && sysDark);
-          root.setAttribute("data-resolved-theme", dark ? "dark" : "light");
-          root.style.backgroundColor = dark ? "#080e1a" : "#e6edf5";
-          root.style.colorScheme = dark ? "dark" : "light";
+          var resolved = dark ? "dark" : "light";
+          var bgColor = dark ? "#080e1a" : "#e6edf5";
+          var themeColor = dark ? "#080e1a" : "#ffffff";
+          if (root.getAttribute("data-resolved-theme") !== resolved) {
+            root.setAttribute("data-resolved-theme", resolved);
+          }
+          root.style.backgroundColor = bgColor;
+          root.style.colorScheme = resolved;
+          if (document.body) {
+            document.body.style.backgroundColor = bgColor;
+            document.body.style.colorScheme = resolved;
+          }
+          var colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
+          if (colorSchemeMeta) colorSchemeMeta.setAttribute("content", resolved);
           var metas = document.querySelectorAll('meta[name="theme-color"]');
           for (var i = 0; i < metas.length; i++) {
-            metas[i].setAttribute("content", dark ? "#0f172a" : "#ffffff");
+            metas[i].setAttribute("content", themeColor);
+          }
+          var lightLogos = document.querySelectorAll(".logo-light");
+          for (var j = 0; j < lightLogos.length; j++) {
+            lightLogos[j].hidden = dark;
+          }
+          var darkLogos = document.querySelectorAll(".logo-dark");
+          for (var k = 0; k < darkLogos.length; k++) {
+            darkLogos[k].hidden = !dark;
           }
         };
         syncTheme();
         if (typeof MutationObserver === "function") {
-          new MutationObserver(syncTheme).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+          new MutationObserver(syncTheme).observe(root, { attributes: true, attributeFilter: ["data-theme", "data-resolved-theme"] });
         }
         if (window.matchMedia) {
           var mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -92,11 +150,20 @@
       } catch (e) { /* almacenamiento no disponible: se usa el tema del sistema */ }
     })();
   </script>
-  <link rel="stylesheet" href="/campus/campus.css?v=1.0.8">
+  <link rel="stylesheet" href="/campus/campus.css?v=1.0.9">
 </head>
 <body>
   <noscript><p class="noscript">UPA Campus necesita JavaScript para funcionar.</p></noscript>
-  <div id="splash" aria-hidden="true"></div>
+  <div id="splash" aria-hidden="true">
+    <svg class="upa-signet logo-light" viewBox="0 0 152 58" width="96" height="37" role="img" aria-label="UPA">
+      <title>UPA</title>
+      <path fill="currentColor" fill-rule="evenodd" d="M2 2H20V35C20 41 21.8 44 25 44C28.2 44 30 41 30 35V2H48V35C48 49.5 39 56 25 56C11 56 2 49.5 2 35ZM56 2H82C93 2 99 8.5 99 20C99 31.5 93 38 82 38H74V55H56ZM74 14V26H80C83.5 26 85.5 23.8 85.5 20C85.5 16.2 83.5 14 80 14ZM116 2H134L150 55H132L129.2 44H120.8L118 55H100ZM125 16L121.8 32H128.2Z"/>
+    </svg>
+    <svg class="upa-signet logo-dark" viewBox="0 0 152 58" width="96" height="37" role="img" aria-label="UPA" hidden>
+      <title>UPA</title>
+      <path fill="currentColor" fill-rule="evenodd" d="M2 2H20V35C20 41 21.8 44 25 44C28.2 44 30 41 30 35V2H48V35C48 49.5 39 56 25 56C11 56 2 49.5 2 35ZM56 2H82C93 2 99 8.5 99 20C99 31.5 93 38 82 38H74V55H56ZM74 14V26H80C83.5 26 85.5 23.8 85.5 20C85.5 16.2 83.5 14 80 14ZM116 2H134L150 55H132L129.2 44H120.8L118 55H100ZM125 16L121.8 32H128.2Z"/>
+    </svg>
+  </div>
 
   <!-- Landing de escritorio -->
   <div id="landing" class="landing" hidden>
@@ -297,8 +364,8 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
-  <script src="/campus/campus-core.js?v=1.0.8"></script>
-  <script src="/campus/vendor/qrcode.js?v=1.0.8"></script>
-  <script src="/campus/campus.js?v=1.0.8"></script>
+  <script src="/campus/campus-core.js?v=1.0.9"></script>
+  <script src="/campus/vendor/qrcode.js?v=1.0.9"></script>
+  <script src="/campus/campus.js?v=1.0.9"></script>
 </body>
 </html>

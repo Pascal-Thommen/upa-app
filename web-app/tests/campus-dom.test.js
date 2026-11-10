@@ -929,33 +929,50 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(metaDark.getAttribute("media"), "(prefers-color-scheme: dark)");
     const topbarLightLogo = app.document.querySelector(".topbar .upa-signet.logo-light");
     const topbarDarkSignet = app.document.querySelector(".topbar .upa-signet.logo-dark");
+    const splashLightLogo = app.document.querySelector("#splash .upa-signet.logo-light");
+    const splashDarkSignet = app.document.querySelector("#splash .upa-signet.logo-dark");
+    const tabbar = app.document.querySelector(".tabbar");
+    const colorSchemeMeta = app.document.querySelector('meta[name="color-scheme"]');
     assert.ok(topbarLightLogo && topbarDarkSignet, "Deben existir las variantes clara (signet verde #6c9339) y oscura (signet blanco UPA) en la barra superior");
+    assert.ok(splashLightLogo && splashDarkSignet, "El splash debe incluir el signet vectorial UPA para modo claro y oscuro sin recuadro blanco");
     assert.equal(topbarLightLogo.tagName.toLowerCase(), "svg");
     assert.equal(topbarDarkSignet.tagName.toLowerCase(), "svg");
 
     await app.click(app.document.querySelector('[data-theme-option="dark"]'));
     assert.equal(app.document.documentElement.getAttribute("data-theme"), "dark");
     assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "dark");
-    assert.equal(meta.getAttribute("content"), "#0f172a");
-    assert.equal(metaDark.getAttribute("content"), "#0f172a");
+    assert.equal(meta.getAttribute("content"), "#080e1a");
+    assert.equal(metaDark.getAttribute("content"), "#080e1a");
+    assert.equal(colorSchemeMeta.getAttribute("content"), "dark");
+    assert.equal(app.document.documentElement.style.colorScheme, "dark");
     assert.equal(topbarDarkSignet.hidden, false, "En modo oscuro debe mostrarse el signet blanco monocromo UPA");
-    assert.equal(topbarLightLogo.hidden, true, "En modo oscuro debe ocultarse el logo con recuadro blanco");
+    assert.equal(topbarLightLogo.hidden, true, "En modo oscuro debe ocultarse el logo claro");
+    assert.equal(splashDarkSignet.hidden, false);
+    assert.equal(splashLightLogo.hidden, true);
+    assert.ok(tabbar.style.backgroundColor, "La barra inferior debe sincronizar su color de fondo en modo oscuro");
 
     await app.click(app.document.querySelector('[data-theme-option="light"]'));
     assert.equal(app.document.documentElement.getAttribute("data-theme"), "light");
     assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "light");
     assert.equal(meta.getAttribute("content"), "#ffffff");
     assert.equal(metaDark.getAttribute("content"), "#ffffff");
+    assert.equal(colorSchemeMeta.getAttribute("content"), "light");
+    assert.equal(app.document.documentElement.style.colorScheme, "light");
     assert.equal(topbarDarkSignet.hidden, true);
     assert.equal(topbarLightLogo.hidden, false);
+    assert.equal(splashDarkSignet.hidden, true);
+    assert.equal(splashLightLogo.hidden, false);
 
     await app.click(app.document.querySelector('[data-theme-option="system"]'));
     assert.equal(app.document.documentElement.hasAttribute("data-theme"), false);
     assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "dark");
-    assert.equal(meta.getAttribute("content"), "#0f172a");
-    assert.equal(metaDark.getAttribute("content"), "#0f172a");
+    assert.equal(meta.getAttribute("content"), "#080e1a");
+    assert.equal(metaDark.getAttribute("content"), "#080e1a");
+    assert.equal(colorSchemeMeta.getAttribute("content"), "dark");
     assert.equal(topbarDarkSignet.hidden, false);
     assert.equal(topbarLightLogo.hidden, true);
+    assert.equal(splashDarkSignet.hidden, false);
+    assert.equal(splashLightLogo.hidden, true);
 
     assert.equal(app.$("btn-push-optin"), null, "El boton redundante #btn-push-optin no debe existir en el perfil");
     const pushInput = app.$("push-opt-in");
@@ -1241,9 +1258,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await installPromise;
   assert.equal(skipWaitingCount, 1, "install debe invocar self.skipWaiting()");
-  assert.equal(cacheStore.has("upa-campus-shell-1.0.8"), true, "install debe crear el cache versionado 1.0.8");
+  assert.equal(cacheStore.has("upa-campus-shell-1.0.9"), true, "install debe crear el cache versionado 1.0.9");
 
-  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.8
+  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.9
   let activatePromise = null;
   swEvents.activate({
     waitUntil(p) {
@@ -1252,17 +1269,17 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await activatePromise;
   assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
-  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.8"], "activate debe limpiar todos los caches antiguos");
+  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.9"], "activate debe limpiar todos los caches antiguos");
 
   // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset
-  const activeCache = cacheStore.get("upa-campus-shell-1.0.8");
+  const activeCache = cacheStore.get("upa-campus-shell-1.0.9");
   await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
 
-  // Ejecutar fetch online para /campus/campus.js?v=1.0.8 (Network-First + invalidacion de ?v=1.0.2)
+  // Ejecutar fetch online para /campus/campus.js?v=1.0.9 (Network-First + invalidacion de ?v=1.0.2)
   assetRevision = "v-nueva-red";
   let fetchPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.8` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.9` },
     respondWith(p) {
       fetchPromise = p;
     },
@@ -1279,7 +1296,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   swOnline = false;
   let offlineAssetPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.8` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.9` },
     respondWith(p) {
       offlineAssetPromise = p;
     },

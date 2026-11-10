@@ -9,7 +9,7 @@ from PIL import Image, ImageChops, ImageDraw
 
 RAIZ = Path(__file__).resolve().parent.parent
 DESTINO = RAIZ / "web-app" / "icons"
-FONDO = (255, 255, 255, 255)
+FONDO = (0, 0, 0, 0)
 COLOR_UPA = (108, 147, 57, 255)  # #6c9339
 
 
@@ -82,7 +82,7 @@ def _render_signet_mask(ancho: int, alto: int) -> Image.Image:
 
 
 def componer(tamano: int, proporcion: float) -> Image.Image:
-    """Centra el signet vectorial UPA sobre fondo blanco limpio."""
+    """Centra el signet vectorial UPA sobre fondo transparente RGBA."""
     ancho = max(1, int(tamano * proporcion))
     alto = max(1, int(round(ancho * 58 / 152)))
     mask = _render_signet_mask(ancho, alto)
@@ -92,7 +92,7 @@ def componer(tamano: int, proporcion: float) -> Image.Image:
 
     lienzo = Image.new("RGBA", (tamano, tamano), FONDO)
     lienzo.alpha_composite(signet, ((tamano - ancho) // 2, (tamano - alto) // 2))
-    return lienzo.convert("RGB")
+    return lienzo
 
 
 def componer_monocromo(tamano: int = 96, proporcion: float = 0.88) -> Image.Image:
