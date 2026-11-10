@@ -1421,8 +1421,9 @@
     const prefersDark = typeof win.matchMedia === "function" && win.matchMedia("(prefers-color-scheme: dark)").matches;
     const resolved = Core.resolveTheme(theme, prefersDark);
     root.setAttribute("data-resolved-theme", resolved);
-    const meta = doc.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", Core.THEME_COLORS[resolved]);
+    doc.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+      meta.setAttribute("content", Core.THEME_COLORS[resolved]);
+    });
     const isDark = resolved === "dark";
     doc.querySelectorAll(".logo-light").forEach((el) => {
       el.hidden = isDark;

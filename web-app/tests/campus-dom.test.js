@@ -921,7 +921,12 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(app.$("profile-avatar").textContent, "AG");
     assert.equal(app.$("profile-groups"), null, "El contenedor #profile-groups no debe existir en el perfil");
 
-    const meta = app.document.querySelector('meta[name="theme-color"]');
+    const metas = app.document.querySelectorAll('meta[name="theme-color"]');
+    assert.equal(metas.length, 2, "Deben existir los dos meta theme-color con media queries para light y dark");
+    const meta = metas[0];
+    const metaDark = metas[1];
+    assert.equal(meta.getAttribute("media"), "(prefers-color-scheme: light)");
+    assert.equal(metaDark.getAttribute("media"), "(prefers-color-scheme: dark)");
     const topbarLightLogo = app.document.querySelector(".topbar .upa-signet.logo-light");
     const topbarDarkSignet = app.document.querySelector(".topbar .upa-signet.logo-dark");
     assert.ok(topbarLightLogo && topbarDarkSignet, "Deben existir las variantes clara (signet verde #6c9339) y oscura (signet blanco UPA) en la barra superior");
@@ -932,6 +937,7 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(app.document.documentElement.getAttribute("data-theme"), "dark");
     assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "dark");
     assert.equal(meta.getAttribute("content"), "#0f172a");
+    assert.equal(metaDark.getAttribute("content"), "#0f172a");
     assert.equal(topbarDarkSignet.hidden, false, "En modo oscuro debe mostrarse el signet blanco monocromo UPA");
     assert.equal(topbarLightLogo.hidden, true, "En modo oscuro debe ocultarse el logo con recuadro blanco");
 
@@ -939,6 +945,7 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(app.document.documentElement.getAttribute("data-theme"), "light");
     assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "light");
     assert.equal(meta.getAttribute("content"), "#ffffff");
+    assert.equal(metaDark.getAttribute("content"), "#ffffff");
     assert.equal(topbarDarkSignet.hidden, true);
     assert.equal(topbarLightLogo.hidden, false);
 
@@ -946,6 +953,7 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     assert.equal(app.document.documentElement.hasAttribute("data-theme"), false);
     assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "dark");
     assert.equal(meta.getAttribute("content"), "#0f172a");
+    assert.equal(metaDark.getAttribute("content"), "#0f172a");
     assert.equal(topbarDarkSignet.hidden, false);
     assert.equal(topbarLightLogo.hidden, true);
 
@@ -1233,9 +1241,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await installPromise;
   assert.equal(skipWaitingCount, 1, "install debe invocar self.skipWaiting()");
-  assert.equal(cacheStore.has("upa-campus-shell-1.0.7"), true, "install debe crear el cache versionado 1.0.7");
+  assert.equal(cacheStore.has("upa-campus-shell-1.0.8"), true, "install debe crear el cache versionado 1.0.8");
 
-  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.7
+  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.8
   let activatePromise = null;
   swEvents.activate({
     waitUntil(p) {
@@ -1244,17 +1252,17 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await activatePromise;
   assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
-  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.7"], "activate debe limpiar todos los caches antiguos");
+  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.8"], "activate debe limpiar todos los caches antiguos");
 
   // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset
-  const activeCache = cacheStore.get("upa-campus-shell-1.0.7");
+  const activeCache = cacheStore.get("upa-campus-shell-1.0.8");
   await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
 
-  // Ejecutar fetch online para /campus/campus.js?v=1.0.7 (Network-First + invalidacion de ?v=1.0.2)
+  // Ejecutar fetch online para /campus/campus.js?v=1.0.8 (Network-First + invalidacion de ?v=1.0.2)
   assetRevision = "v-nueva-red";
   let fetchPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.7` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.8` },
     respondWith(p) {
       fetchPromise = p;
     },
@@ -1271,7 +1279,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   swOnline = false;
   let offlineAssetPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.7` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.8` },
     respondWith(p) {
       offlineAssetPromise = p;
     },
