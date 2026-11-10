@@ -1233,9 +1233,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await installPromise;
   assert.equal(skipWaitingCount, 1, "install debe invocar self.skipWaiting()");
-  assert.equal(cacheStore.has("upa-campus-shell-1.0.6"), true, "install debe crear el cache versionado 1.0.6");
+  assert.equal(cacheStore.has("upa-campus-shell-1.0.7"), true, "install debe crear el cache versionado 1.0.7");
 
-  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.6
+  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.7
   let activatePromise = null;
   swEvents.activate({
     waitUntil(p) {
@@ -1244,17 +1244,17 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await activatePromise;
   assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
-  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.6"], "activate debe limpiar todos los caches antiguos");
+  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.7"], "activate debe limpiar todos los caches antiguos");
 
   // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset
-  const activeCache = cacheStore.get("upa-campus-shell-1.0.6");
+  const activeCache = cacheStore.get("upa-campus-shell-1.0.7");
   await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
 
-  // Ejecutar fetch online para /campus/campus.js?v=1.0.6 (Network-First + invalidacion de ?v=1.0.2)
+  // Ejecutar fetch online para /campus/campus.js?v=1.0.7 (Network-First + invalidacion de ?v=1.0.2)
   assetRevision = "v-nueva-red";
   let fetchPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.6` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.7` },
     respondWith(p) {
       fetchPromise = p;
     },
@@ -1271,7 +1271,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   swOnline = false;
   let offlineAssetPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.6` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.7` },
     respondWith(p) {
       offlineAssetPromise = p;
     },
