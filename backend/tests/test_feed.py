@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from src.auth import create_access_token
 from src.database import Base, get_db
 from src.main import app
-from src.models import Post, PostView, User
+from src.models import Post, PostView, User, UserRole
 
 # In-Memory SQLite Engine für isolierte Feed-Tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -310,3 +310,102 @@ def test_feed_rapid_paging_and_empty_feed_without_sql_errors():
     empty_guest = client.get("/api/v1/feed")
     assert empty_guest.status_code == 200
     assert empty_guest.json() == {"urgent_banners": [], "posts": []}
+
+
+def test_feed_bypass_restricted_strictly_to_publicaciones_permission():
+    db = TestingSessionLocal()
+    roles_only_user = User(
+        id=40,
+        email="it.roles@upa.edu.py",
+        full_name="IT Admin Solo Roles",
+        role="admin",
+        groups=["TIE"],
+    )
+    editor_user = User(
+        id=41,
+        email="editor.pub@upa.edu.py",
+        full_name="Redactor Publicaciones",
+        role="user",
+        groups=["TIE"],
+    )
+    docentes_post = Post(
+        id=400,
+        title="Circular Exclusiva Docentes",
+        caption="Solo para cuerpo docente",
+        content="Contenido restringido a docentes",
+        post_type="MANUAL",
+        is_news=True,
+        is_event=False,
+        is_pinned=False,
+        target_groups=["docentes"],
+        author_id=1,
+        created_at=datetime.now(UTC),
+    )
+    docentes_banner = Post(
+        id=401,
+        title="Aviso Urgente Exclusivo Docentes",
+        caption="Reunión urgente de facultad",
+        content="Solo para docentes",
+        post_type="EMERGENCY_BANNER",
+        is_news=True,
+        is_event=False,
+        is_pinned=True,
+        expires_at=datetime.now(UTC) + timedelta(hours=3),
+        target_groups=["docentes"],
+        author_id=1,
+        created_at=datetime.now(UTC),
+    )
+    db.add_all(
+        [
+            roles_only_user,
+            editor_user,
+            docentes_post,
+            docentes_banner,
+            UserRole(
+                id=40,
+                email="it.roles@upa.edu.py",
+                name="IT Admin Solo Roles",
+                permissions=["roles"],
+                is_primary=False,
+            ),
+            UserRole(
+                id=41,
+                email="editor.pub@upa.edu.py",
+                name="Redactor Publicaciones",
+                permissions=["publicaciones"],
+                is_primary=False,
+            ),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    roles_only_headers = {
+        "Authorization": f"Bearer {create_access_token({'sub': '40', 'email': 'it.roles@upa.edu.py', 'role': 'admin'})}"
+    }
+    editor_headers = {
+        "Authorization": f"Bearer {create_access_token({'sub': '41', 'email': 'editor.pub@upa.edu.py', 'role': 'user'})}"
+    }
+
+    # Usuario con únicamente 'roles' NO tiene bypass: ve su grupo (TIE) y ALL, pero NO 'docentes'
+    res_roles = client.get("/api/v1/feed", headers=roles_only_headers)
+    assert res_roles.status_code == 200
+    roles_data = res_roles.json()
+    roles_post_titles = [p["title"] for p in roles_data["posts"]]
+    roles_banner_titles = [b["title"] for b in roles_data["urgent_banners"]]
+    assert "Circular Exclusiva Docentes" not in roles_post_titles
+    assert "Aviso Urgente Exclusivo Docentes" not in roles_banner_titles
+    assert "Charla IA: Daniel Romero" in roles_post_titles
+    assert "Búsqueda Laboral: Recepcionista" in roles_post_titles
+
+    # Usuario con 'publicaciones' SÍ tiene bypass editorial: ve todas las publicaciones y banners
+    res_editor = client.get("/api/v1/feed", headers=editor_headers)
+    assert res_editor.status_code == 200
+    editor_data = res_editor.json()
+    editor_post_titles = [p["title"] for p in editor_data["posts"]]
+    editor_banner_titles = [b["title"] for b in editor_data["urgent_banners"]]
+    assert "Circular Exclusiva Docentes" in editor_post_titles
+    assert "Aviso Urgente Exclusivo Docentes" in editor_banner_titles
+    assert "Charla IA: Daniel Romero" in editor_post_titles
+    assert "Búsqueda Laboral: Recepcionista" in editor_post_titles
+
