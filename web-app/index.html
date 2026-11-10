@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>UPA Campus</title>
   <meta name="description" content="UPA Campus: noticias, eventos y agenda de la Universidad Paraguayo Alemana.">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e6edf5">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#080e1a">
   <meta name="color-scheme" content="light dark">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -75,8 +76,10 @@
           root.setAttribute("data-resolved-theme", dark ? "dark" : "light");
           root.style.backgroundColor = dark ? "#080e1a" : "#e6edf5";
           root.style.colorScheme = dark ? "dark" : "light";
-          var meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute("content", dark ? "#0f172a" : "#ffffff");
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) {
+            metas[i].setAttribute("content", dark ? "#0f172a" : "#ffffff");
+          }
         };
         syncTheme();
         if (typeof MutationObserver === "function") {
@@ -89,7 +92,7 @@
       } catch (e) { /* almacenamiento no disponible: se usa el tema del sistema */ }
     })();
   </script>
-  <link rel="stylesheet" href="/campus/campus.css?v=1.0.7">
+  <link rel="stylesheet" href="/campus/campus.css?v=1.0.8">
 </head>
 <body>
   <noscript><p class="noscript">UPA Campus necesita JavaScript para funcionar.</p></noscript>
@@ -294,8 +297,8 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
-  <script src="/campus/campus-core.js?v=1.0.7"></script>
-  <script src="/campus/vendor/qrcode.js?v=1.0.7"></script>
-  <script src="/campus/campus.js?v=1.0.7"></script>
+  <script src="/campus/campus-core.js?v=1.0.8"></script>
+  <script src="/campus/vendor/qrcode.js?v=1.0.8"></script>
+  <script src="/campus/campus.js?v=1.0.8"></script>
 </body>
 </html>
