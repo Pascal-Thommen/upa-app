@@ -26,7 +26,8 @@
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:root[data-resolved-theme="dark"] {
   --bg: #080e1a;
   --surface: #131c2e;
   --surface-2: #1a2540;
@@ -84,12 +85,39 @@ body {
   height: 100%;
   overflow: hidden;
   background: var(--bg);
+  background-color: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 16px;
   line-height: 1.45;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--safe-bottom);
+  background: var(--surface);
+  z-index: 9;
+  pointer-events: none;
+}
+
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  background: var(--bg);
+  color: var(--text);
+  pointer-events: none;
+}
+
+body:has(#app:not([hidden])) #splash,
+body:has(#landing:not([hidden])) #splash {
+  display: none !important;
 }
 
 button,
@@ -700,8 +728,21 @@ p {
   grid-template-columns: repeat(3, 1fr);
   min-height: calc(var(--tabbar-h) + var(--safe-bottom));
   background: var(--surface);
+  background-color: var(--surface);
   border-top: 1px solid var(--border);
   padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+  box-shadow: 0 var(--safe-bottom) 0 var(--safe-bottom) var(--surface);
+}
+
+.tabbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: max(var(--safe-bottom), 48px);
+  background: var(--surface);
+  pointer-events: none;
 }
 
 .tab {
