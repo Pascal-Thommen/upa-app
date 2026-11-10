@@ -1420,11 +1420,28 @@
     else root.setAttribute("data-theme", theme);
     const prefersDark = typeof win.matchMedia === "function" && win.matchMedia("(prefers-color-scheme: dark)").matches;
     const resolved = Core.resolveTheme(theme, prefersDark);
-    root.setAttribute("data-resolved-theme", resolved);
-    doc.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
-      meta.setAttribute("content", Core.THEME_COLORS[resolved]);
-    });
     const isDark = resolved === "dark";
+    const themeColor = Core.THEME_COLORS[resolved];
+    const bgColor = (Core.THEME_BG_COLORS && Core.THEME_BG_COLORS[resolved]) || (isDark ? "#080e1a" : "#e6edf5");
+    const surfaceColor =
+      (Core.THEME_SURFACE_COLORS && Core.THEME_SURFACE_COLORS[resolved]) || (isDark ? "#131c2e" : "#ffffff");
+    root.setAttribute("data-resolved-theme", resolved);
+    root.style.backgroundColor = bgColor;
+    root.style.colorScheme = resolved;
+    root.style.setProperty("--bg", bgColor);
+    root.style.setProperty("--surface", surfaceColor);
+    if (doc.body) {
+      doc.body.style.backgroundColor = bgColor;
+      doc.body.style.colorScheme = resolved;
+    }
+    const colorSchemeMeta = doc.querySelector('meta[name="color-scheme"]');
+    if (colorSchemeMeta) colorSchemeMeta.setAttribute("content", resolved);
+    doc.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+      meta.setAttribute("content", themeColor);
+    });
+    doc.querySelectorAll(".tabbar").forEach((bar) => {
+      bar.style.backgroundColor = surfaceColor;
+    });
     doc.querySelectorAll(".logo-light").forEach((el) => {
       el.hidden = isDark;
     });

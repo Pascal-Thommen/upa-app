@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const VERSION = "1.0.8";
+const VERSION = "1.0.9";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
 const FIREBASE_APP_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js";
 const FIREBASE_MESSAGING_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js";
@@ -34,10 +34,10 @@ if (typeof importScripts === "function") {
 const SHELL_FILES = [
   "/",
   "/manifest.webmanifest",
-  "/campus/campus.css?v=1.0.8",
-  "/campus/campus-core.js?v=1.0.8",
-  "/campus/vendor/qrcode.js?v=1.0.8",
-  "/campus/campus.js?v=1.0.8",
+  "/campus/campus.css?v=1.0.9",
+  "/campus/campus-core.js?v=1.0.9",
+  "/campus/vendor/qrcode.js?v=1.0.9",
+  "/campus/campus.js?v=1.0.9",
   "/campus/icons/favicon.svg",
   "/campus/icons/favicon-32.png",
   "/campus/icons/apple-touch-icon.png",
