@@ -34,6 +34,15 @@ LEGACY_PERMISSION_LABELS: dict[str, str] = {
     "auditoria": "historial",
 }
 
+# Cuentas de emergencia de administracion (root fallback cuando no existe fila propia en user_roles).
+ADMIN_EMAILS: frozenset[str] = frozenset(
+    {
+        "pascal.thommen@upa.edu.py",
+        "soporte.ti@upa.edu.py",
+        "admin@upa.edu.py",
+    }
+)
+
 # Permiso por defecto de una cuenta de redaccion sin registro propio en la tabla de roles.
 DEFAULT_EDITOR_PERMISSIONS: tuple[str, ...] = ("publicaciones",)
 
@@ -80,21 +89,19 @@ def find_unknown_permissions(raw_values: list[str]) -> list[str]:
 
 def effective_permissions(db: Session, user: User) -> list[str]:
     """
-    Permisos vigentes del usuario:
+    Permisos vigentes del usuario (PBAC puro sin user.role como intermediario):
     1. Si existe un registro explicito en user_roles para su correo, se respetan exactamente sus permisos guardados.
-    2. Sin fila en user_roles: admin = todos los modulos; editor = publicaciones; resto = ninguno.
+    2. Si el correo pertenece a ADMIN_EMAILS, actua como root de emergencia con todos los modulos.
+    3. Cualquier otro caso no tiene permisos de portal ([]).
     """
-    clean_email = (user.email or "").strip().lower()
+    clean_email = (getattr(user, "email", None) or "").strip().lower()
     if clean_email:
         record = db.query(UserRole).filter(UserRole.email == clean_email).first()
         if record is not None:
             return normalize_role_record_permissions(record)
+        if clean_email in ADMIN_EMAILS:
+            return list(PERMISSION_KEYS)
 
-    role = (user.role or "user").strip()
-    if role == "admin":
-        return list(PERMISSION_KEYS)
-    if role == "editor":
-        return list(DEFAULT_EDITOR_PERMISSIONS)
     return []
 
 

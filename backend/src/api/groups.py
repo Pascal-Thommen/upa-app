@@ -3,7 +3,6 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from ..auth import require_editor
 from ..database import get_db
 from ..models import AudienceGroup, User
 from ..permissions import effective_permissions, require_permission
@@ -39,7 +38,7 @@ def _snapshot(group: AudienceGroup) -> dict:
 @router.get("", response_model=list[AudienceGroupResponse], summary="Listar grupos de audiencia institucionales")
 def list_groups(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_editor),
+    current_user: User = Depends(require_permission("grupos")),
 ) -> list[AudienceGroupResponse]:
     groups = sorted(
         db.query(AudienceGroup).all(),

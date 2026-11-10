@@ -11,9 +11,9 @@ from pydantic import BaseModel, Field
 from starlette.responses import Response
 from starlette.types import Scope
 
-from ..auth import require_editor
 from ..config import settings
 from ..models import User
+from ..permissions import require_permission
 from ..schemas.feed import ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -152,7 +152,7 @@ def _bad_request(detail: str) -> HTTPException:
 async def upload_media(
     request: Request,
     file: UploadFile | None = File(None, description="Archivo multipart/form-data (campo 'file')"),
-    current_user: User = Depends(require_editor),
+    current_user: User = Depends(require_permission("publicaciones")),
 ) -> MediaUploadResponse:
     """
     Guarda el archivo de forma persistente con nombre UUID y devuelve su URL publica.
