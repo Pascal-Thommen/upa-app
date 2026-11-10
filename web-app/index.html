@@ -10,20 +10,82 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="UPA Campus">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="format-detection" content="telephone=no">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="/campus/icons/favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/campus/icons/favicon-32.png">
   <link rel="apple-touch-icon" href="/campus/icons/apple-touch-icon.png">
+  <style>
+    html, body, #splash {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #e6edf5;
+      color: #0f172a;
+      color-scheme: light;
+    }
+    #splash {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+    body:has(#app:not([hidden])) #splash,
+    body:has(#landing:not([hidden])) #splash {
+      display: none !important;
+    }
+    html[data-theme="dark"],
+    html[data-resolved-theme="dark"],
+    html[data-theme="dark"] body,
+    html[data-resolved-theme="dark"] body,
+    html[data-theme="dark"] #splash,
+    html[data-resolved-theme="dark"] #splash {
+      background-color: #080e1a;
+      color: #e2e8f0;
+      color-scheme: dark;
+    }
+    html[data-theme="dark"] .tabbar,
+    html[data-resolved-theme="dark"] .tabbar {
+      background-color: #131c2e;
+    }
+    @media (prefers-color-scheme: dark) {
+      html:not([data-theme="light"]),
+      html:not([data-theme="light"]) body,
+      html:not([data-theme="light"]) #splash {
+        background-color: #080e1a;
+        color: #e2e8f0;
+        color-scheme: dark;
+      }
+      html:not([data-theme="light"]) .tabbar {
+        background-color: #131c2e;
+      }
+    }
+  </style>
   <script>
     (function () {
       try {
+        var root = document.documentElement;
         var t = localStorage.getItem("upa_campus_theme");
-        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-        var dark = t === "dark" || (t !== "light" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.setAttribute("data-resolved-theme", dark ? "dark" : "light");
-        document.querySelector('meta[name="theme-color"]').setAttribute("content", dark ? "#0f172a" : "#ffffff");
+        if (t === "light" || t === "dark") root.setAttribute("data-theme", t);
+        var syncTheme = function () {
+          var attr = root.getAttribute("data-theme");
+          var sysDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var dark = attr === "dark" || (attr !== "light" && sysDark);
+          root.setAttribute("data-resolved-theme", dark ? "dark" : "light");
+          root.style.backgroundColor = dark ? "#080e1a" : "#e6edf5";
+          root.style.colorScheme = dark ? "dark" : "light";
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", dark ? "#0f172a" : "#ffffff");
+        };
+        syncTheme();
+        if (typeof MutationObserver === "function") {
+          new MutationObserver(syncTheme).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+        }
+        if (window.matchMedia) {
+          var mq = window.matchMedia("(prefers-color-scheme: dark)");
+          if (mq && typeof mq.addEventListener === "function") mq.addEventListener("change", syncTheme);
+        }
       } catch (e) { /* almacenamiento no disponible: se usa el tema del sistema */ }
     })();
   </script>
@@ -31,6 +93,7 @@
 </head>
 <body>
   <noscript><p class="noscript">UPA Campus necesita JavaScript para funcionar.</p></noscript>
+  <div id="splash" aria-hidden="true"></div>
 
   <!-- Landing de escritorio -->
   <div id="landing" class="landing" hidden>
