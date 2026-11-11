@@ -114,7 +114,7 @@
           var dark = attr === "dark" || (attr !== "light" && sysDark);
           var resolved = dark ? "dark" : "light";
           var bgColor = dark ? "#080e1a" : "#e6edf5";
-          var themeColor = dark ? "#080e1a" : "#ffffff";
+          var themeColor = dark ? "#080e1a" : "#e6edf5";
           if (root.getAttribute("data-resolved-theme") !== resolved) {
             root.setAttribute("data-resolved-theme", resolved);
           }
@@ -150,7 +150,7 @@
       } catch (e) { /* almacenamiento no disponible: se usa el tema del sistema */ }
     })();
   </script>
-  <link rel="stylesheet" href="/campus/campus.css?v=1.0.11">
+  <link rel="stylesheet" href="/campus/campus.css?v=1.0.12">
 </head>
 <body>
   <noscript><p class="noscript">UPA Campus necesita JavaScript para funcionar.</p></noscript>
@@ -364,8 +364,8 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
-  <script src="/campus/campus-core.js?v=1.0.11"></script>
-  <script src="/campus/vendor/qrcode.js?v=1.0.11"></script>
-  <script src="/campus/campus.js?v=1.0.11"></script>
+  <script src="/campus/campus-core.js?v=1.0.12"></script>
+  <script src="/campus/vendor/qrcode.js?v=1.0.12"></script>
+  <script src="/campus/campus.js?v=1.0.12"></script>
 </body>
 </html>

@@ -95,6 +95,18 @@ def componer(tamano: int, proporcion: float) -> Image.Image:
     return lienzo.convert("RGB")
 
 
+def componer_maskable(tamano: int = 512, proporcion: float = 0.58) -> Image.Image:
+    """Maskable opaco en el azul oscuro del splash (background_color): signet blanco, sin caja blanca."""
+    ancho = max(1, int(tamano * proporcion))
+    alto = max(1, int(round(ancho * 58 / 152)))
+    mask = _render_signet_mask(ancho, alto)
+    signet = Image.new("RGBA", (ancho, alto), (255, 255, 255, 255))
+    signet.putalpha(mask)
+    lienzo = Image.new("RGBA", (tamano, tamano), (8, 14, 26, 255))
+    lienzo.alpha_composite(signet, ((tamano - ancho) // 2, (tamano - alto) // 2))
+    return lienzo.convert("RGB")
+
+
 def componer_splash(tamano: int, proporcion: float) -> Image.Image:
     """Signet UPA blanco sobre fondo transparente (RGBA): el splash oscuro de Android no muestra caja."""
     ancho = max(1, int(tamano * proporcion))
@@ -136,7 +148,7 @@ def main() -> None:
     componer_splash(192, 0.78).save(DESTINO / "icon-192.png", optimize=True)
     componer_splash(512, 0.78).save(DESTINO / "icon-512.png", optimize=True)
     # Zona segura maskable: el contenido debe caber en el circulo central del 80 por ciento
-    componer(512, 0.58).save(DESTINO / "icon-maskable-512.png", optimize=True)
+    componer_maskable(512, 0.58).save(DESTINO / "icon-maskable-512.png", optimize=True)
     componer(180, 0.78).save(DESTINO / "apple-touch-icon.png", optimize=True)
     componer(32, 0.92).save(DESTINO / "favicon-32.png", optimize=True)
     componer_monocromo(96, 0.88).save(DESTINO / "badge-monochrome.png", optimize=True)
