@@ -10,8 +10,8 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
-  "background_color": "#080e1a",
-  "theme_color": "#080e1a",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "dark_background_color": "#080e1a",
   "dark_theme_color": "#080e1a",
   "user_preferences": {

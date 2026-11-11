@@ -954,8 +954,8 @@ test("Perfil: datos del usuario, cambio de tema en 3 modos, notificaciones y cie
     await app.click(app.document.querySelector('[data-theme-option="light"]'));
     assert.equal(app.document.documentElement.getAttribute("data-theme"), "light");
     assert.equal(app.document.documentElement.getAttribute("data-resolved-theme"), "light");
-    assert.equal(meta.getAttribute("content"), "#e6edf5");
-    assert.equal(metaDark.getAttribute("content"), "#e6edf5");
+    assert.equal(meta.getAttribute("content"), "#ffffff");
+    assert.equal(metaDark.getAttribute("content"), "#ffffff");
     assert.equal(colorSchemeMeta.getAttribute("content"), "light");
     assert.equal(app.document.documentElement.style.colorScheme, "light");
     assert.equal(topbarDarkSignet.hidden, true);
