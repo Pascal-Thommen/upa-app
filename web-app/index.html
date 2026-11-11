@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>UPA Campus</title>
   <meta name="description" content="UPA Campus: noticias, eventos y agenda de la Universidad Paraguayo Alemana.">
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e6edf5">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#080e1a">
   <meta name="color-scheme" content="light dark">
   <meta name="mobile-web-app-capable" content="yes">
@@ -36,7 +36,7 @@
       pointer-events: none;
     }
     #splash .logo-light {
-      color: #6c9339;
+      color: #1f4d1a;
       background: transparent;
     }
     #splash .logo-dark {
@@ -67,7 +67,7 @@
     html[data-resolved-theme="dark"] body,
     html[data-theme="dark"] #splash,
     html[data-resolved-theme="dark"] #splash {
-      background-color: #080e1a;
+      background-color: #000000;
       color: #e2e8f0;
       color-scheme: dark;
     }
@@ -87,7 +87,7 @@
       html:not([data-theme="light"]):not([data-resolved-theme="light"]),
       html:not([data-theme="light"]):not([data-resolved-theme="light"]) body,
       html:not([data-theme="light"]):not([data-resolved-theme="light"]) #splash {
-        background-color: #080e1a;
+        background-color: #000000;
         color: #e2e8f0;
         color-scheme: dark;
       }
@@ -114,7 +114,7 @@
           var dark = attr === "dark" || (attr !== "light" && sysDark);
           var resolved = dark ? "dark" : "light";
           var bgColor = dark ? "#080e1a" : "#e6edf5";
-          var themeColor = dark ? "#080e1a" : "#e6edf5";
+          var themeColor = dark ? "#080e1a" : "#ffffff";
           if (root.getAttribute("data-resolved-theme") !== resolved) {
             root.setAttribute("data-resolved-theme", resolved);
           }

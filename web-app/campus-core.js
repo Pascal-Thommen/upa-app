@@ -17,7 +17,7 @@
   const TIMEZONE = "America/Asuncion";
   const LOCALE = "es-PY";
   const THEMES = ["system", "light", "dark"];
-  const THEME_COLORS = { light: "#e6edf5", dark: "#080e1a" };
+  const THEME_COLORS = { light: "#ffffff", dark: "#080e1a" };
   const THEME_BG_COLORS = { light: "#e6edf5", dark: "#080e1a" };
   const THEME_SURFACE_COLORS = { light: "#ffffff", dark: "#131c2e" };
   const INSTALL_DISMISS_MS = 14 * 24 * 60 * 60 * 1000;
