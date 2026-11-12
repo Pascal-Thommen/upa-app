@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from src.auth import create_access_token
 from src.database import Base, get_db, run_alembic_migrations
 from src.main import app
-from src.models import AdminAuditLog, EventRegistration, Post, User, UserRole
+from src.models import AdminAuditLog, EventRegistration, Post, User
 
 engine = create_engine(
     "sqlite:///:memory:",
@@ -53,20 +53,6 @@ def setup_database():
             User(id=EDITOR, email="u2@upa.edu.py", full_name="Redaccion UPA", role="editor", groups=["ALL"]),
             User(id=STUDENT, email="u3@upa.edu.py", full_name="Ana Gomez", role="user", groups=["ALL", "TIE"]),
             User(id=STUDENT_B, email="u4@upa.edu.py", full_name="Luis Benitez", role="user", groups=["ALL", "PI"]),
-            UserRole(
-                id=1,
-                email="u1@upa.edu.py",
-                name="Admin UPA",
-                permissions=["publicaciones", "grupos", "roles", "apis", "ia", "historial"],
-                is_primary=True,
-            ),
-            UserRole(
-                id=2,
-                email="u2@upa.edu.py",
-                name="Redaccion UPA",
-                permissions=["publicaciones"],
-                is_primary=False,
-            ),
         ]
     )
     db.commit()

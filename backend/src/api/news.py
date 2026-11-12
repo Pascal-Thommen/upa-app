@@ -3,9 +3,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from ..auth import require_editor
 from ..database import get_db
 from ..models import User
-from ..permissions import require_permission
 from ..schemas.feed import ErrorResponse
 from ..services.instagram import instagram_service
 
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/news", tags=["News"])
 )
 async def sync_instagram_posts(
     db: Session = Depends(get_db),
-    admin: User = Depends(require_permission("publicaciones")),
+    admin: User = Depends(require_editor),
 ) -> dict[str, Any]:
     """
     Ejecuta la sincronizacion manual de publicaciones de Instagram (@upalemana).

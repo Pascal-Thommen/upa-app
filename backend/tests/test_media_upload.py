@@ -16,7 +16,7 @@ from src.auth import create_access_token
 from src.config import settings
 from src.database import Base, get_db
 from src.main import app
-from src.models import User, UserRole
+from src.models import User
 
 engine = create_engine(
     "sqlite:///:memory:",
@@ -73,13 +73,6 @@ def setup_database():
             User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL"]),
             User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion UPA", role="editor", groups=["ALL"]),
             User(id=3, email="estudiante@upa.edu.py", full_name="Estudiante TIE", role="user", groups=["TIE"]),
-            UserRole(
-                id=1,
-                email="redaccion@upa.edu.py",
-                name="Redaccion UPA",
-                permissions=["publicaciones"],
-                is_primary=False,
-            ),
         ]
     )
     db.commit()

@@ -26,29 +26,7 @@
   color-scheme: light;
 }
 
-:root[data-theme="light"],
-:root[data-resolved-theme="light"] {
-  --bg: #e6edf5;
-  --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --text: #0f172a;
-  --muted: #475569;
-  --border: #dce4ee;
-  --card-border: #cbd5e1;
-  --brand: #5f7d08;
-  --brand-soft: #eef5d6;
-  --upa-u-color: #658509;
-  --accent: #1e40af;
-  --danger: #b91c1c;
-  --urgent-bg: #fef2f2;
-  --urgent-border: #fca5a5;
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
-  --card-shadow: 0 8px 20px -4px rgba(15, 23, 42, 0.12), 0 2px 6px -1px rgba(15, 23, 42, 0.07);
-  color-scheme: light;
-}
-
-:root[data-theme="dark"],
-:root[data-resolved-theme="dark"] {
+:root[data-theme="dark"] {
   --bg: #080e1a;
   --surface: #131c2e;
   --surface-2: #1a2540;
@@ -69,7 +47,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) {
+  :root:not([data-theme="light"]) {
     --bg: #080e1a;
     --surface: #131c2e;
     --surface-2: #1a2540;
@@ -106,66 +84,12 @@ body {
   height: 100%;
   overflow: hidden;
   background: var(--bg);
-  background-color: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 16px;
   line-height: 1.45;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior: none;
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: var(--safe-bottom);
-  background: var(--surface);
-  z-index: 9;
-  pointer-events: none;
-}
-
-#splash {
-  position: fixed;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #ffffff;
-  background-color: #ffffff;
-  color: #1f4d1a;
-  pointer-events: none;
-}
-
-#splash .upa-signet.logo-light {
-  color: #1f4d1a;
-}
-
-#splash .upa-signet.logo-dark {
-  color: #ffffff;
-}
-
-:root[data-theme="dark"] #splash,
-:root[data-resolved-theme="dark"] #splash {
-  background: #000000;
-  background-color: #000000;
-  color: #ffffff;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) #splash {
-    background: #000000;
-    background-color: #000000;
-    color: #ffffff;
-  }
-}
-
-body:has(#app:not([hidden])) #splash,
-body:has(#landing:not([hidden])) #splash {
-  display: none !important;
 }
 
 button,
@@ -521,10 +445,10 @@ p {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) .logo-light {
+  :root:not([data-theme="light"]) .logo-light {
     display: none !important;
   }
-  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) .logo-dark {
+  :root:not([data-theme="light"]) .logo-dark {
     display: inline-block !important;
     color: #ffffff;
     background: transparent;
@@ -776,21 +700,8 @@ p {
   grid-template-columns: repeat(3, 1fr);
   min-height: calc(var(--tabbar-h) + var(--safe-bottom));
   background: var(--surface);
-  background-color: var(--surface);
   border-top: 1px solid var(--border);
   padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
-  box-shadow: 0 var(--safe-bottom) 0 var(--safe-bottom) var(--surface);
-}
-
-.tabbar::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  height: max(var(--safe-bottom), 48px);
-  background: var(--surface);
-  pointer-events: none;
 }
 
 .tab {
