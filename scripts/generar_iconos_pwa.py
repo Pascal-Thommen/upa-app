@@ -145,10 +145,10 @@ def componer_transparente(tamano: int = 1) -> Image.Image:
 
 def main() -> None:
     DESTINO.mkdir(parents=True, exist_ok=True)
-    componer_splash(192, 0.78).save(DESTINO / "icon-192.png", optimize=True)
-    componer_splash(512, 0.78).save(DESTINO / "icon-512.png", optimize=True)
+    componer(192, 0.62).save(DESTINO / "icon-192.png", optimize=True)
+    componer(512, 0.62).save(DESTINO / "icon-512.png", optimize=True)
     # Zona segura maskable: el contenido debe caber en el circulo central del 80 por ciento
-    componer_maskable(512, 0.58).save(DESTINO / "icon-maskable-512.png", optimize=True)
+    componer(512, 0.58).save(DESTINO / "icon-maskable-512.png", optimize=True)
     componer(180, 0.78).save(DESTINO / "apple-touch-icon.png", optimize=True)
     componer(32, 0.92).save(DESTINO / "favicon-32.png", optimize=True)
     componer_monocromo(96, 0.88).save(DESTINO / "badge-monochrome.png", optimize=True)

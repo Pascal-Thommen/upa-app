@@ -134,9 +134,33 @@ body::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
-  color: var(--text);
+  background: #ffffff;
+  background-color: #ffffff;
+  color: #1f4d1a;
   pointer-events: none;
+}
+
+#splash .upa-signet.logo-light {
+  color: #1f4d1a;
+}
+
+#splash .upa-signet.logo-dark {
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] #splash,
+:root[data-resolved-theme="dark"] #splash {
+  background: #000000;
+  background-color: #000000;
+  color: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) #splash {
+    background: #000000;
+    background-color: #000000;
+    color: #ffffff;
+  }
 }
 
 body:has(#app:not([hidden])) #splash,
@@ -497,10 +521,10 @@ p {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .logo-light {
+  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) .logo-light {
     display: none !important;
   }
-  :root:not([data-theme="light"]) .logo-dark {
+  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) .logo-dark {
     display: inline-block !important;
     color: #ffffff;
     background: transparent;

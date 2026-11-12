@@ -69,21 +69,12 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
         assert tp_img.mode == "RGBA"
         assert tp_img.getpixel((0, 0)) == (0, 0, 0, 0)
 
-    for icon_name in ("apple-touch-icon.png", "favicon-32.png"):
+    for icon_name in ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "favicon-32.png"):
         with Image.open(WEB_APP / "icons" / icon_name) as pwa_img:
             assert pwa_img.mode == "RGB", f"{icon_name} debe ser opaco RGB"
             assert pwa_img.getpixel((0, 0)) == (255, 255, 255), f"{icon_name} debe tener fondo blanco limpio"
-
-    with Image.open(WEB_APP / "icons" / "icon-maskable-512.png") as mask_img:
-        assert mask_img.mode == "RGB"
-        assert mask_img.getpixel((0, 0)) == (8, 14, 26), "maskable debe usar el fondo oscuro del splash, sin caja blanca"
-        assert mask_img.getpixel((511, 511)) == (8, 14, 26)
-
-    for icon_name in ("icon-192.png", "icon-512.png"):
-        with Image.open(WEB_APP / "icons" / icon_name) as splash_img:
-            assert splash_img.mode == "RGBA", f"{icon_name} debe ser transparente (sin caja en el splash)"
-            assert splash_img.getpixel((0, 0))[3] == 0
-            assert any(px[3] > 0 and px[:3] == (255, 255, 255) for px in splash_img.getdata())
+            assert pwa_img.getpixel((pwa_img.width - 1, pwa_img.height - 1)) == (255, 255, 255)
+            assert any(px == (108, 147, 57) for px in pwa_img.getdata()), f"{icon_name} debe contener el logo UPA verde"
 
     with Image.open(WEB_APP / "icons" / "badge-monochrome.png") as badge_img:
         assert badge_img.mode == "RGBA"
@@ -120,13 +111,13 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert "Probar la versión web aquí" not in html
 
     html_versions = set(re.findall(r"/campus/[\w./-]+\.(?:js|css)\?v=([\d.]+)", html))
-    assert html_versions == {"1.0.12"}
+    assert html_versions == {"1.0.13"}
     assert "upa-logo.png" not in html
-    assert '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#e6edf5">' in html
+    assert '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">' in html
     assert '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#080e1a">' in html
 
     sw = (WEB_APP / "sw.js").read_text(encoding="utf-8")
-    assert 'const VERSION = "1.0.12";' in sw
+    assert 'const VERSION = "1.0.13";' in sw
     assert "upa-logo.png" not in sw
     shell_files = re.findall(r'"(/[^"]*)"', sw.split("SHELL_FILES")[1].split("];")[0])
     assert "/" in shell_files and "/manifest.webmanifest" in shell_files
