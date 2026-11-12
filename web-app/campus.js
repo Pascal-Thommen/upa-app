@@ -1426,13 +1426,18 @@
     const surfaceColor =
       (Core.THEME_SURFACE_COLORS && Core.THEME_SURFACE_COLORS[resolved]) || (isDark ? "#131c2e" : "#ffffff");
     root.setAttribute("data-resolved-theme", resolved);
-    root.style.backgroundColor = bgColor;
+    root.style.backgroundColor = themeColor;
     root.style.colorScheme = resolved;
     root.style.setProperty("--bg", bgColor);
     root.style.setProperty("--surface", surfaceColor);
     if (doc.body) {
-      doc.body.style.backgroundColor = bgColor;
+      doc.body.style.backgroundColor = themeColor;
       doc.body.style.colorScheme = resolved;
+    }
+    const splash = doc.getElementById("splash");
+    if (splash) {
+      splash.style.backgroundColor = isDark ? "#000000" : "#ffffff";
+      splash.style.color = isDark ? "#ffffff" : "#1f4d1a";
     }
     const colorSchemeMeta = doc.querySelector('meta[name="color-scheme"]');
     if (colorSchemeMeta) colorSchemeMeta.setAttribute("content", resolved);

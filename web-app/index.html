@@ -22,7 +22,7 @@
       margin: 0;
       width: 100%;
       height: 100%;
-      background-color: #e6edf5;
+      background-color: #ffffff;
       color: #0f172a;
       color-scheme: light;
     }
@@ -33,6 +33,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      background-color: #ffffff;
+      color: #1f4d1a;
       pointer-events: none;
     }
     #splash .logo-light {
@@ -50,11 +52,15 @@
     html[data-theme="light"],
     html[data-resolved-theme="light"],
     html[data-theme="light"] body,
-    html[data-resolved-theme="light"] body,
+    html[data-resolved-theme="light"] body {
+      background-color: #ffffff;
+      color: #0f172a;
+      color-scheme: light;
+    }
     html[data-theme="light"] #splash,
     html[data-resolved-theme="light"] #splash {
-      background-color: #e6edf5;
-      color: #0f172a;
+      background-color: #ffffff;
+      color: #1f4d1a;
       color-scheme: light;
     }
     html[data-theme="light"] .tabbar,
@@ -64,11 +70,15 @@
     html[data-theme="dark"],
     html[data-resolved-theme="dark"],
     html[data-theme="dark"] body,
-    html[data-resolved-theme="dark"] body,
+    html[data-resolved-theme="dark"] body {
+      background-color: #080e1a;
+      color: #e2e8f0;
+      color-scheme: dark;
+    }
     html[data-theme="dark"] #splash,
     html[data-resolved-theme="dark"] #splash {
       background-color: #000000;
-      color: #e2e8f0;
+      color: #ffffff;
       color-scheme: dark;
     }
     html[data-theme="dark"] .tabbar,
@@ -85,10 +95,14 @@
     }
     @media (prefers-color-scheme: dark) {
       html:not([data-theme="light"]):not([data-resolved-theme="light"]),
-      html:not([data-theme="light"]):not([data-resolved-theme="light"]) body,
+      html:not([data-theme="light"]):not([data-resolved-theme="light"]) body {
+        background-color: #080e1a;
+        color: #e2e8f0;
+        color-scheme: dark;
+      }
       html:not([data-theme="light"]):not([data-resolved-theme="light"]) #splash {
         background-color: #000000;
-        color: #e2e8f0;
+        color: #ffffff;
         color-scheme: dark;
       }
       html:not([data-theme="light"]):not([data-resolved-theme="light"]) .tabbar {
@@ -114,15 +128,25 @@
           var dark = attr === "dark" || (attr !== "light" && sysDark);
           var resolved = dark ? "dark" : "light";
           var bgColor = dark ? "#080e1a" : "#e6edf5";
+          var surfaceColor = dark ? "#131c2e" : "#ffffff";
           var themeColor = dark ? "#080e1a" : "#ffffff";
+          var splashBg = dark ? "#000000" : "#ffffff";
+          var splashColor = dark ? "#ffffff" : "#1f4d1a";
           if (root.getAttribute("data-resolved-theme") !== resolved) {
             root.setAttribute("data-resolved-theme", resolved);
           }
-          root.style.backgroundColor = bgColor;
+          root.style.backgroundColor = themeColor;
           root.style.colorScheme = resolved;
+          root.style.setProperty("--bg", bgColor);
+          root.style.setProperty("--surface", surfaceColor);
           if (document.body) {
-            document.body.style.backgroundColor = bgColor;
+            document.body.style.backgroundColor = themeColor;
             document.body.style.colorScheme = resolved;
+          }
+          var splash = document.getElementById("splash");
+          if (splash) {
+            splash.style.backgroundColor = splashBg;
+            splash.style.color = splashColor;
           }
           var colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
           if (colorSchemeMeta) colorSchemeMeta.setAttribute("content", resolved);
@@ -139,6 +163,7 @@
             darkLogos[k].hidden = !dark;
           }
         };
+        window.__upaSyncTheme = syncTheme;
         syncTheme();
         if (typeof MutationObserver === "function") {
           new MutationObserver(syncTheme).observe(root, { attributes: true, attributeFilter: ["data-theme", "data-resolved-theme"] });
@@ -150,7 +175,7 @@
       } catch (e) { /* almacenamiento no disponible: se usa el tema del sistema */ }
     })();
   </script>
-  <link rel="stylesheet" href="/campus/campus.css?v=1.0.12">
+  <link rel="stylesheet" href="/campus/campus.css?v=1.0.13">
 </head>
 <body>
   <noscript><p class="noscript">UPA Campus necesita JavaScript para funcionar.</p></noscript>
@@ -164,6 +189,7 @@
       <path fill="currentColor" fill-rule="evenodd" d="M2 2H20V35C20 41 21.8 44 25 44C28.2 44 30 41 30 35V2H48V35C48 49.5 39 56 25 56C11 56 2 49.5 2 35ZM56 2H82C93 2 99 8.5 99 20C99 31.5 93 38 82 38H74V55H56ZM74 14V26H80C83.5 26 85.5 23.8 85.5 20C85.5 16.2 83.5 14 80 14ZM116 2H134L150 55H132L129.2 44H120.8L118 55H100ZM125 16L121.8 32H128.2Z"/>
     </svg>
   </div>
+  <script>if (window.__upaSyncTheme) window.__upaSyncTheme();</script>
 
   <!-- Landing de escritorio -->
   <div id="landing" class="landing" hidden>
@@ -364,8 +390,8 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
-  <script src="/campus/campus-core.js?v=1.0.12"></script>
-  <script src="/campus/vendor/qrcode.js?v=1.0.12"></script>
-  <script src="/campus/campus.js?v=1.0.12"></script>
+  <script src="/campus/campus-core.js?v=1.0.13"></script>
+  <script src="/campus/vendor/qrcode.js?v=1.0.13"></script>
+  <script src="/campus/campus.js?v=1.0.13"></script>
 </body>
 </html>
