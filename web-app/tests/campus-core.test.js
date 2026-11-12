@@ -235,6 +235,7 @@ test("Temas (3 opciones) y banner de instalacion (Android con prompt, iOS con gu
   assert.equal(Core.resolveTheme("system", false), "light");
   assert.equal(Core.resolveTheme("dark", false), "dark");
   assert.equal(Core.resolveTheme("light", true), "light");
+  assert.deepEqual(Core.THEME_COLORS, { light: "#ffffff", dark: "#080e1a" });
 
   const now = 1_700_000_000_000;
   assert.equal(Core.shouldShowInstallBanner({ platform: "ios", now }), true);
@@ -584,7 +585,7 @@ test("createApi: clasifica timeout, puerto cerrado (offline), HTTP 500 y HTTP 40
 });
 
 test("SW Auto-Update helpers: canAutoReload, shouldReloadOnControllerChange y requestSkipWaiting", () => {
-  assert.equal(Core.APP_VERSION, "1.0.6");
+  assert.equal(Core.APP_VERSION, "1.0.7");
   assert.equal(Core.canAutoReload(null), true);
   assert.equal(Core.canAutoReload({ activeElement: { tagName: "BUTTON" }, querySelectorAll: () => [] }), true);
   assert.equal(

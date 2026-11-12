@@ -4,6 +4,7 @@
   --bg: #e6edf5;
   --surface: #ffffff;
   --surface-2: #f8fafc;
+  --system-bar: #ffffff;
   --text: #0f172a;
   --muted: #475569;
   --border: #dce4ee;
@@ -26,10 +27,34 @@
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="light"],
+:root[data-resolved-theme="light"] {
+  --bg: #e6edf5;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --system-bar: #ffffff;
+  --text: #0f172a;
+  --muted: #475569;
+  --border: #dce4ee;
+  --card-border: #cbd5e1;
+  --brand: #5f7d08;
+  --brand-soft: #eef5d6;
+  --upa-u-color: #658509;
+  --accent: #1e40af;
+  --danger: #b91c1c;
+  --urgent-bg: #fef2f2;
+  --urgent-border: #fca5a5;
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  --card-shadow: 0 8px 20px -4px rgba(15, 23, 42, 0.12), 0 2px 6px -1px rgba(15, 23, 42, 0.07);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"],
+:root[data-resolved-theme="dark"] {
   --bg: #080e1a;
   --surface: #131c2e;
   --surface-2: #1a2540;
+  --system-bar: #080e1a;
   --text: #e2e8f0;
   --muted: #a3b1c6;
   --border: #26324d;
@@ -47,10 +72,11 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-resolved-theme="light"]) {
     --bg: #080e1a;
     --surface: #131c2e;
     --surface-2: #1a2540;
+    --system-bar: #080e1a;
     --text: #e2e8f0;
     --muted: #a3b1c6;
     --border: #26324d;
@@ -83,13 +109,27 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--system-bar);
+  background-color: var(--system-bar);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 16px;
   line-height: 1.45;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--safe-bottom);
+  background: var(--system-bar);
+  background-color: var(--system-bar);
+  z-index: 20;
+  pointer-events: none;
 }
 
 button,

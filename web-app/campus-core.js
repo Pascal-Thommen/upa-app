@@ -17,11 +17,11 @@
   const TIMEZONE = "America/Asuncion";
   const LOCALE = "es-PY";
   const THEMES = ["system", "light", "dark"];
-  const THEME_COLORS = { light: "#ffffff", dark: "#0f172a" };
+  const THEME_COLORS = { light: "#ffffff", dark: "#080e1a" };
   const INSTALL_DISMISS_MS = 14 * 24 * 60 * 60 * 1000;
   const NOTIFY_WINDOW_MS = 24 * 60 * 60 * 1000;
   const DEFAULT_TIMEOUT_MS = 12000;
-  const APP_VERSION = "1.0.6";
+  const APP_VERSION = "1.0.7";
   const SW_UPDATE_COOLDOWN_MS = 5000;
   const DEFAULT_NOTIFICATIONS = { push: false, events: true, announcements: true, deadlines: true };
 
