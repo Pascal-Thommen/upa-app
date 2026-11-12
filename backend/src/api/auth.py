@@ -112,10 +112,12 @@ class AuthResponse(BaseModel):
 
 
 def _can_view_google_groups(role: str | None = None, permissions: list[str] | None = None) -> bool:
-    """Determina si la cuenta puede consultar grupos de Google Workspace (permisos roles, grupos o apis)."""
-    _ = role
+    """Determina si la cuenta puede consultar grupos de Google Workspace (rol admin o permisos grupos/apis)."""
+    normalized_role = (role or "").strip().lower()
+    if normalized_role == "admin":
+        return True
     perms = {str(p or "").strip().lower() for p in (permissions or [])}
-    return bool(perms & {"roles", "grupos", "apis"})
+    return bool(perms & {"grupos", "apis"})
 
 
 def _filter_user_groups_for_privacy(

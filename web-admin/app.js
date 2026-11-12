@@ -86,7 +86,7 @@ function renderAuditHtml(entries, options) {
 }
 
 function isCurrentUserAdmin() {
-  return Boolean(state.currentUser && normalizeUserPermissions(state.currentUser).includes("roles"));
+  return Boolean(state.currentUser && String(state.currentUser.role || "").toLowerCase() === "admin");
 }
 
 function normalizeUserPermissions(user) {

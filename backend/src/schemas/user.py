@@ -88,7 +88,7 @@ class UserResponse(BaseModel):
     @model_validator(mode="after")
     def _enforce_privacy_and_clean_groups(self) -> "UserResponse":
         perms = {str(p or "").strip().lower() for p in (self.permissions or [])}
-        can_view = bool(perms & {"roles", "grupos", "apis"})
+        can_view = (self.role or "").strip().lower() == "admin" or bool(perms & {"grupos", "apis"})
         if not can_view:
             self.groups = []
             self.google_groups = []

@@ -308,35 +308,18 @@ def _resolve_custom_audience_groups(user: Any, audience_groups: list[Any] | None
     return []
 
 
-def _resolve_user_permissions(user: Any, user_permissions: set[str] | list[str] | None = None) -> set[str]:
-    if user_permissions is not None:
-        return {str(p or "").strip().lower() for p in user_permissions if p is not None and str(p).strip()}
-    try:
-        from sqlalchemy.orm import object_session
-
-        from ..permissions import effective_permissions
-
-        session = object_session(user)
-        if session is not None:
-            return set(effective_permissions(session, user))
-    except Exception:
-        pass
-    return set()
-
-
 def user_can_access_post(
     user: Any,
     raw_groups: Any,
     *,
     audience_groups: list[Any] | None = None,
     allow_admin_bypass: bool = True,
-    user_permissions: set[str] | list[str] | None = None,
 ) -> bool:
     """
-    Aplica el filtrado estricto basado en permisos (PBAC) y grupos del servidor:
+    Aplica el filtrado estricto basado en roles y grupos del servidor:
     - Sin usuario autenticado: solo publicaciones dirigidas a ALL o a todas las audiencias base.
-    - Con permiso concreto 'publicaciones': acceso completo a todas las publicaciones para el control editorial de contenidos (salvo cuando allow_admin_bypass=False).
-    - Usuarios que solo poseen 'roles' y el resto de usuarios (estudiante/docente): se filtran como usuarios regulares y tienen acceso solo si la publicacion incluye ALL,
+    - Rol admin/editor: acceso completo a todas las publicaciones (salvo cuando allow_admin_bypass=False).
+    - Rol user (estudiante/docente): acceso solo si la publicacion incluye ALL,
       intersecta con los grupos asignados al usuario o incluye al usuario en un AudienceGroup.
     """
     post_groups = {g.upper() for g in normalize_target_groups(raw_groups)}
@@ -344,10 +327,8 @@ def user_can_access_post(
         return True
     if user is None:
         return False
-    if allow_admin_bypass:
-        perms = _resolve_user_permissions(user, user_permissions)
-        if "publicaciones" in perms:
-            return True
+    if allow_admin_bypass and getattr(user, "role", "user") in ("admin", "editor"):
+        return True
     raw_user_groups = getattr(user, "groups", None) or []
     user_groups = {"ALL", "ESTUDIANTES"}
     for g in raw_user_groups:

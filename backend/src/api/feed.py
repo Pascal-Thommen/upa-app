@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user_optional
 from ..database import get_db
 from ..models import Post, User
-from ..permissions import effective_permissions
 from ..schemas.feed import FeedItemResponse, FeedResponse
 from ..schemas.post import matches_group_filter, user_can_access_post
 from .publications import record_post_views
@@ -34,7 +33,6 @@ def get_feed(
       filtrados estrictamente segun el rol y los grupos del usuario.
     """
     now = datetime.now(UTC)
-    user_perms = set(effective_permissions(db, user)) if user is not None else set()
 
     banner_posts: list[Post] = []
     if user is not None:
@@ -50,7 +48,7 @@ def get_feed(
         )
 
         for b in banners_query.all():
-            if not user_can_access_post(user, b.target_groups, user_permissions=user_perms):
+            if not user_can_access_post(user, b.target_groups):
                 continue
             if not matches_group_filter(b.target_groups, group):
                 continue
@@ -71,7 +69,7 @@ def get_feed(
 
     filtered_posts: list[Post] = []
     for p in posts_query.all():
-        if not user_can_access_post(user, p.target_groups, user_permissions=user_perms):
+        if not user_can_access_post(user, p.target_groups):
             continue
         if not matches_group_filter(p.target_groups, group):
             continue

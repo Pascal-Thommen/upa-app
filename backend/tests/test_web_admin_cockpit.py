@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 from src.auth import create_access_token
-from src.models import User, UserRole
+from src.models import User
 
 from tests.conftest import (
     BACKEND_DIR,
@@ -99,13 +99,6 @@ def live_backend(tmp_path_factory: pytest.TempPathFactory, request: pytest.Fixtu
             User(id=4, email="luis.benitez@upa.edu.py", full_name="Luis Benitez", role="user", groups=["ALL", "TIE"]),
             User(id=5, email="dom.estudiante1@upa.edu.py", full_name="Carla Rojas", role="user", groups=["ALL", "TIE"]),
             User(id=6, email="dom.estudiante2@upa.edu.py", full_name="Diego Vera", role="user", groups=["ALL", "TIE"]),
-            UserRole(
-                id=1,
-                email="redaccion@upa.edu.py",
-                name="Redaccion Marketing",
-                permissions=["publicaciones"],
-                is_primary=False,
-            ),
         ],
     )
     env = {

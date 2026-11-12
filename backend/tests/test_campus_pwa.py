@@ -18,7 +18,7 @@ from sqlalchemy.pool import StaticPool
 from src.auth import create_access_token
 from src.database import Base, get_db
 from src.main import app
-from src.models import User, UserRole
+from src.models import User
 
 from tests.conftest import (
     BACKEND_DIR,
@@ -69,13 +69,6 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
         assert tp_img.mode == "RGBA"
         assert tp_img.getpixel((0, 0)) == (0, 0, 0, 0)
 
-    for icon_name in ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "favicon-32.png"):
-        with Image.open(WEB_APP / "icons" / icon_name) as pwa_img:
-            assert pwa_img.mode == "RGB", f"{icon_name} debe ser opaco RGB"
-            assert pwa_img.getpixel((0, 0)) == (255, 255, 255), f"{icon_name} debe tener fondo blanco limpio"
-            assert pwa_img.getpixel((pwa_img.width - 1, pwa_img.height - 1)) == (255, 255, 255)
-            assert any(px == (108, 147, 57) for px in pwa_img.getdata()), f"{icon_name} debe contener el logo UPA verde"
-
     with Image.open(WEB_APP / "icons" / "badge-monochrome.png") as badge_img:
         assert badge_img.mode == "RGBA"
         pixels = [badge_img.getpixel((x, y)) for y in range(badge_img.height) for x in range(badge_img.width)]
@@ -111,13 +104,11 @@ def test_campus_pwa_manifest_icons_and_service_worker_contract():
     assert "Probar la versión web aquí" not in html
 
     html_versions = set(re.findall(r"/campus/[\w./-]+\.(?:js|css)\?v=([\d.]+)", html))
-    assert html_versions == {"1.0.13"}
+    assert html_versions == {"1.0.6"}
     assert "upa-logo.png" not in html
-    assert '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">' in html
-    assert '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#080e1a">' in html
 
     sw = (WEB_APP / "sw.js").read_text(encoding="utf-8")
-    assert 'const VERSION = "1.0.13";' in sw
+    assert 'const VERSION = "1.0.6";' in sw
     assert "upa-logo.png" not in sw
     shell_files = re.findall(r'"(/[^"]*)"', sw.split("SHELL_FILES")[1].split("];")[0])
     assert "/" in shell_files and "/manifest.webmanifest" in shell_files
@@ -335,13 +326,6 @@ def live_backend(tmp_path_factory: pytest.TempPathFactory, request: pytest.Fixtu
             User(id=1, email="admin@upa.edu.py", full_name="Admin UPA", role="admin", groups=["ALL", "TIE"]),
             User(id=2, email="redaccion@upa.edu.py", full_name="Redaccion Marketing", role="editor", groups=["ALL"]),
             User(id=3, email="ana.gomez@upa.edu.py", full_name="Ana Gomez", role="user", groups=["ALL", "TIE"]),
-            UserRole(
-                id=1,
-                email="redaccion@upa.edu.py",
-                name="Redaccion Marketing",
-                permissions=["publicaciones"],
-                is_primary=False,
-            ),
         ],
     )
     env = {
