@@ -1420,9 +1420,20 @@
     else root.setAttribute("data-theme", theme);
     const prefersDark = typeof win.matchMedia === "function" && win.matchMedia("(prefers-color-scheme: dark)").matches;
     const resolved = Core.resolveTheme(theme, prefersDark);
+    const themeColor = Core.THEME_COLORS[resolved];
     root.setAttribute("data-resolved-theme", resolved);
-    const meta = doc.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", Core.THEME_COLORS[resolved]);
+    root.style.backgroundColor = themeColor;
+    root.style.colorScheme = resolved;
+    root.style.setProperty("--system-bar", themeColor);
+    if (doc.body) {
+      doc.body.style.backgroundColor = themeColor;
+      doc.body.style.colorScheme = resolved;
+    }
+    doc.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+      meta.setAttribute("content", themeColor);
+    });
+    const colorSchemeMeta = doc.querySelector('meta[name="color-scheme"]');
+    if (colorSchemeMeta) colorSchemeMeta.setAttribute("content", resolved);
     const isDark = resolved === "dark";
     doc.querySelectorAll(".logo-light").forEach((el) => {
       el.hidden = isDark;
