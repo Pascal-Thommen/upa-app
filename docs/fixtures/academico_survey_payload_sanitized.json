@@ -1,0 +1,62 @@
+{
+  "system": "UPA Académico (Laravel SSR)",
+  "base_url": "https://academico.upa.edu.py",
+  "sanitized": true,
+  "subject_survey": {
+    "action": "/course/survey/{survey_id}/answer/post",
+    "method": "POST",
+    "content_type": "application/x-www-form-urlencoded",
+    "fields": {
+      "_token": "[REDACTED_CSRF_TOKEN]",
+      "surveyType": "subject",
+      "answer[1101]": "Si",
+      "answer[1102]": "Texto de ejemplo con mas de dos palabras validas segun regex.",
+      "answer[1103]": "Totalmente de acuerdo",
+      "answer[1104]": "Totalmente de acuerdo",
+      "answer[1105]": "Totalmente de acuerdo",
+      "answer[1106]": "Totalmente de acuerdo",
+      "answer[1107]": "Totalmente de acuerdo",
+      "answer[1108]": "Totalmente de acuerdo",
+      "answer[1109]": "Totalmente de acuerdo",
+      "answer[1110]": "Totalmente de acuerdo",
+      "answer[1111]": "Totalmente de acuerdo",
+      "answer[1112]": "Totalmente de acuerdo",
+      "answer[1113]": "Totalmente de acuerdo",
+      "answer[1114]": "Totalmente de acuerdo",
+      "answer[1115]": "Totalmente de acuerdo",
+      "answer[1116]": "Totalmente de acuerdo",
+      "answer[1117]": "Totalmente de acuerdo",
+      "answer[1118]": "Totalmente de acuerdo",
+      "answer[1119]": "Desarrollo de competencias y habilidades tecnicas aplicadas.",
+      "answer[1120]": "10",
+      "answer[1121]": "Excelente organizacion general del contenido del curso."
+    }
+  },
+  "teacher_survey": {
+    "action": "/course/survey/{survey_id}/answer/post",
+    "method": "POST",
+    "content_type": "application/x-www-form-urlencoded",
+    "fields": {
+      "_token": "[REDACTED_CSRF_TOKEN]",
+      "surveyType": "teacher",
+      "answer[2201]": "Totalmente de acuerdo",
+      "answer[2202]": "Totalmente de acuerdo",
+      "answer[2203]": "Totalmente de acuerdo",
+      "answer[2204]": "Totalmente de acuerdo",
+      "answer[2205]": "Totalmente de acuerdo",
+      "answer[2206]": "Totalmente de acuerdo",
+      "answer[2207]": "Totalmente de acuerdo",
+      "answer[2208]": "Totalmente de acuerdo",
+      "answer[2209]": "Totalmente de acuerdo",
+      "answer[2210]": "10",
+      "answer[2211]": "Excelente acompanamiento pedagogico y resolucion de dudas."
+    }
+  },
+  "textarea_validation_rules": {
+    "html5_pattern": "^(\\w+\\b\\W?[\\s\\w]?){3,60}.{1,}$",
+    "min_words": 3,
+    "max_words": 60,
+    "first_char": "Must be alphanumeric [a-zA-Z0-9_] (no leading punctuation or symbols)",
+    "multiline": "Evaluated per line if line breaks are present"
+  }
+}
