@@ -109,13 +109,8 @@ function isCampusAsset(pathname) {
   return pathname === "/manifest.webmanifest" || pathname.startsWith("/campus/");
 }
 
-function isShellCodeOrStyleAsset(pathname) {
-  return (
-    pathname === "/manifest.webmanifest" ||
-    pathname.endsWith(".js") ||
-    pathname.endsWith(".css") ||
-    pathname.endsWith(".webmanifest")
-  );
+function isFirebaseSdkAsset(href) {
+  return href === FIREBASE_APP_COMPAT_URL || href === FIREBASE_MESSAGING_COMPAT_URL;
 }
 
 function isNavigationToApp(request, pathname) {
@@ -126,60 +121,88 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
+
+  if (isFirebaseSdkAsset(url.href)) {
+    event.respondWith(
+      caches.open(SHELL_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        const networkFetch = fetch(request, { cache: "no-cache" })
+          .then(async (response) => {
+            if (response && response.ok) {
+              await cache.put(request, typeof response.clone === "function" ? response.clone() : response);
+            }
+            return cached || response;
+          })
+          .catch(() =>
+            cached ||
+            (typeof Response === "function"
+              ? new Response("", { status: 200, headers: { "Content-Type": "application/javascript" } })
+              : { ok: true, status: 200, body: "" }),
+          );
+        if (cached) {
+          if (typeof event.waitUntil === "function") {
+            event.waitUntil(networkFetch);
+          }
+          return cached;
+        }
+        return networkFetch;
+      }),
+    );
+    return;
+  }
+
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/dashboard")) return;
 
   if (isNavigationToApp(request, url.pathname)) {
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
-        try {
-          const response = await fetch(request, { cache: "no-cache" });
-          if (response && response.ok) {
-            await cache.put("/", response.clone());
-            return response;
+        const cached =
+          (await cache.match("/", { ignoreSearch: true })) ||
+          (await cache.match(request, { ignoreSearch: true }));
+        const networkFetch = fetch(request, { cache: "no-cache" })
+          .then(async (response) => {
+            if (response && response.ok) {
+              await cache.put("/", typeof response.clone === "function" ? response.clone() : response);
+            }
+            return cached || response;
+          })
+          .catch(() => cached);
+        if (cached) {
+          if (typeof event.waitUntil === "function") {
+            event.waitUntil(networkFetch);
           }
-          const fallback = await cache.match("/", { ignoreSearch: true });
-          return fallback || response;
-        } catch (_) {
-          return cache.match("/", { ignoreSearch: true });
+          return cached;
         }
+        return networkFetch;
       }),
     );
     return;
   }
 
   if (isCampusAsset(url.pathname)) {
-    if (isShellCodeOrStyleAsset(url.pathname)) {
-      event.respondWith(
-        caches.open(SHELL_CACHE).then(async (cache) => {
-          const cached = (await cache.match(request)) || (await cache.match(url.pathname, { ignoreSearch: true }));
-          try {
-            const response = await fetch(request, { cache: "no-cache" });
-            if (response && response.ok) {
-              await putAndInvalidateOldVersions(cache, request, response.clone());
-              return response;
-            }
-            return cached || response;
-          } catch (_) {
-            return cached;
-          }
-        }),
-      );
-      return;
-    }
-
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
         const cached = (await cache.match(request)) || (await cache.match(url.pathname, { ignoreSearch: true }));
         const networkFetch = fetch(request, { cache: "no-cache" })
           .then(async (response) => {
             if (response && response.ok) {
-              await putAndInvalidateOldVersions(cache, request, response.clone());
+              await putAndInvalidateOldVersions(
+                cache,
+                request,
+                typeof response.clone === "function" ? response.clone() : response,
+              );
             }
-            return response;
+            return cached || response;
           })
           .catch(() => cached);
-        return cached || networkFetch;
+        if (cached) {
+          if (typeof event.waitUntil === "function") {
+            event.waitUntil(networkFetch);
+          }
+          return cached;
+        }
+        return networkFetch;
       }),
     );
   }

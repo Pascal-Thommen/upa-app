@@ -1131,12 +1131,13 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
     betaApp.close();
   }
 
-  // 5. Prueba real de ciclo de vida y cache en web-app/sw.js (install, activate con limpieza, Network-First y fallback offline)
+  // 5. Prueba real de ciclo de vida y cache en web-app/sw.js (install, activate con limpieza, Stale-While-Revalidate instantaneo y fallback offline)
   const swEvents = {};
   const cacheStore = new Map();
   let skipWaitingCount = 0;
   let claimCount = 0;
   let swOnline = true;
+  let swNetworkDelayMs = 0;
   let assetRevision = "v-inicial";
 
   function createMemoryCache() {
@@ -1220,6 +1221,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
       },
     },
     fetch: async (req, init) => {
+      if (swNetworkDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, swNetworkDelayMs));
+      }
       if (!swOnline) throw new Error("Red desconectada");
       const rawUrl = typeof req === "string" ? req : req.url;
       const u = new URL(rawUrl, BASE_URL);
@@ -1259,28 +1263,57 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
   assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.7"], "activate debe limpiar todos los caches antiguos");
 
-  // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset
+  // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset en segundo plano
   const activeCache = cacheStore.get("upa-campus-shell-1.0.7");
   await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
 
-  // Ejecutar fetch online para /campus/campus.js?v=1.0.7 (Network-First + invalidacion de ?v=1.0.2)
+  // Ejecutar fetch con red lenta (300 ms) para navegacion y asset JS (Stale-While-Revalidate < 100 ms + revalidacion silenciosa)
   assetRevision = "v-nueva-red";
+  swNetworkDelayMs = 300;
+  const bgTasks = [];
+
+  const navStart = Date.now();
+  let navFetchPromise = null;
+  swEvents.fetch({
+    request: { method: "GET", mode: "navigate", url: `${BASE_URL}/?source=pwa` },
+    respondWith(p) {
+      navFetchPromise = p;
+    },
+    waitUntil(p) {
+      bgTasks.push(p);
+    },
+  });
+  const instantNavResp = await navFetchPromise;
+  const navElapsedMs = Date.now() - navStart;
+  assert.ok(navElapsedMs < 100, `La navegacion debe responder desde el cache en < 100 ms (tardo ${navElapsedMs} ms)`);
+  assert.match(instantNavResp.body, /v-inicial:no-cache/, "La navegacion entrega inmediatamente la copia cacheada sin esperar a la red");
+
+  const assetStart = Date.now();
   let fetchPromise = null;
   swEvents.fetch({
     request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.7` },
     respondWith(p) {
       fetchPromise = p;
     },
+    waitUntil(p) {
+      bgTasks.push(p);
+    },
   });
   const onlineResp = await fetchPromise;
-  assert.match(onlineResp.body, /v-nueva-red:no-cache/);
+  const assetElapsedMs = Date.now() - assetStart;
+  assert.ok(assetElapsedMs < 100, `El asset debe responder desde el cache en < 100 ms (tardo ${assetElapsedMs} ms)`);
+  assert.match(onlineResp.body, /v-inicial:no-cache/, "El asset entrega inmediatamente la copia cacheada sin bloquear por la red");
+
+  // Esperar a que termine la revalidacion en segundo plano
+  await Promise.all(bgTasks);
+  swNetworkDelayMs = 0;
   assert.equal(
     await activeCache.match(`${BASE_URL}/campus/campus.js?v=1.0.2`),
     undefined,
-    "Debe invalidar variantes con query antigua del mismo archivo estatico",
+    "Debe invalidar variantes con query antigua del mismo archivo estatico tras revalidar en segundo plano",
   );
 
-  // Ejecutar fetch offline: debe entregar inmediatamente el asset desde el cache sin fallar
+  // Ejecutar fetch offline (o con red cortada): debe entregar inmediatamente la nueva version actualizada en segundo plano
   swOnline = false;
   let offlineAssetPromise = null;
   swEvents.fetch({
@@ -1291,7 +1324,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   const offlineAssetResp = await offlineAssetPromise;
   assert.ok(offlineAssetResp, "En modo offline debe responder desde el cache del Service Worker");
-  assert.match(offlineAssetResp.body, /v-nueva-red/);
+  assert.match(offlineAssetResp.body, /v-nueva-red:no-cache/);
 
   let offlineNavPromise = null;
   swEvents.fetch({
@@ -1302,6 +1335,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   const offlineNavResp = await offlineNavPromise;
   assert.ok(offlineNavResp, "La navegacion principal debe funcionar sin conexion al reabrir la PWA");
+  assert.match(offlineNavResp.body, /v-nueva-red:no-cache/);
 
   // 6. Prueba de recepcion de Push en segundo plano (evento push) y deep-link en notificationclick
   const shownNotifications = [];
