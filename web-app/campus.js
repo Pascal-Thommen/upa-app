@@ -803,6 +803,16 @@
   }
 
   function bindImageFallback(img) {
+    const markLoaded = () => {
+      img.classList.add("is-loaded");
+      const wrap = img.closest(".card-media-wrap");
+      if (wrap) wrap.classList.add("is-loaded");
+    };
+    if (img.complete && img.naturalWidth > 0) {
+      markLoaded();
+    } else {
+      img.addEventListener("load", markLoaded, { once: true });
+    }
     img.addEventListener("error", () => {
       img.style.display = "none";
       const previewLink = img.closest(".video-preview-link");
@@ -839,10 +849,12 @@
     return img;
   }
 
-  function mediaNode(post, className, controls) {
+  function mediaNode(post, className, controls, eager) {
     const rawUrl = Core.postImageUrl ? Core.postImageUrl(post) : Core.safeUrl(post.media_url || post.image_url);
     const url = /\/campus\/icons\/icon-\d+\.png(\?|#|$)/i.test(rawUrl) ? "" : rawUrl;
     if (!url && !Core.isVideoMedia(post)) return null;
+    const loadingMode = eager ? "eager" : "lazy";
+    const decodingMode = eager ? "sync" : "async";
     if (Core.isVideoMedia(post)) {
       const poster = Core.videoPosterUrl(post);
       if (Core.hasPlayableVideoStream(post)) {
@@ -864,8 +876,10 @@
           class: className,
           src: poster,
           alt: "",
-          loading: "lazy",
-          decoding: "async",
+          width: "640",
+          height: "360",
+          loading: loadingMode,
+          decoding: decodingMode,
           referrerpolicy: "no-referrer",
         }),
       );
@@ -892,8 +906,10 @@
         class: className,
         src: url,
         alt: "",
-        loading: "lazy",
-        decoding: "async",
+        width: "640",
+        height: "360",
+        loading: loadingMode,
+        decoding: decodingMode,
         referrerpolicy: "no-referrer",
       }),
     );
@@ -951,7 +967,7 @@
   function feedCard(post, urgent) {
     const kind = urgent ? "urgent" : Core.postKind(post);
     const origin = urgent ? "urgent" : Core.postOrigin(post);
-    const media = urgent ? null : mediaNode(post, "card-media");
+    const media = urgent ? null : mediaNode(post, "card-media", false, true);
     const badge = kindBadge(origin, Core.originLabel(origin), Boolean(media));
     const eventBadge = !urgent && post.is_event ? kindBadge("event", "Evento", false) : null;
     const mediaWrap = media ? h("div", { class: "card-media-wrap" }, media, badge) : null;
@@ -1325,7 +1341,7 @@
     }
     const mediaBox = $("detail-media");
     clear(mediaBox);
-    const media = detail.media ? mediaNode(detail.media, "detail-image", true) : null;
+    const media = detail.media ? mediaNode(detail.media, "detail-image", true, true) : null;
     if (media) mediaBox.append(media);
     mediaBox.hidden = !media;
 
