@@ -7,10 +7,10 @@
  */
 "use strict";
 
-const VERSION = "1.0.7";
+const VERSION = "1.0.8";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
-const FIREBASE_APP_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js";
-const FIREBASE_MESSAGING_COMPAT_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js";
+const FIREBASE_APP_COMPAT_URL = `/campus/vendor/firebase-app-compat.js?v=${VERSION}`;
+const FIREBASE_MESSAGING_COMPAT_URL = `/campus/vendor/firebase-messaging-compat.js?v=${VERSION}`;
 const firebaseConfig = {
   apiKey: "AIzaSyCvDxaM-b3uIS1s-yStQuX9yVONSwD1RCo",
   authDomain: "upa-campus-app.firebaseapp.com",
@@ -34,10 +34,12 @@ if (typeof importScripts === "function") {
 const SHELL_FILES = [
   "/",
   "/manifest.webmanifest",
-  "/campus/campus.css?v=1.0.7",
-  "/campus/campus-core.js?v=1.0.7",
-  "/campus/vendor/qrcode.js?v=1.0.7",
-  "/campus/campus.js?v=1.0.7",
+  "/campus/campus.css?v=1.0.8",
+  "/campus/vendor/firebase-app-compat.js?v=1.0.8",
+  "/campus/vendor/firebase-messaging-compat.js?v=1.0.8",
+  "/campus/campus-core.js?v=1.0.8",
+  "/campus/vendor/qrcode.js?v=1.0.8",
+  "/campus/campus.js?v=1.0.8",
   "/campus/icons/favicon.svg",
   "/campus/icons/favicon-32.png",
   "/campus/icons/apple-touch-icon.png",
@@ -109,10 +111,6 @@ function isCampusAsset(pathname) {
   return pathname === "/manifest.webmanifest" || pathname.startsWith("/campus/");
 }
 
-function isFirebaseSdkAsset(href) {
-  return href === FIREBASE_APP_COMPAT_URL || href === FIREBASE_MESSAGING_COMPAT_URL;
-}
-
 function isNavigationToApp(request, pathname) {
   return request.mode === "navigate" && (pathname === "/" || pathname === "/index.html");
 }
@@ -121,36 +119,6 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-
-  if (isFirebaseSdkAsset(url.href)) {
-    event.respondWith(
-      caches.open(SHELL_CACHE).then(async (cache) => {
-        const cached = await cache.match(request);
-        const networkFetch = fetch(request, { cache: "no-cache" })
-          .then(async (response) => {
-            if (response && response.ok) {
-              await cache.put(request, typeof response.clone === "function" ? response.clone() : response);
-            }
-            return cached || response;
-          })
-          .catch(() =>
-            cached ||
-            (typeof Response === "function"
-              ? new Response("", { status: 200, headers: { "Content-Type": "application/javascript" } })
-              : { ok: true, status: 200, body: "" }),
-          );
-        if (cached) {
-          if (typeof event.waitUntil === "function") {
-            event.waitUntil(networkFetch);
-          }
-          return cached;
-        }
-        return networkFetch;
-      }),
-    );
-    return;
-  }
-
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/dashboard")) return;
 

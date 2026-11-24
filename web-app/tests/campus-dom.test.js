@@ -1316,9 +1316,13 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
 
   let swFirebaseInitConfig = null;
   let swBackgroundMessageHandler = null;
+  const importedSwScripts = [];
   const swContext = vm.createContext({
     URL,
     Promise,
+    importScripts(...urls) {
+      importedSwScripts.push(...urls);
+    },
     firebase: {
       apps: [],
       initializeApp(cfg) {
@@ -1383,6 +1387,14 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
 
   vm.runInContext(fs.readFileSync(path.join(WEB_APP, "sw.js"), "utf8"), swContext);
+  assert.deepEqual(
+    importedSwScripts,
+    [
+      "/campus/vendor/firebase-app-compat.js?v=1.0.8",
+      "/campus/vendor/firebase-messaging-compat.js?v=1.0.8",
+    ],
+    "sw.js debe cargar importScripts desde rutas locales en /campus/vendor/ sin depender de gstatic",
+  );
 
   // Ejecutar install
   let installPromise = null;
@@ -1393,9 +1405,9 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await installPromise;
   assert.equal(skipWaitingCount, 1, "install debe invocar self.skipWaiting()");
-  assert.equal(cacheStore.has("upa-campus-shell-1.0.7"), true, "install debe crear el cache versionado 1.0.7");
+  assert.equal(cacheStore.has("upa-campus-shell-1.0.8"), true, "install debe crear el cache versionado 1.0.8");
 
-  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.7
+  // Ejecutar activate: debe borrar 1.0.0 y 1.0.2 y conservar solo 1.0.8
   let activatePromise = null;
   swEvents.activate({
     waitUntil(p) {
@@ -1404,11 +1416,21 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   });
   await activatePromise;
   assert.equal(claimCount, 1, "activate debe invocar self.clients.claim()");
-  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.7"], "activate debe limpiar todos los caches antiguos");
+  assert.deepEqual([...cacheStore.keys()], ["upa-campus-shell-1.0.8"], "activate debe limpiar todos los caches antiguos");
 
   // Sembrar version antigua en el cache actual para verificar invalidacion por pathname al actualizar asset en segundo plano
-  const activeCache = cacheStore.get("upa-campus-shell-1.0.7");
+  const activeCache = cacheStore.get("upa-campus-shell-1.0.8");
   await activeCache.put(`${BASE_URL}/campus/campus.js?v=1.0.2`, { ok: true, status: 200, body: "obsoleto" });
+
+  // Verificar que los SDK de Firebase estan precacheados localmente en el shell (cero dependencias CDN externas / gstatic)
+  assert.ok(
+    await activeCache.match(`${BASE_URL}/campus/vendor/firebase-app-compat.js?v=1.0.8`),
+    "firebase-app-compat.js debe estar precacheado localmente en SHELL_CACHE",
+  );
+  assert.ok(
+    await activeCache.match(`${BASE_URL}/campus/vendor/firebase-messaging-compat.js?v=1.0.8`),
+    "firebase-messaging-compat.js debe estar precacheado localmente en SHELL_CACHE",
+  );
 
   // Ejecutar fetch con red lenta (300 ms) para navegacion y asset JS (Stale-While-Revalidate < 100 ms + revalidacion silenciosa)
   assetRevision = "v-nueva-red";
@@ -1434,7 +1456,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   const assetStart = Date.now();
   let fetchPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.7` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.8` },
     respondWith(p) {
       fetchPromise = p;
     },
@@ -1460,7 +1482,7 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   swOnline = false;
   let offlineAssetPromise = null;
   swEvents.fetch({
-    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.7` },
+    request: { method: "GET", mode: "cors", url: `${BASE_URL}/campus/campus.js?v=1.0.8` },
     respondWith(p) {
       offlineAssetPromise = p;
     },
@@ -1479,6 +1501,36 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   const offlineNavResp = await offlineNavPromise;
   assert.ok(offlineNavResp, "La navegacion principal debe funcionar sin conexion al reabrir la PWA");
   assert.match(offlineNavResp.body, /v-nueva-red:no-cache/);
+
+  // Simular Lie-Fi (bloqueo en red de 400 ms) para navegacion, scripts de la app y SDK local de Firebase:
+  // todo debe responder desde SHELL_CACHE en < 100 ms sin esperar a la red.
+  swOnline = true;
+  swNetworkDelayMs = 400;
+  const lieFiBg = [];
+  for (const lieFiReq of [
+    { method: "GET", mode: "navigate", url: `${BASE_URL}/?source=pwa` },
+    { method: "GET", mode: "no-cors", url: `${BASE_URL}/campus/vendor/firebase-app-compat.js?v=1.0.8` },
+    { method: "GET", mode: "no-cors", url: `${BASE_URL}/campus/vendor/firebase-messaging-compat.js?v=1.0.8` },
+    { method: "GET", mode: "no-cors", url: `${BASE_URL}/campus/campus.js?v=1.0.8` },
+  ]) {
+    const startMs = Date.now();
+    let respPromise = null;
+    swEvents.fetch({
+      request: lieFiReq,
+      respondWith(p) {
+        respPromise = p;
+      },
+      waitUntil(p) {
+        lieFiBg.push(p);
+      },
+    });
+    const resp = await respPromise;
+    const elapsed = Date.now() - startMs;
+    assert.ok(resp && resp.ok, `Lie-Fi debe responder inmediatamente desde cache para ${lieFiReq.url}`);
+    assert.ok(elapsed < 100, `Lie-Fi no debe bloquear el inicio en ${lieFiReq.url} (tardo ${elapsed} ms)`);
+  }
+  await Promise.all(lieFiBg);
+  swNetworkDelayMs = 0;
 
   // 6. Prueba de recepcion de Push en segundo plano (evento push) y deep-link en notificationclick
   const shownNotifications = [];
