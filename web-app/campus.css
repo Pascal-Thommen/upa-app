@@ -994,6 +994,17 @@ video.card-media {
   opacity: 0.92;
 }
 
+.rsvp-pending-hint {
+  flex: 1 0 100%;
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  font-size: 0.76rem;
+  line-height: 1.25;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .pin {
   color: var(--brand);
   font-weight: 700;

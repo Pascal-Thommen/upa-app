@@ -83,6 +83,12 @@ async function openCampus(options) {
   if (opts.firebase) {
     window.firebase = opts.firebase;
   }
+  if (opts.indexedDB) {
+    Object.defineProperty(window, "indexedDB", {
+      value: opts.indexedDB,
+      configurable: true,
+    });
+  }
   if (opts.storage) {
     for (const [k, v] of Object.entries(opts.storage)) window.localStorage.setItem(k, v);
   }
@@ -1022,6 +1028,143 @@ test("Resiliencia: modo sin conexion con datos guardados, fallo sin cache y toke
     assert.equal(expired.$("login-prompt").hidden, false);
   } finally {
     expired.close();
+  }
+
+  // 4. Outbox Offline para RSVP (IndexedDB): UI optimista inmediata, multiples clics sin inconsistencia,
+  // sincronizacion automatica al reconectar y reversion limpia si el backend devuelve error tras reconectar
+  const idbStores = new Map();
+  const fakeIndexedDB = {
+    open() {
+      const req = { result: null, onupgradeneeded: null, onsuccess: null, onerror: null };
+      queueMicrotask(() => {
+        const db = {
+          objectStoreNames: { contains: (name) => idbStores.has(name) },
+          createObjectStore(name) {
+            if (!idbStores.has(name)) idbStores.set(name, new Map());
+            return {};
+          },
+          transaction(name) {
+            if (!idbStores.has(name)) idbStores.set(name, new Map());
+            const map = idbStores.get(name);
+            const tx = {
+              oncomplete: null,
+              onerror: null,
+              objectStore() {
+                return {
+                  put(record) {
+                    map.set(record.key, { ...record });
+                    queueMicrotask(() => tx.oncomplete && tx.oncomplete());
+                    return {};
+                  },
+                  getAll() {
+                    const getReq = { result: [...map.values()], onsuccess: null, onerror: null };
+                    queueMicrotask(() => getReq.onsuccess && getReq.onsuccess());
+                    return getReq;
+                  },
+                  delete(key) {
+                    map.delete(key);
+                    queueMicrotask(() => tx.oncomplete && tx.oncomplete());
+                    return {};
+                  },
+                  clear() {
+                    map.clear();
+                    queueMicrotask(() => tx.oncomplete && tx.oncomplete());
+                    return {};
+                  },
+                };
+              },
+            };
+            return tx;
+          },
+        };
+        req.result = db;
+        if (typeof req.onupgradeneeded === "function") req.onupgradeneeded();
+        if (typeof req.onsuccess === "function") req.onsuccess();
+      });
+      return req;
+    },
+  };
+
+  // Asegurar estado inicial conocido en backend ("declined") antes de desconectar
+  await api(`/api/events/${seeded.eventId}/register`, student, { method: "DELETE" });
+
+  const offlineRsvpApp = await openCampus({ token: student, indexedDB: fakeIndexedDB });
+  try {
+    const initialDecBtn = offlineRsvpApp.document.querySelector(`[data-decline="${seeded.eventId}"]`);
+    assert.equal(initialDecBtn.getAttribute("aria-pressed"), "true");
+
+    // Cortar la red y simular clics multiples offline: Sí, asistiré -> No asistiré -> Sí, asistiré
+    offlineRsvpApp.setNetworkTarget("http://127.0.0.1:1");
+    Object.defineProperty(offlineRsvpApp.window.navigator, "onLine", { value: false, configurable: true });
+
+    await offlineRsvpApp.click(offlineRsvpApp.document.querySelector(`[data-register="${seeded.eventId}"]`));
+    // La UI optimista debe cambiar inmediatamente a "Inscrito ✓" y mostrar el aviso discreto de cola offline
+    let regBtnOffline = offlineRsvpApp.document.querySelector(`[data-register="${seeded.eventId}"]`);
+    let decBtnOffline = offlineRsvpApp.document.querySelector(`[data-decline="${seeded.eventId}"]`);
+    assert.equal(regBtnOffline.textContent, "Inscrito ✓");
+    assert.equal(regBtnOffline.getAttribute("aria-pressed"), "true");
+    assert.equal(decBtnOffline.getAttribute("aria-pressed"), "false");
+    assert.equal(offlineRsvpApp.$("offline-banner").hidden, false);
+    const pendingHint = offlineRsvpApp.document.querySelector(`[data-rsvp-pending-hint="${seeded.eventId}"]`);
+    assert.ok(pendingHint, "Debe mostrar un aviso discreto indicando que la accion se guardo sin conexion");
+    assert.match(pendingHint.textContent, /sin conexión/i);
+
+    // Clics adicionales mientras sigue sin conexion: cambiar a No asistiré y volver a Sí, asistiré
+    await offlineRsvpApp.click(offlineRsvpApp.document.querySelector(`[data-decline="${seeded.eventId}"]`));
+    assert.equal(offlineRsvpApp.document.querySelector(`[data-decline="${seeded.eventId}"]`).getAttribute("aria-pressed"), "true");
+    await offlineRsvpApp.click(offlineRsvpApp.document.querySelector(`[data-register="${seeded.eventId}"]`));
+    regBtnOffline = offlineRsvpApp.document.querySelector(`[data-register="${seeded.eventId}"]`);
+    assert.equal(regBtnOffline.textContent, "Inscrito ✓");
+    assert.equal(regBtnOffline.getAttribute("aria-pressed"), "true");
+
+    // Verificar persistencia consolidada en IndexedDB (1 unico registro pendiente para el evento con previousStatus="declined")
+    const queuedItems = await offlineRsvpApp.window.UpaCampus.outbox.list("u3");
+    assert.equal(queuedItems.length, 1);
+    assert.equal(String(queuedItems[0].eventId), String(seeded.eventId));
+    assert.equal(queuedItems[0].desiredStatus, "attending");
+    assert.equal(queuedItems[0].previousStatus, "declined");
+    assert.equal(idbStores.get("rsvp_outbox").size, 1);
+
+    // Mientras sigue offline, el backend real aun conserva el estado previo ("declined")
+    const beforeSync = await api("/api/v1/agenda", student);
+    const evBefore = beforeSync.body.events.find((e) => e.id === seeded.eventId);
+    assert.equal(evBefore.registration_status, "declined");
+
+    // Reconectar red y disparar evento online: debe sincronizar automaticamente la cola con el backend
+    offlineRsvpApp.setNetworkTarget(BASE_URL);
+    Object.defineProperty(offlineRsvpApp.window.navigator, "onLine", { value: true, configurable: true });
+    offlineRsvpApp.window.dispatchEvent(new offlineRsvpApp.window.Event("online"));
+    await new Promise((r) => setTimeout(r, 30));
+    await offlineRsvpApp.window.UpaCampus.idle();
+
+    const afterSyncQueue = await offlineRsvpApp.window.UpaCampus.outbox.list("u3");
+    assert.equal(afterSyncQueue.length, 0, "La cola IndexedDB debe vaciarse tras sincronizar con exito");
+    assert.equal(
+      offlineRsvpApp.document.querySelector(`[data-rsvp-pending-hint="${seeded.eventId}"]`),
+      null,
+      "El indicador pendiente debe desaparecer tras la sincronizacion",
+    );
+    assert.equal(offlineRsvpApp.$("offline-banner").hidden, true);
+    assert.equal(offlineRsvpApp.document.querySelector(`[data-register="${seeded.eventId}"]`).getAttribute("aria-pressed"), "true");
+
+    const afterSync = await api("/api/v1/agenda", student);
+    const evAfter = afterSync.body.events.find((e) => e.id === seeded.eventId);
+    assert.equal(evAfter.is_registered, true);
+    assert.equal(evAfter.registration_status, "attending");
+
+    // Caso de error de API tras reconectar (ej. evento eliminado 404): revierte al estado previo y limpia la cola
+    await offlineRsvpApp.window.UpaCampus.outbox.enqueue({
+      userKey: "u3",
+      eventId: 999999,
+      desiredStatus: "attending",
+      previousStatus: null,
+    });
+    const flushErrResult = await offlineRsvpApp.window.UpaCampus.flushOutbox();
+    assert.equal(flushErrResult.failed, 1);
+    assert.equal((await offlineRsvpApp.window.UpaCampus.outbox.list("u3")).length, 0);
+    assert.match(offlineRsvpApp.$("toast").textContent, /no está disponible|No se pudo/i);
+  } finally {
+    offlineRsvpApp.close();
   }
 });
 
