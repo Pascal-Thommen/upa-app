@@ -756,3 +756,101 @@ test("Firebase Web Push config, VAPID key y registro de device token en /api/use
     srv.close();
   }
 });
+
+test("createRsvpOutbox: persiste cola en IndexedDB, consolida clics multiples por evento y soporta limpieza", async () => {
+  const stores = new Map();
+  const fakeIndexedDB = {
+    open(_dbName, _version) {
+      const req = { result: null, onupgradeneeded: null, onsuccess: null, onerror: null };
+      queueMicrotask(() => {
+        const db = {
+          objectStoreNames: {
+            contains: (name) => stores.has(name),
+          },
+          createObjectStore(name) {
+            if (!stores.has(name)) stores.set(name, new Map());
+            return {};
+          },
+          transaction(name) {
+            if (!stores.has(name)) stores.set(name, new Map());
+            const map = stores.get(name);
+            const tx = {
+              oncomplete: null,
+              onerror: null,
+              objectStore() {
+                return {
+                  put(record) {
+                    map.set(record.key, { ...record });
+                    queueMicrotask(() => tx.oncomplete && tx.oncomplete());
+                    return {};
+                  },
+                  getAll() {
+                    const getReq = { result: [...map.values()], onsuccess: null, onerror: null };
+                    queueMicrotask(() => getReq.onsuccess && getReq.onsuccess());
+                    return getReq;
+                  },
+                  delete(key) {
+                    map.delete(key);
+                    queueMicrotask(() => tx.oncomplete && tx.oncomplete());
+                    return {};
+                  },
+                  clear() {
+                    map.clear();
+                    queueMicrotask(() => tx.oncomplete && tx.oncomplete());
+                    return {};
+                  },
+                };
+              },
+            };
+            return tx;
+          },
+        };
+        req.result = db;
+        if (typeof req.onupgradeneeded === "function") req.onupgradeneeded();
+        if (typeof req.onsuccess === "function") req.onsuccess();
+      });
+      return req;
+    },
+  };
+
+  const outbox = Core.createRsvpOutbox({ indexedDB: fakeIndexedDB });
+  await outbox.enqueue({
+    userKey: "u3",
+    eventId: 101,
+    desiredStatus: "attending",
+    previousStatus: null,
+    updatedAt: 1000,
+  });
+  // Segundo clic offline en el mismo evento sobreescribe el estado deseado pero conserva el previousStatus base
+  await outbox.enqueue({
+    userKey: "u3",
+    eventId: 101,
+    desiredStatus: "declined",
+    previousStatus: null,
+    updatedAt: 2000,
+  });
+  await outbox.enqueue({
+    userKey: "u3",
+    eventId: 202,
+    desiredStatus: "attending",
+    previousStatus: "declined",
+    updatedAt: 1500,
+  });
+
+  const items = await outbox.list("u3");
+  assert.equal(items.length, 2, "Múltiples clics en el mismo evento deben consolidarse en una única entrada en IndexedDB");
+  assert.equal(items[0].eventId, 202);
+  assert.equal(items[0].desiredStatus, "attending");
+  assert.equal(items[1].eventId, 101);
+  assert.equal(items[1].desiredStatus, "declined");
+  assert.equal(stores.get("rsvp_outbox").size, 2, "El objectStore de IndexedDB debe contener exactamente los 2 registros");
+
+  await outbox.remove("u3", 101);
+  const afterRemove = await outbox.list("u3");
+  assert.equal(afterRemove.length, 1);
+  assert.equal(afterRemove[0].eventId, 202);
+
+  await outbox.clear();
+  assert.equal((await outbox.list("u3")).length, 0);
+  assert.equal(stores.get("rsvp_outbox").size, 0);
+});

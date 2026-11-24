@@ -988,6 +988,214 @@
     };
   }
 
+  /* ------------------------------------------------------------------ outbox offline (IndexedDB) */
+
+  function createRsvpOutbox(options) {
+    const opts = options || {};
+    const dbName = opts.dbName || "upa_campus_outbox";
+    const storeName = opts.storeName || "rsvp_outbox";
+    const storage = opts.storage || null;
+    const storageKey = opts.storageKey || "upa_campus_rsvp_outbox";
+    const idb =
+      opts.indexedDB !== undefined
+        ? opts.indexedDB
+        : typeof globalThis !== "undefined" && globalThis.indexedDB
+          ? globalThis.indexedDB
+          : null;
+
+    let memMap = new Map();
+    let dbPromise = null;
+
+    function readFallbackList() {
+      if (storage && typeof storage.getItem === "function") {
+        try {
+          const raw = storage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+          }
+        } catch (_) {
+          /* almacenamiento local no disponible o corrupto */
+        }
+      }
+      return [...memMap.values()];
+    }
+
+    function writeFallbackList(items) {
+      memMap = new Map(items.map((item) => [String(item.key), item]));
+      if (storage && typeof storage.setItem === "function") {
+        try {
+          if (items.length === 0 && typeof storage.removeItem === "function") {
+            storage.removeItem(storageKey);
+          } else {
+            storage.setItem(storageKey, JSON.stringify(items));
+          }
+        } catch (_) {
+          /* ignorar cuota o error de almacenamiento */
+        }
+      }
+    }
+
+    function openDb() {
+      if (!idb || typeof idb.open !== "function") return Promise.resolve(null);
+      if (dbPromise) return dbPromise;
+      dbPromise = new Promise((resolve) => {
+        try {
+          const req = idb.open(dbName, 1);
+          req.onupgradeneeded = () => {
+            try {
+              const db = req.result;
+              if (db && (!db.objectStoreNames || !db.objectStoreNames.contains(storeName))) {
+                db.createObjectStore(storeName, { keyPath: "key" });
+              }
+            } catch (_) {
+              /* fallo al crear objectStore */
+            }
+          };
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+          if (req.onblocked !== undefined) req.onblocked = () => resolve(null);
+        } catch (_) {
+          resolve(null);
+        }
+      });
+      return dbPromise;
+    }
+
+    async function enqueue(entry) {
+      if (!entry || entry.eventId === undefined || entry.eventId === null) return null;
+      const userKey = String(entry.userKey || "anon");
+      const eventId = String(entry.eventId);
+      const key = `${userKey}:${eventId}`;
+      const record = {
+        key,
+        userKey,
+        eventId: entry.eventId,
+        desiredStatus:
+          entry.desiredStatus === "attending" || entry.desiredStatus === "declined" ? entry.desiredStatus : null,
+        previousStatus:
+          entry.previousStatus === "attending" || entry.previousStatus === "declined" ? entry.previousStatus : null,
+        updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : Date.now(),
+      };
+
+      const current = readFallbackList().filter((item) => String(item.key) !== key);
+      current.push(record);
+      writeFallbackList(current);
+
+      const db = await openDb();
+      if (db) {
+        await new Promise((resolve) => {
+          try {
+            const tx = db.transaction(storeName, "readwrite");
+            const store = tx.objectStore(storeName);
+            const req = store.put(record);
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+            if (req) req.onerror = () => resolve(false);
+          } catch (_) {
+            resolve(false);
+          }
+        });
+      }
+      return record;
+    }
+
+    async function list(userKey) {
+      const targetUser = userKey ? String(userKey) : null;
+      const db = await openDb();
+      let items = null;
+      if (db) {
+        items = await new Promise((resolve) => {
+          try {
+            const tx = db.transaction(storeName, "readonly");
+            const store = tx.objectStore(storeName);
+            if (typeof store.getAll === "function") {
+              const req = store.getAll();
+              req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : null);
+              req.onerror = () => resolve(null);
+            } else if (typeof store.openCursor === "function") {
+              const acc = [];
+              const req = store.openCursor();
+              req.onsuccess = (ev) => {
+                const cursor = ev && ev.target ? ev.target.result : req.result;
+                if (cursor) {
+                  acc.push(cursor.value);
+                  cursor.continue();
+                } else {
+                  resolve(acc);
+                }
+              };
+              req.onerror = () => resolve(null);
+            } else {
+              resolve(null);
+            }
+          } catch (_) {
+            resolve(null);
+          }
+        });
+      }
+      if (!Array.isArray(items)) {
+        items = readFallbackList();
+      } else {
+        writeFallbackList(items);
+      }
+      const filtered = targetUser ? items.filter((item) => String(item.userKey) === targetUser) : items.slice();
+      filtered.sort((a, b) => (Number(a.updatedAt) || 0) - (Number(b.updatedAt) || 0));
+      return filtered;
+    }
+
+    async function remove(userKey, eventId) {
+      const key = `${String(userKey || "anon")}:${String(eventId)}`;
+      const current = readFallbackList().filter((item) => String(item.key) !== key);
+      writeFallbackList(current);
+
+      const db = await openDb();
+      if (db) {
+        await new Promise((resolve) => {
+          try {
+            const tx = db.transaction(storeName, "readwrite");
+            const store = tx.objectStore(storeName);
+            const req = store.delete(key);
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+            if (req) req.onerror = () => resolve(false);
+          } catch (_) {
+            resolve(false);
+          }
+        });
+      }
+      return true;
+    }
+
+    async function clear(userKey) {
+      if (!userKey) {
+        writeFallbackList([]);
+        const db = await openDb();
+        if (db) {
+          await new Promise((resolve) => {
+            try {
+              const tx = db.transaction(storeName, "readwrite");
+              const store = tx.objectStore(storeName);
+              const req = store.clear();
+              tx.oncomplete = () => resolve(true);
+              tx.onerror = () => resolve(false);
+              if (req) req.onerror = () => resolve(false);
+            } catch (_) {
+              resolve(false);
+            }
+          });
+        }
+        return;
+      }
+      const items = await list(userKey);
+      for (const item of items) {
+        await remove(userKey, item.eventId);
+      }
+    }
+
+    return { enqueue, list, remove, clear };
+  }
+
   function loadNotificationPrefs(storage) {
     try {
       const parsed = JSON.parse(storage.getItem("upa_campus_notifications") || "null");
@@ -1235,6 +1443,7 @@
     markedDays,
     applyRegistration,
     createCache,
+    createRsvpOutbox,
     loadNotificationPrefs,
     saveNotificationPrefs,
     firebaseConfig,

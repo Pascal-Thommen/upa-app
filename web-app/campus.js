@@ -53,6 +53,11 @@
   const local = safeStorage("localStorage");
   const session = safeStorage("sessionStorage");
   const cache = Core.createCache(local);
+  const outbox = Core.createRsvpOutbox({
+    indexedDB: win.indexedDB,
+    storage: local,
+  });
+  let outboxFlushPromise = null;
 
   const state = {
     token: null,
@@ -65,6 +70,7 @@
     agendaMode: DEFAULT_AGENDA_MODE,
     detail: null,
     offline: false,
+    pendingRsvp: {},
     isBeta: false,
     installPrompt: null,
     lastRefresh: 0,
@@ -331,6 +337,7 @@
     state.agenda = { entries: [], loaded: false, error: null };
     state.selectedDay = null;
     state.detail = null;
+    state.pendingRsvp = {};
   }
 
   async function logout(reason) {
@@ -339,6 +346,7 @@
     local.removeItem(PUSH_TOKEN_KEY);
     session.removeItem(FORCE_APP_KEY);
     cache.clear();
+    await track(outbox.clear());
     resetSessionState();
     if (overlays) overlays.closeAll();
     renderAll();
@@ -416,6 +424,7 @@
         error: null,
       };
       cache.set(key, { ...state.feed, error: null });
+      applyPendingOutboxToState();
       setOffline(false);
       state.lastRefresh = Date.now();
     } catch (error) {
@@ -449,6 +458,7 @@
       const response = await api.agenda();
       cache.set(key, response);
       state.agenda = { entries: Core.buildAgendaEntries(response), loaded: true, error: null };
+      applyPendingOutboxToState();
       setOffline(false);
     } catch (error) {
       if (error.kind === "unauthorized") return;
@@ -463,6 +473,12 @@
   }
 
   async function refreshAll() {
+    if (state.token) {
+      await track(restoreOutboxState());
+      if (win.navigator.onLine !== false) {
+        await track(flushRsvpOutbox());
+      }
+    }
     const tasks = [loadFeed({ reset: true })];
     if (state.token) {
       tasks.push(loadAgenda(), loadUser());
@@ -486,6 +502,134 @@
     }
     if (item.is_registered || item.isRegistered) return "attending";
     return fb;
+  }
+
+  function applyPendingOutboxToState() {
+    const pendingEntries = Object.values(state.pendingRsvp || {});
+    if (!pendingEntries.length) return;
+    for (const item of pendingEntries) {
+      applyRegistrationUpdate(
+        {
+          id: item.eventId,
+          is_registered: item.desiredStatus === "attending",
+          registration_status: item.desiredStatus,
+        },
+        item.desiredStatus,
+      );
+    }
+  }
+
+  async function restoreOutboxState() {
+    if (!state.token) {
+      state.pendingRsvp = {};
+      return [];
+    }
+    const items = await outbox.list(currentUserKey());
+    const map = {};
+    for (const item of items) {
+      map[String(item.eventId)] = item;
+    }
+    state.pendingRsvp = map;
+    applyPendingOutboxToState();
+    return items;
+  }
+
+  async function enqueueOfflineRsvp(eventId, desiredStatus, previousStatus) {
+    const idStr = String(eventId);
+    const existing = state.pendingRsvp[idStr];
+    const basePrevious = existing ? existing.previousStatus : previousStatus;
+    const record = await outbox.enqueue({
+      userKey: currentUserKey(),
+      eventId,
+      desiredStatus,
+      previousStatus: basePrevious,
+      updatedAt: Date.now(),
+    });
+    if (record) {
+      state.pendingRsvp[idStr] = record;
+    }
+    renderFeed();
+    renderAgenda();
+    renderDetailEventCard();
+    renderDetailActions();
+    toast("Guardado sin conexión. Se sincronizará al volver la red.");
+  }
+
+  async function flushRsvpOutbox() {
+    if (!state.token || !api) return { synced: 0, failed: 0 };
+    if (outboxFlushPromise) return outboxFlushPromise;
+    outboxFlushPromise = (async () => {
+      const userKey = currentUserKey();
+      const items = await outbox.list(userKey);
+      if (!items.length) return { synced: 0, failed: 0 };
+      let synced = 0;
+      let failed = 0;
+      for (const item of items) {
+        const idStr = String(item.eventId);
+        try {
+          if (item.desiredStatus === "attending") {
+            const updated = await api.register(item.eventId);
+            await outbox.remove(userKey, item.eventId);
+            delete state.pendingRsvp[idStr];
+            applyRegistrationUpdate(updated, "attending");
+          } else if (item.desiredStatus === "declined") {
+            const updated = await api.unregister(item.eventId);
+            await outbox.remove(userKey, item.eventId);
+            delete state.pendingRsvp[idStr];
+            applyRegistrationUpdate(updated, "declined");
+          } else {
+            if (item.previousStatus === "attending") {
+              const updated = await api.unregister(item.eventId);
+              await outbox.remove(userKey, item.eventId);
+              delete state.pendingRsvp[idStr];
+              applyRegistrationUpdate(
+                { ...updated, id: item.eventId, is_registered: false, registration_status: null },
+                null,
+              );
+            } else {
+              await outbox.remove(userKey, item.eventId);
+              delete state.pendingRsvp[idStr];
+              applyRegistrationUpdate({ id: item.eventId, is_registered: false, registration_status: null }, null);
+            }
+          }
+          synced += 1;
+        } catch (error) {
+          if (Core.isConnectivityError(error)) {
+            setOffline(true, true);
+            break;
+          }
+          failed += 1;
+          await outbox.remove(userKey, item.eventId);
+          delete state.pendingRsvp[idStr];
+          const revertStatus = item.previousStatus || null;
+          applyRegistrationUpdate(
+            {
+              id: item.eventId,
+              is_registered: revertStatus === "attending",
+              registration_status: revertStatus,
+            },
+            revertStatus,
+          );
+          if (error.kind !== "unauthorized") {
+            toast(Core.friendlyError(error));
+          }
+        }
+      }
+      if (synced > 0) {
+        setOffline(false);
+        toast("Respuestas pendientes sincronizadas.");
+      }
+      renderFeed();
+      renderAgenda();
+      renderDetailEventCard();
+      renderDetailActions();
+      return { synced, failed };
+    })();
+    try {
+      return await outboxFlushPromise;
+    } finally {
+      outboxFlushPromise = null;
+    }
   }
 
   function applyRegistrationUpdate(updated, targetStatus) {
@@ -556,31 +700,77 @@
     }
   }
 
-  async function toggleRegistration(eventId, desiredStatus, currentStatus, button) {
+  async function toggleRegistration(eventId, desiredStatus, currentStatus) {
     if (!state.token) {
       toast("Inicia sesión para inscribirte.");
       return;
     }
-    if (button) button.disabled = true;
+    const idStr = String(eventId);
+    const feedPost = state.feed.posts.find((p) => String(p.id) === idStr);
+    const liveStatus = feedPost
+      ? resolveRegistrationStatus(feedPost, null)
+      : state.detail && (String(state.detail.eventId) === idStr || String(state.detail.postId) === idStr)
+        ? state.detail.registrationStatus || (state.detail.isRegistered ? "attending" : null)
+        : currentStatus;
+    const prevStatus = liveStatus !== undefined ? liveStatus : currentStatus;
+    const nextStatus = prevStatus === desiredStatus ? null : desiredStatus;
+    const existingPending = state.pendingRsvp[idStr];
+    const basePrevious = existingPending ? existingPending.previousStatus : prevStatus;
+
+    // 1. Actualizacion optimista inmediata en la interfaz
+    applyRegistrationUpdate(
+      {
+        id: eventId,
+        is_registered: nextStatus === "attending",
+        registration_status: nextStatus,
+      },
+      nextStatus,
+    );
+
+    // 2. Si el navegador reporta modo sin conexion, encolar directamente en IndexedDB Outbox
+    if (win.navigator.onLine === false) {
+      setOffline(true, true);
+      await enqueueOfflineRsvp(eventId, nextStatus, basePrevious);
+      return;
+    }
+
     try {
-      if (currentStatus === desiredStatus) {
-        if (currentStatus === "attending") {
+      if (nextStatus === null) {
+        if (basePrevious === "attending") {
           const updated = await api.unregister(eventId);
+          await outbox.remove(currentUserKey(), eventId);
+          delete state.pendingRsvp[idStr];
           applyRegistrationUpdate({ ...updated, id: eventId, is_registered: false, registration_status: null }, null);
         } else {
+          await outbox.remove(currentUserKey(), eventId);
+          delete state.pendingRsvp[idStr];
           applyRegistrationUpdate({ id: eventId, is_registered: false, registration_status: null }, null);
         }
         toast("Inscripción cancelada.");
         return;
       }
-      const updated = desiredStatus === "attending" ? await api.register(eventId) : await api.unregister(eventId);
-      applyRegistrationUpdate(updated, desiredStatus);
-      toast(desiredStatus === "attending" ? "Inscripción confirmada." : "Inscripción cancelada.");
+      const updated = nextStatus === "attending" ? await api.register(eventId) : await api.unregister(eventId);
+      await outbox.remove(currentUserKey(), eventId);
+      delete state.pendingRsvp[idStr];
+      applyRegistrationUpdate(updated, nextStatus);
+      toast(nextStatus === "attending" ? "Inscripción confirmada." : "Inscripción cancelada.");
     } catch (error) {
-      if (Core.isConnectivityError(error)) setOffline(true, true);
+      if (Core.isConnectivityError(error)) {
+        setOffline(true, true);
+        await enqueueOfflineRsvp(eventId, nextStatus, basePrevious);
+        return;
+      }
+      await outbox.remove(currentUserKey(), eventId);
+      delete state.pendingRsvp[idStr];
+      applyRegistrationUpdate(
+        {
+          id: eventId,
+          is_registered: basePrevious === "attending",
+          registration_status: basePrevious,
+        },
+        basePrevious,
+      );
       if (error.kind !== "unauthorized") toast(Core.friendlyError(error));
-    } finally {
-      if (button) button.disabled = false;
     }
   }
 
@@ -718,6 +908,7 @@
     const isAttending = Boolean(post.is_registered) || regStatus === "attending";
     const isDeclined = !isAttending && regStatus === "declined";
     const currentStatus = isAttending ? "attending" : isDeclined ? "declined" : null;
+    const isPending = Boolean(state.pendingRsvp && state.pendingRsvp[String(post.id)]);
     const registerCls = isAttending
       ? "btn btn-small btn-rsvp btn-primary btn-registered is-active"
       : isDeclined
@@ -732,6 +923,7 @@
       class: registerCls,
       type: "button",
       "data-register": String(post.id),
+      "data-rsvp-pending": isPending ? "true" : null,
       "aria-pressed": isAttending ? "true" : "false",
       text: isAttending ? "Inscrito ✓" : "Sí, asistiré",
     });
@@ -739,11 +931,20 @@
       class: declineCls,
       type: "button",
       "data-decline": String(post.id),
+      "data-rsvp-pending": isPending ? "true" : null,
       "aria-pressed": isDeclined ? "true" : "false",
       text: "No asistiré",
     });
     registerBtn.addEventListener("click", () => track(toggleRegistration(post.id, "attending", currentStatus, registerBtn)));
     declineBtn.addEventListener("click", () => track(toggleRegistration(post.id, "declined", currentStatus, declineBtn)));
+    if (isPending) {
+      const hint = h("small", {
+        class: "rsvp-pending-hint",
+        "data-rsvp-pending-hint": String(post.id),
+        text: "Guardado sin conexión · se sincronizará al reconectar",
+      });
+      return [registerBtn, declineBtn, hint];
+    }
     return [registerBtn, declineBtn];
   }
 
@@ -1031,6 +1232,7 @@
         const isAttending = Boolean(d.isRegistered) || d.registrationStatus === "attending";
         const isDeclined = !isAttending && d.registrationStatus === "declined";
         const currentStatus = isAttending ? "attending" : isDeclined ? "declined" : null;
+        const isPending = Boolean(state.pendingRsvp && state.pendingRsvp[String(regEventId)]);
         const registerCls = isAttending
           ? "btn btn-rsvp btn-primary btn-registered is-active"
           : isDeclined
@@ -1045,6 +1247,7 @@
           class: registerCls,
           type: "button",
           id: "detail-register",
+          "data-rsvp-pending": isPending ? "true" : null,
           "aria-pressed": isAttending ? "true" : "false",
           text: isAttending ? "Inscrito ✓" : "Sí, asistiré",
         });
@@ -1052,12 +1255,23 @@
           class: declineCls,
           type: "button",
           id: "detail-decline",
+          "data-rsvp-pending": isPending ? "true" : null,
           "aria-pressed": isDeclined ? "true" : "false",
           text: "No asistiré",
         });
         registerBtn.addEventListener("click", () => track(toggleRegistration(regEventId, "attending", currentStatus, registerBtn)));
         declineBtn.addEventListener("click", () => track(toggleRegistration(regEventId, "declined", currentStatus, declineBtn)));
         box.append(h("div", { class: "rsvp-actions" }, registerBtn, declineBtn));
+        if (isPending) {
+          box.append(
+            h("small", {
+              class: "rsvp-pending-hint",
+              id: "detail-rsvp-pending-hint",
+              "data-rsvp-pending-hint": String(regEventId),
+              text: "Guardado sin conexión · se sincronizará al reconectar",
+            }),
+          );
+        }
       }
     }
     const links = Core.resolveDetailLinks(d);
@@ -2304,6 +2518,7 @@
 
   win.UpaCampus = {
     state,
+    outbox,
     firebaseConfig,
     VAPID_PUBLIC_KEY,
     boot,
@@ -2322,6 +2537,7 @@
       return openPostModal(postIdOrUrl, options);
     },
     refresh: () => track(refreshAll()),
+    flushOutbox: () => track(flushRsvpOutbox()),
     checkForSwUpdate: () => checkForSwUpdate(),
     enablePushNotifications: () => track(enablePushNotifications()),
     disablePushNotifications: () => track(disablePushNotifications()),
