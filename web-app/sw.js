@@ -9,6 +9,8 @@
 
 const VERSION = "1.0.8";
 const SHELL_CACHE = `upa-campus-shell-${VERSION}`;
+const RUNTIME_MEDIA_CACHE = `upa-campus-runtime-media-${VERSION}`;
+const MAX_MEDIA_CACHE_ENTRIES = 80;
 const FIREBASE_APP_COMPAT_URL = `/campus/vendor/firebase-app-compat.js?v=${VERSION}`;
 const FIREBASE_MESSAGING_COMPAT_URL = `/campus/vendor/firebase-messaging-compat.js?v=${VERSION}`;
 const firebaseConfig = {
@@ -102,13 +104,35 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== SHELL_CACHE).map((k) => caches.delete(k))))
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((k) => k !== SHELL_CACHE && k !== RUNTIME_MEDIA_CACHE)
+            .map((k) => caches.delete(k)),
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });
 
 function isCampusAsset(pathname) {
   return pathname === "/manifest.webmanifest" || pathname.startsWith("/campus/");
+}
+
+function isMediaAsset(request, url) {
+  if (request && request.destination === "image") return true;
+  if (url.pathname.startsWith("/uploads/")) {
+    return !/\.(?:mp4|webm|mov)(\?|#|$)/i.test(url.pathname);
+  }
+  return /\.(?:png|jpe?g|webp|gif|avif|svg)(\?|#|$)/i.test(url.pathname);
+}
+
+async function trimMediaCache(cache) {
+  if (typeof cache.keys !== "function" || typeof cache.delete !== "function") return;
+  const keys = await cache.keys();
+  if (keys.length <= MAX_MEDIA_CACHE_ENTRIES) return;
+  const excess = keys.slice(0, keys.length - MAX_MEDIA_CACHE_ENTRIES);
+  await Promise.all(excess.map((entry) => cache.delete(entry)));
 }
 
 function isNavigationToApp(request, pathname) {
@@ -119,10 +143,10 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/dashboard")) return;
+  const sameOrigin = url.origin === self.location.origin;
+  if (sameOrigin && (url.pathname.startsWith("/api/") || url.pathname.startsWith("/dashboard"))) return;
 
-  if (isNavigationToApp(request, url.pathname)) {
+  if (sameOrigin && isNavigationToApp(request, url.pathname)) {
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
         const cached =
@@ -148,7 +172,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (isCampusAsset(url.pathname)) {
+  if (sameOrigin && isCampusAsset(url.pathname)) {
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
         const cached = (await cache.match(request)) || (await cache.match(url.pathname, { ignoreSearch: true }));
@@ -160,6 +184,33 @@ self.addEventListener("fetch", (event) => {
                 request,
                 typeof response.clone === "function" ? response.clone() : response,
               );
+            }
+            return cached || response;
+          })
+          .catch(() => cached);
+        if (cached) {
+          if (typeof event.waitUntil === "function") {
+            event.waitUntil(networkFetch);
+          }
+          return cached;
+        }
+        return networkFetch;
+      }),
+    );
+    return;
+  }
+
+  if (isMediaAsset(request, url)) {
+    event.respondWith(
+      caches.open(RUNTIME_MEDIA_CACHE).then(async (cache) => {
+        const cached =
+          (await cache.match(request)) ||
+          (sameOrigin ? await cache.match(url.pathname, { ignoreSearch: true }) : undefined);
+        const networkFetch = fetch(request)
+          .then(async (response) => {
+            if (response && (response.ok || response.type === "opaque")) {
+              await cache.put(request, typeof response.clone === "function" ? response.clone() : response);
+              await trimMediaCache(cache);
             }
             return cached || response;
           })

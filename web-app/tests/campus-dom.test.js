@@ -458,7 +458,8 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
     assert.match(cards[0].textContent, /Fijado/);
     assert.match(cards[0].textContent, /Foro de Ingeniería Empresarial 2026/);
 
-    // Publicacion sin imagen (!media): badges prominentes (Campus y Evento) arriba a la izquierda en .card-header
+    // Publicacion sin imagen (!media): badges prominentes (Campus y Evento) arriba a la izquierda en .card-header y sin contenedor de imagen vacio
+    assert.equal(cards[0].querySelector(".card-media-wrap"), null, "Las publicaciones de solo texto no deben renderizar .card-media-wrap vacio");
     const eventHeaderBadges = [...cards[0].querySelectorAll(".card-header .card-badges .badge")];
     assert.equal(eventHeaderBadges.length, 2, "El evento sin imagen debe mostrar badges de origen (Campus) y tipo (Evento) en el encabezado");
     assert.equal(eventHeaderBadges[0].textContent.trim(), "Campus");
@@ -573,6 +574,17 @@ test("Inicio: fijados arriba, inscripcion y cancelacion en tarjeta, detalle y bo
 
     // Detalle a pantalla completa, badge Campus flotante con "U" verde y enlace a la fuente original
     const openNews = app.document.querySelector(`[data-post-id="${seeded.newsId}"]`);
+    const newsMediaWrap = openNews.querySelector(".card-media-wrap");
+    assert.ok(newsMediaWrap, "La publicacion con imagen debe renderizar el contenedor .card-media-wrap con marco fijo");
+    const newsImg = newsMediaWrap.querySelector("img.card-media");
+    assert.ok(newsImg, "Debe existir la imagen dentro de .card-media-wrap");
+    assert.equal(newsImg.getAttribute("width"), "640", "La imagen debe incluir width intrinseco para evitar CLS");
+    assert.equal(newsImg.getAttribute("height"), "360", "La imagen debe incluir height intrinseco para evitar CLS");
+    assert.equal(newsImg.getAttribute("loading"), "eager", "Las primeras tarjetas del feed deben cargarse con loading='eager' para visualizacion inmediata");
+    assert.equal(newsImg.getAttribute("decoding"), "sync", "Las primeras tarjetas del feed deben usar decoding='sync'");
+    newsImg.dispatchEvent(new app.window.Event("load"));
+    assert.equal(newsImg.classList.contains("is-loaded"), true, "Al terminar de cargar, la imagen recibe la clase .is-loaded");
+    assert.equal(newsMediaWrap.classList.contains("is-loaded"), true, "El contenedor .card-media-wrap tambien recibe .is-loaded");
     const newsFloatingBadge = openNews.querySelector(".card-media-wrap > .badge.badge-campus.badge-floating");
     assert.ok(newsFloatingBadge, "La publicacion interna con imagen debe tener el badge Campus flotando arriba a la izquierda sobre la imagen");
     assert.ok(newsFloatingBadge.querySelector("svg.upa-u-glyph"), "El badge Campus debe incluir la U verde de la UPA");
@@ -1531,6 +1543,46 @@ test("Beta y Auto-Update SW: muestra badge BETA en instancia beta y gestiona upd
   }
   await Promise.all(lieFiBg);
   swNetworkDelayMs = 0;
+
+  // 5b. Cacheo Stale-While-Revalidate de imagenes del feed (/uploads/ y imagenes externas) en RUNTIME_MEDIA_CACHE
+  // Primera carga en linea: guarda la imagen en upa-campus-runtime-media-1.0.8
+  assetRevision = "img-v1";
+  let imgFetchPromise = null;
+  const imgBgTasks = [];
+  swEvents.fetch({
+    request: { method: "GET", destination: "image", url: `${BASE_URL}/uploads/evento-afiche.jpg` },
+    respondWith(p) {
+      imgFetchPromise = p;
+    },
+    waitUntil(p) {
+      imgBgTasks.push(p);
+    },
+  });
+  const firstImgResp = await imgFetchPromise;
+  await Promise.all(imgBgTasks);
+  assert.ok(firstImgResp && firstImgResp.ok, "El Service Worker debe servir y almacenar imagenes de /uploads/");
+  assert.equal(
+    cacheStore.has("upa-campus-runtime-media-1.0.8"),
+    true,
+    "Debe crear el cache dedicado RUNTIME_MEDIA_CACHE para imagenes del feed",
+  );
+
+  // Al reabrir la app en modo offline o con red lenta (Lie-Fi 400 ms), la imagen cacheada debe responder inmediatamente (< 50 ms)
+  swOnline = false;
+  const offlineImgStart = Date.now();
+  let offlineImgPromise = null;
+  swEvents.fetch({
+    request: { method: "GET", destination: "image", url: `${BASE_URL}/uploads/evento-afiche.jpg` },
+    respondWith(p) {
+      offlineImgPromise = p;
+    },
+  });
+  const offlineImgResp = await offlineImgPromise;
+  const offlineImgElapsed = Date.now() - offlineImgStart;
+  assert.ok(offlineImgResp && offlineImgResp.ok, "En modo offline las imagenes previamente vistas deben servirse desde RUNTIME_MEDIA_CACHE");
+  assert.ok(offlineImgElapsed < 50, `La imagen cacheada debe entregarse sin demora (tardo ${offlineImgElapsed} ms)`);
+  assert.match(offlineImgResp.body, /img-v1/);
+  swOnline = true;
 
   // 6. Prueba de recepcion de Push en segundo plano (evento push) y deep-link en notificationclick
   const shownNotifications = [];
